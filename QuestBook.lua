@@ -1,4 +1,4 @@
--- QuestBook v0.5.2 -- a readable page for quests you already accepted.
+-- QuestBook v0.5.3 -- a readable page for quests you already accepted.
 --
 -- WHY: the quest log's text is small and cramped; reading it is how we
 -- navigate (no Questie by choice). This opens the selected quest as one
@@ -159,8 +159,14 @@ local function Speak(entry, desc, force)
   if not ok and why then Say("voice problem: " .. why .. " (try /qb voices)") end
 end
 
+local function SetSpeaking(state)
+  isSpeaking = state
+  if Book and Book.speaker then Book.speaker:SetText(state and "stop" or "talk") end
+end
+
 local function StopSpeaking()
   if C_VoiceChat and C_VoiceChat.StopSpeakingText then pcall(C_VoiceChat.StopSpeakingText) end
+  SetSpeaking(false)   -- a killed speech fires no FINISHED event; reset locally
 end
 
 -- ---------------------------------------------------------------- UI
@@ -367,10 +373,6 @@ pcall(EL.RegisterEvent, EL, "PLAYER_STARTED_MOVING")
 pcall(EL.RegisterEvent, EL, "VOICE_CHAT_TTS_PLAYBACK_STARTED")
 pcall(EL.RegisterEvent, EL, "VOICE_CHAT_TTS_PLAYBACK_FINISHED")
 pcall(EL.RegisterEvent, EL, "VOICE_CHAT_TTS_PLAYBACK_FAILED")
-local function SetSpeaking(state)
-  isSpeaking = state
-  if Book and Book.speaker then Book.speaker:SetText(state and "stop" or "talk") end
-end
 EL:SetScript("OnEvent", function(_, event, name)
   if event == "ADDON_LOADED" and name == ADDON_NAME then
     InitDB()
