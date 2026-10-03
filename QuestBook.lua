@@ -1,4 +1,4 @@
--- QuestBook v0.5.1 -- a readable page for quests you already accepted.
+-- QuestBook v0.5.2 -- a readable page for quests you already accepted.
 --
 -- WHY: the quest log's text is small and cramped; reading it is how we
 -- navigate (no Questie by choice). This opens the selected quest as one
@@ -199,6 +199,7 @@ local function BuildBook()
   Book:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
   Book:SetBackdropColor(0.07, 0.06, 0.05, 0.96)
   Book:Hide()
+  Book:SetScript("OnHide", StopSpeaking)   -- ANY close path silences the voice
   tinsert(UISpecialFrames, "QuestBookFrame")
 
   Book.shade = Book:CreateTexture(nil, "BACKGROUND", nil, -8)
