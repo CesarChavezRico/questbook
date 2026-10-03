@@ -1,4 +1,4 @@
--- QuestBook v0.4.4 -- a readable page for quests you already accepted.
+-- QuestBook v0.4.5 -- a readable page for quests you already accepted.
 --
 -- WHY: the quest log's text is small and cramped; reading it is how we
 -- navigate (no Questie by choice). This opens the selected quest as one
@@ -16,6 +16,7 @@
 --   /qb size <n>   body font size (default 17)
 --   /qb dark       toggle the darkened backdrop
 --   /qb voice      toggle walk-and-listen TTS (default on)
+--   /qb debug      narrate the walk-and-listen chain in chat
 
 local ADDON_NAME = ...
 local DEFAULTS = { fontSize = 17, width = 1040, height = 860, darken = true, voice = true, voiceID = nil }
@@ -25,6 +26,8 @@ local Book        -- main frame
 local ListButtons = {}
 local docked = false
 local lastEntry, lastDesc
+local debugMode = false
+local function Dbg(msg) if debugMode then print("|cff7faaffQB-debug|r: " .. msg) end end
 
 -- ---------------------------------------------------------------- helpers
 
@@ -139,8 +142,11 @@ local function SpeakText(text)
 end
 
 local function Speak(entry, desc)
-  if not db.voice then return end
-  if not desc or desc == UNAVAILABLE then return end
+  if not db then Dbg("no db — InitDB never ran?") return end
+  if not db.voice then Dbg("voice is OFF (/qb voice)") return end
+  if not desc then Dbg("no description cached") return end
+  if desc == UNAVAILABLE then Dbg("description unavailable") return end
+  Dbg("calling SpeakText…")
   local ok, why = SpeakText(((entry and entry.title) or "") .. ". " .. desc)
   if not ok and why then Say("voice problem: " .. why .. " (try /qb voices)") end
 end
@@ -152,7 +158,8 @@ end
 -- ---------------------------------------------------------------- UI
 
 local FONT = "Fonts\\FRIZQT__.TTF"
-local ShowQuest  -- forward declaration
+local ShowQuest      -- forward declaration
+local OnStartedMoving -- forward declaration
 
 local function ApplyLayout()
   if docked then
@@ -283,9 +290,15 @@ local function Toggle()
   ApplyLayout()
   RefreshList()
   Book:Show()
+  if IsPlayerMoving and IsPlayerMoving() then
+    Dbg("already moving at open — docking now")
+    OnStartedMoving()
+  end
 end
 
-local function OnStartedMoving()
+OnStartedMoving = function()
+  Dbg("PLAYER_STARTED_MOVING fired (shown=" .. tostring(Book and Book:IsShown())
+    .. " docked=" .. tostring(docked) .. ")")
   if Book and Book:IsShown() and not docked then
     docked = true
     ApplyLayout()
@@ -325,6 +338,9 @@ SlashCmdList.QUESTBOOK = function(msg)
     db.darken = not db.darken
     if Book and Book:IsShown() and not docked then Book.shade:SetShown(db.darken) end
     Say("backdrop " .. (db.darken and "on" or "off"))
+  elseif msg == "debug" then
+    debugMode = not debugMode
+    Say("debug " .. (debugMode and "on — open the book and move" or "off"))
   elseif msg == "voice" then
     db.voice = not db.voice
     if not db.voice then StopSpeaking() end
