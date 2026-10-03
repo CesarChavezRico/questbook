@@ -1,4 +1,4 @@
--- QuestBook v0.4.5 -- a readable page for quests you already accepted.
+-- QuestBook v0.5.0 -- a readable page for quests you already accepted.
 --
 -- WHY: the quest log's text is small and cramped; reading it is how we
 -- navigate (no Questie by choice). This opens the selected quest as one
@@ -17,6 +17,10 @@
 --   /qb dark       toggle the darkened backdrop
 --   /qb voice      toggle walk-and-listen TTS (default on)
 --   /qb debug      narrate the walk-and-listen chain in chat
+--
+-- v0.5: dock controls — [<] [read] [>]: step through quests with instant
+-- narration; the read/stop button restarts or silences the narrator and
+-- works regardless of the /qb voice auto-setting (buttons are intent).
 
 local ADDON_NAME = ...
 local DEFAULTS = { fontSize = 17, width = 1040, height = 860, darken = true, voice = true, voiceID = nil }
@@ -27,6 +31,10 @@ local ListButtons = {}
 local docked = false
 local lastEntry, lastDesc
 local debugMode = false
+local currentEntries = {}
+local currentIndex
+local isSpeaking = false
+local NavQuest, SpeakerToggle   -- forward declarations (buttons close over them)
 local function Dbg(msg) if debugMode then print("|cff7faaffQB-debug|r: " .. msg) end end
 
 -- ---------------------------------------------------------------- helpers
@@ -141,9 +149,9 @@ local function SpeakText(text)
   return true, nil
 end
 
-local function Speak(entry, desc)
+local function Speak(entry, desc, force)
   if not db then Dbg("no db — InitDB never ran?") return end
-  if not db.voice then Dbg("voice is OFF (/qb voice)") return end
+  if not force and not db.voice then Dbg("voice is OFF (/qb voice)") return end
   if not desc then Dbg("no description cached") return end
   if desc == UNAVAILABLE then Dbg("description unavailable") return end
   Dbg("calling SpeakText…")
@@ -167,7 +175,7 @@ local function ApplyLayout()
     Book:SetSize(440, 540)
     Book.list:Hide(); Book.shade:Hide()
     Book.page:ClearAllPoints()
-    Book.page:SetPoint("TOPLEFT", 16, -34); Book.page:SetPoint("BOTTOMRIGHT", -30, 14)
+    Book.page:SetPoint("TOPLEFT", 16, -36); Book.page:SetPoint("BOTTOMRIGHT", -30, 14)
   else
     Book:ClearAllPoints(); Book:SetPoint("CENTER")
     Book:SetSize(db.width, db.height)
@@ -206,9 +214,25 @@ local function BuildBook()
     Book:Hide()
   end)
 
+  -- control strip: [<] [read] [>]
+  Book.prev = CreateFrame("Button", nil, Book, "UIPanelButtonTemplate")
+  Book.prev:SetSize(26, 22); Book.prev:SetPoint("TOPLEFT", 8, -6)
+  Book.prev:SetText("<")
+  Book.prev:SetScript("OnClick", function() NavQuest(-1) end)
+
+  Book.speaker = CreateFrame("Button", nil, Book, "UIPanelButtonTemplate")
+  Book.speaker:SetSize(52, 22); Book.speaker:SetPoint("TOPLEFT", 38, -6)
+  Book.speaker:SetText("read")
+  Book.speaker:SetScript("OnClick", function() SpeakerToggle() end)
+
+  Book.next = CreateFrame("Button", nil, Book, "UIPanelButtonTemplate")
+  Book.next:SetSize(26, 22); Book.next:SetPoint("TOPLEFT", 94, -6)
+  Book.next:SetText(">")
+  Book.next:SetScript("OnClick", function() NavQuest(1) end)
+
   Book.list = CreateFrame("ScrollFrame", nil, Book, "UIPanelScrollFrameTemplate")
-  Book.list:SetPoint("TOPLEFT", 16, -16)
-  Book.list:SetSize(280, db.height - 32)
+  Book.list:SetPoint("TOPLEFT", 16, -34)
+  Book.list:SetSize(280, db.height - 50)
   Book.listChild = CreateFrame("Frame", nil, Book.list)
   Book.listChild:SetSize(280, 10)
   Book.list:SetScrollChild(Book.listChild)
@@ -241,6 +265,9 @@ local function ApplyFonts()
 end
 
 ShowQuest = function(entry)
+  for i, e in ipairs(currentEntries) do
+    if e == entry then currentIndex = i break end
+  end
   local desc, obj = GetQuestText(entry)
   lastEntry, lastDesc = entry, desc
   ApplyFonts()
@@ -254,6 +281,7 @@ end
 
 local function RefreshList()
   local entries = GetLogEntries()
+  currentEntries = entries
   for _, b in ipairs(ListButtons) do b:Hide() end
   local y = 0
   for i, entry in ipairs(entries) do
@@ -277,6 +305,24 @@ local function RefreshList()
   end
   Book.listChild:SetHeight(math.max(y, 10))
   if entries[1] then ShowQuest(entries[1]) end
+end
+
+NavQuest = function(delta)
+  local n = #currentEntries
+  if n == 0 then return end
+  local idx = (((currentIndex or 1) - 1 + delta) % n) + 1
+  ShowQuest(currentEntries[idx])
+  StopSpeaking()
+  Speak(lastEntry, lastDesc, true)
+end
+
+SpeakerToggle = function()
+  if isSpeaking then
+    StopSpeaking()
+  else
+    StopSpeaking()
+    Speak(lastEntry, lastDesc, true)
+  end
 end
 
 local function Toggle()
@@ -317,11 +363,23 @@ end
 local EL = CreateFrame("Frame")
 EL:RegisterEvent("ADDON_LOADED")
 pcall(EL.RegisterEvent, EL, "PLAYER_STARTED_MOVING")
+pcall(EL.RegisterEvent, EL, "VOICE_CHAT_TTS_PLAYBACK_STARTED")
+pcall(EL.RegisterEvent, EL, "VOICE_CHAT_TTS_PLAYBACK_FINISHED")
+pcall(EL.RegisterEvent, EL, "VOICE_CHAT_TTS_PLAYBACK_FAILED")
+local function SetSpeaking(state)
+  isSpeaking = state
+  if Book and Book.speaker then Book.speaker:SetText(state and "stop" or "read") end
+end
 EL:SetScript("OnEvent", function(_, event, name)
   if event == "ADDON_LOADED" and name == ADDON_NAME then
     InitDB()
   elseif event == "PLAYER_STARTED_MOVING" then
     OnStartedMoving()
+  elseif event == "VOICE_CHAT_TTS_PLAYBACK_STARTED" then
+    SetSpeaking(true)
+  elseif event == "VOICE_CHAT_TTS_PLAYBACK_FINISHED"
+      or event == "VOICE_CHAT_TTS_PLAYBACK_FAILED" then
+    SetSpeaking(false)
   end
 end)
 
