@@ -8,7 +8,7 @@ read_globals = {
   "C_QuestLog", "C_VoiceChat", "Enum",
   "GetNumQuestLogEntries", "GetQuestLogTitle", "GetQuestLogQuestText",
   "SelectQuestLogEntry", "GetNumQuestLeaderBoards", "GetQuestLogLeaderBoard",
-  "CreateFrame", "UIParent", "IsPlayerMoving", "UISpecialFrames", "tinsert",
+  "CreateFrame", "UIParent", "IsPlayerMoving", "C_Timer", "IsQuestComplete", "UISpecialFrames", "tinsert",
   "print",
 }
 globals = {

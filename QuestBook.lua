@@ -1,4 +1,4 @@
--- QuestBook v0.5.3 -- a readable page for quests you already accepted.
+-- QuestBook v0.6.0 -- a readable page for quests you already accepted.
 --
 -- WHY: the quest log's text is small and cramped; reading it is how we
 -- navigate (no Questie by choice). This opens the selected quest as one
@@ -17,6 +17,10 @@
 --   /qb dark       toggle the darkened backdrop
 --   /qb voice      toggle walk-and-listen TTS (default on)
 --   /qb debug      narrate the walk-and-listen chain in chat
+--
+-- v0.6: objectives update LIVE while the book is open (quest events,
+-- debounced, scroll position preserved); completed quests are marked in
+-- the panel and announced by the narrator ("ready to turn in").
 --
 -- v0.5: dock controls — [<] [read] [>]: step through quests with instant
 -- narration; the read/stop button restarts or silences the narrator and
@@ -74,6 +78,20 @@ local function GetLogEntries()
 end
 
 local UNAVAILABLE = "|cff888888(text unavailable -- tell Nibble the quest name)|r"
+
+-- Is the quest done (ready to turn in)? Modern then classic, guarded.
+local function IsQuestDone(entry)
+  if not entry then return false end
+  if C_QuestLog and C_QuestLog.IsComplete then
+    local ok, done = pcall(C_QuestLog.IsComplete, entry.questID)
+    if ok then return done and true or false end
+  end
+  if IsQuestComplete then
+    local ok, done = pcall(IsQuestComplete, entry.questID)
+    if ok then return done and true or false end
+  end
+  return false
+end
 
 local function GetQuestText(entry)
   local desc, obj
@@ -155,7 +173,8 @@ local function Speak(entry, desc, force)
   if not desc then Dbg("no description cached") return end
   if desc == UNAVAILABLE then Dbg("description unavailable") return end
   Dbg("calling SpeakText…")
-  local ok, why = SpeakText(((entry and entry.title) or "") .. ". " .. desc)
+  local prefix = IsQuestDone(entry) and "This quest is complete and ready to turn in. " or ""
+  local ok, why = SpeakText(((entry and entry.title) or "") .. ". " .. prefix .. desc)
   if not ok and why then Say("voice problem: " .. why .. " (try /qb voices)") end
 end
 
@@ -278,8 +297,10 @@ ShowQuest = function(entry)
   local desc, obj = GetQuestText(entry)
   lastEntry, lastDesc = entry, desc
   ApplyFonts()
-  Book.title:SetText((entry.level and ("[" .. entry.level .. "] ") or "") .. (entry.title or ""))
-  Book.objectives:SetText(obj)
+  local done = IsQuestDone(entry)
+  Book.title:SetText((entry.level and ("[" .. entry.level .. "] ") or "") .. (entry.title or "")
+    .. (done and "  |cff6fca6f(complete)|r" or ""))
+  Book.objectives:SetText((done and "|cff6fca6fReady to turn in.|r\n" or "") .. obj)
   Book.body:SetText(desc)
   Book.pageChild:SetHeight(Book.title:GetStringHeight() + Book.objectives:GetStringHeight()
     + Book.body:GetStringHeight() + 80)
@@ -370,12 +391,33 @@ end
 local EL = CreateFrame("Frame")
 EL:RegisterEvent("ADDON_LOADED")
 pcall(EL.RegisterEvent, EL, "PLAYER_STARTED_MOVING")
+pcall(EL.RegisterEvent, EL, "QUEST_LOG_UPDATE")
 pcall(EL.RegisterEvent, EL, "VOICE_CHAT_TTS_PLAYBACK_STARTED")
 pcall(EL.RegisterEvent, EL, "VOICE_CHAT_TTS_PLAYBACK_FINISHED")
 pcall(EL.RegisterEvent, EL, "VOICE_CHAT_TTS_PLAYBACK_FAILED")
+local refreshPending = false
+local function RefreshCurrent()
+  refreshPending = false
+  if Book and Book:IsShown() and lastEntry then
+    local sc = Book.page:GetVerticalScroll()
+    ShowQuest(lastEntry)
+    Book.page:SetVerticalScroll(sc)
+  end
+end
+
 EL:SetScript("OnEvent", function(_, event, name)
   if event == "ADDON_LOADED" and name == ADDON_NAME then
     InitDB()
+  elseif event == "QUEST_LOG_UPDATE" then
+    -- fires in bursts; coalesce to one re-render, keep the reading position
+    if Book and Book:IsShown() and lastEntry and not refreshPending then
+      refreshPending = true
+      if C_Timer and C_Timer.After then
+        C_Timer.After(0.25, RefreshCurrent)
+      else
+        RefreshCurrent()
+      end
+    end
   elseif event == "PLAYER_STARTED_MOVING" then
     OnStartedMoving()
   elseif event == "VOICE_CHAT_TTS_PLAYBACK_STARTED" then
