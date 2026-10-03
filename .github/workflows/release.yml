@@ -1,0 +1,20 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package addon zip
+        run: |
+          mkdir -p dist/QuestBook
+          cp QuestBook.toc QuestBook.lua Bindings.xml dist/QuestBook/
+          cd dist && zip -r "QuestBook-${GITHUB_REF_NAME}.zip" QuestBook
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/QuestBook-*.zip
+          generate_release_notes: true
