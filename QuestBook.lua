@@ -1,4 +1,4 @@
--- QuestBook v0.4.3 -- a readable page for quests you already accepted.
+-- QuestBook v0.4.4 -- a readable page for quests you already accepted.
 --
 -- WHY: the quest log's text is small and cramped; reading it is how we
 -- navigate (no Questie by choice). This opens the selected quest as one
@@ -128,8 +128,12 @@ local function SpeakText(text)
   if not (C_VoiceChat and C_VoiceChat.SpeakText) then return false, "no SpeakText API" end
   local voiceID, why = ResolveVoice()
   if not voiceID then return false, why end
-  local dest = (Enum and Enum.VoiceTtsDestination and Enum.VoiceTtsDestination.LocalPlayback) or 1
-  local ok, err = pcall(C_VoiceChat.SpeakText, voiceID, text, dest, 0, 100)
+  -- Forever's signature (per Blizzard's API docs in the client dump,
+  -- 2026-10-03): SpeakText(voiceID, text, rate, volume[, overlap]) -- the
+  -- retail-era destination parameter is GONE. Passing it shifted rate into
+  -- volume's seat and spoke at volume 0: silent, errorless. Found by the
+  -- /qb say diagnostics + the dump.
+  local ok, err = pcall(C_VoiceChat.SpeakText, voiceID, text, 0, 100)
   if not ok then return false, "SpeakText error: " .. tostring(err) end
   return true, nil
 end
