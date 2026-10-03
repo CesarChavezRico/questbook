@@ -9,9 +9,10 @@ read_globals = {
   "GetNumQuestLogEntries", "GetQuestLogTitle", "GetQuestLogQuestText",
   "SelectQuestLogEntry", "GetNumQuestLeaderBoards", "GetQuestLogLeaderBoard",
   "CreateFrame", "UIParent", "UISpecialFrames", "tinsert",
-  "SlashCmdList", "print",
+  "print",
 }
 globals = {
+  "SlashCmdList",
   "QuestBookDB", "QuestBook_Toggle",
   "BINDING_HEADER_QUESTBOOK", "BINDING_NAME_QUESTBOOK_TOGGLE",
   "SLASH_QUESTBOOK1", "SLASH_QUESTBOOK2",
