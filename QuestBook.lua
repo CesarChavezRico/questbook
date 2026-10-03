@@ -1,4 +1,4 @@
--- QuestBook v0.4.2 -- a readable page for quests you already accepted.
+-- QuestBook v0.4.3 -- a readable page for quests you already accepted.
 --
 -- WHY: the quest log's text is small and cramped; reading it is how we
 -- navigate (no Questie by choice). This opens the selected quest as one
@@ -167,7 +167,7 @@ local function ApplyLayout()
   local w = docked and 380 or (db.width - 400)
   Book.title:SetWidth(w); Book.objectives:SetWidth(w); Book.body:SetWidth(w)
   Book.pageChild:SetWidth(w + 20)
-  if lastEntry then ShowQuest(lastEntry, true) end
+  if lastEntry then ShowQuest(lastEntry) end
 end
 
 local function BuildBook()
@@ -229,7 +229,7 @@ local function ApplyFonts()
   Book.body:SetTextColor(0.92, 0.89, 0.82)
 end
 
-ShowQuest = function(entry, noSpeak)
+ShowQuest = function(entry)
   local desc, obj = GetQuestText(entry)
   lastEntry, lastDesc = entry, desc
   ApplyFonts()
@@ -315,7 +315,7 @@ SlashCmdList.QUESTBOOK = function(msg)
   local usevoice = msg:match("^usevoice%s+(%d+)")
   if size then
     db.fontSize = math.min(30, math.max(10, tonumber(size)))
-    if Book and Book:IsShown() then ApplyFonts(); if lastEntry then ShowQuest(lastEntry, true) end end
+    if Book and Book:IsShown() then ApplyFonts(); if lastEntry then ShowQuest(lastEntry) end end
     Say("font size " .. db.fontSize)
   elseif msg == "dark" then
     db.darken = not db.darken

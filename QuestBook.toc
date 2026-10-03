@@ -2,7 +2,7 @@
 ## Title: QuestBook
 ## Notes: A readable page for the quests you already accepted. Type /qb or bind a key.
 ## Author: Cesar & Nibble
-## Version: 0.4.2
+## Version: 0.4.3
 ## SavedVariables: QuestBookDB
 ## X-License: MIT
 
