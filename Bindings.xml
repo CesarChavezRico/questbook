@@ -1,0 +1,5 @@
+<Bindings>
+  <Binding name="QUESTBOOK_TOGGLE" category="ADDONS">
+    QuestBook_Toggle()
+  </Binding>
+</Bindings>

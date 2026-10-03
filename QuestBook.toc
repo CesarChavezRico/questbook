@@ -1,0 +1,9 @@
+## Interface: 120105, 16001
+## Title: QuestBook
+## Notes: A readable page for the quests you already accepted. Type /qb or bind a key.
+## Author: Cesar & Nibble
+## Version: 0.4.2
+## SavedVariables: QuestBookDB
+## X-License: MIT
+
+QuestBook.lua
