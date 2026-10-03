@@ -1,4 +1,4 @@
--- QuestBook v0.5.0 -- a readable page for quests you already accepted.
+-- QuestBook v0.5.1 -- a readable page for quests you already accepted.
 --
 -- WHY: the quest log's text is small and cramped; reading it is how we
 -- navigate (no Questie by choice). This opens the selected quest as one
@@ -222,7 +222,7 @@ local function BuildBook()
 
   Book.speaker = CreateFrame("Button", nil, Book, "UIPanelButtonTemplate")
   Book.speaker:SetSize(52, 22); Book.speaker:SetPoint("TOPLEFT", 38, -6)
-  Book.speaker:SetText("read")
+  Book.speaker:SetText("talk")
   Book.speaker:SetScript("OnClick", function() SpeakerToggle() end)
 
   Book.next = CreateFrame("Button", nil, Book, "UIPanelButtonTemplate")
@@ -368,7 +368,7 @@ pcall(EL.RegisterEvent, EL, "VOICE_CHAT_TTS_PLAYBACK_FINISHED")
 pcall(EL.RegisterEvent, EL, "VOICE_CHAT_TTS_PLAYBACK_FAILED")
 local function SetSpeaking(state)
   isSpeaking = state
-  if Book and Book.speaker then Book.speaker:SetText(state and "stop" or "read") end
+  if Book and Book.speaker then Book.speaker:SetText(state and "stop" or "talk") end
 end
 EL:SetScript("OnEvent", function(_, event, name)
   if event == "ADDON_LOADED" and name == ADDON_NAME then
