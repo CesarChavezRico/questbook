@@ -1,4 +1,4 @@
--- QuestBook v0.6.0 -- a readable page for quests you already accepted.
+-- QuestBook v0.6.1 -- a readable page for quests you already accepted.
 --
 -- WHY: the quest log's text is small and cramped; reading it is how we
 -- navigate (no Questie by choice). This opens the selected quest as one
@@ -17,6 +17,8 @@
 --   /qb dark       toggle the darkened backdrop
 --   /qb voice      toggle walk-and-listen TTS (default on)
 --   /qb debug      narrate the walk-and-listen chain in chat
+--   /qb rate <n>   speaking rate, -10..10 (0 = normal)
+--   /qb prosody    toggle SAPI pause tags between paragraphs
 --
 -- v0.6: objectives update LIVE while the book is open (quest events,
 -- debounced, scroll position preserved); completed quests are marked in
@@ -27,7 +29,8 @@
 -- works regardless of the /qb voice auto-setting (buttons are intent).
 
 local ADDON_NAME = ...
-local DEFAULTS = { fontSize = 17, width = 1040, height = 860, darken = true, voice = true, voiceID = nil }
+local DEFAULTS = { fontSize = 17, width = 1040, height = 860, darken = true, voice = true, voiceID = nil,
+  rate = 0, prosody = true }
 
 local db
 local Book        -- main frame
@@ -153,6 +156,14 @@ local function ResolveVoice()
   return voices[1].voiceID, nil
 end
 
+-- SAPI XML pause tags between paragraphs (Blizzard's docs: SpeakText
+-- supports XML TTS tags on Windows). If a client ever reads the tags
+-- aloud instead of honouring them, /qb prosody turns this off.
+local function Shape(text)
+  if not db.prosody then return text end
+  return (text:gsub("\n\n", ' <silence msec="550"/> '):gsub("\n", ' <silence msec="250"/> '))
+end
+
 local function SpeakText(text)
   if not (C_VoiceChat and C_VoiceChat.SpeakText) then return false, "no SpeakText API" end
   local voiceID, why = ResolveVoice()
@@ -162,7 +173,7 @@ local function SpeakText(text)
   -- retail-era destination parameter is GONE. Passing it shifted rate into
   -- volume's seat and spoke at volume 0: silent, errorless. Found by the
   -- /qb say diagnostics + the dump.
-  local ok, err = pcall(C_VoiceChat.SpeakText, voiceID, text, 0, 100)
+  local ok, err = pcall(C_VoiceChat.SpeakText, voiceID, Shape(text), db.rate or 0, 100)
   if not ok then return false, "SpeakText error: " .. tostring(err) end
   return true, nil
 end
@@ -441,6 +452,12 @@ SlashCmdList.QUESTBOOK = function(msg)
     db.darken = not db.darken
     if Book and Book:IsShown() and not docked then Book.shade:SetShown(db.darken) end
     Say("backdrop " .. (db.darken and "on" or "off"))
+  elseif msg:match("^rate%s+-?%d+$") then
+    db.rate = math.max(-10, math.min(10, tonumber(msg:match("(-?%d+)"))))
+    Say("rate " .. db.rate .. " — test with /qb say")
+  elseif msg == "prosody" then
+    db.prosody = not db.prosody
+    Say("paragraph pauses " .. (db.prosody and "on" or "off"))
   elseif msg == "debug" then
     debugMode = not debugMode
     Say("debug " .. (debugMode and "on — open the book and move" or "off"))
