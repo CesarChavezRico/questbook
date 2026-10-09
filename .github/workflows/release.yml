@@ -12,7 +12,8 @@ jobs:
       - name: Package addon zip
         run: |
           mkdir -p dist/QuestBook
-          cp QuestBook.toc QuestBook.lua Bindings.xml dist/QuestBook/
+          # whole addon (Core.lua, modules/, Textures/, TOC, bindings), without repo plumbing
+          rsync -a --exclude='.git*' --exclude='.github' --exclude='dist' --exclude='dev' --exclude='.luacheckrc' ./ dist/QuestBook/
           cd dist && zip -r "QuestBook-${GITHUB_REF_NAME}.zip" QuestBook
       - uses: softprops/action-gh-release@v2
         with:
