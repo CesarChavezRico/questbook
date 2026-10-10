@@ -1,9 +1,14 @@
 ## Interface: 120105, 16001
 ## Title: QuestBook
-## Notes: A readable page for the quests you already accepted. Type /qb or bind a key.
+## Notes: A readable quest log that replaces Blizzard's, plus a HUD map overlay, a text strip and drawers for the menu, bags and addons. Type /qb or bind a key.
 ## Author: Cesar & Nibble
-## Version: 0.6.1
+## Version: 0.7.0
 ## SavedVariables: QuestBookDB
 ## X-License: MIT
 
-QuestBook.lua
+Core.lua
+modules\QuestLog.lua
+modules\Strip.lua
+modules\Drawers.lua
+modules\Overlay.lua
+modules\Camera.lua
