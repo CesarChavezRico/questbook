@@ -1,11 +1,11 @@
--- QuestBook Overlay -- the corner minimap is retired; the native Minimap widget
--- becomes the "Local" layer of a soft-edged panel "over the character's right
--- shoulder", optionally with Blizzard's own world map as a translucent "Zone"
--- layer behind it.
+-- QuestBook Overlay -- the corner minimap is retired. Two SEPARATE map modes live in
+-- a panel "over the character's right shoulder":
+--   "local" = the minimap, blown up (the native Minimap widget, kept SQUARE)
+--   "zone"  = the overland map (Blizzard's own WorldMapFrame, restyled)
+-- (v0.7.0 layered both; Cesar asked for separate modes after the first client run.)
 --
--- One key cycles ONE toggle through three states:
---   "off" -> "local" -> "both" -> "off"
---   "local" = blown-up minimap only; "both" = minimap + Zone layer.
+-- One key cycles ONE toggle:  "off" -> "local" -> "zone" -> "off".
+-- While either mode is open the action bars are hidden (setting `bars`).
 -- Public API: Cycle(), SetState(state), GetState(), OpenFull().
 -- Bus: fires "overlay_state" (state) after every change; listens "combat_start"
 -- (force off when db.combatGuard) and "open_full" (Strip -> OpenFull).
@@ -21,15 +21,25 @@ local mod = QB:NewModule("overlay", {
   offsetX = 0.17,      -- panel centre, fraction of screen width, from centre toward the right
   offsetY = 0.02,      -- panel centre, fraction of screen height, from centre upward
   shape = "rect",      -- "rect" | "circle"
-  aspect = 1.25,       -- rect width / height (circle is always 1)
+  aspect = 1.25,       -- Zone rect width / height (the minimap is always square; circle is 1)
   localAlpha = 0.55,
   zoneAlpha = 0.45,
   zoneZoom = 2.0,      -- Zone layer magnification over "whole zone fits the panel"
-  rotate = true,       -- state "local" rotates with facing; "both" is always north-up
+  rotate = true,       -- "local" rotates with facing (native ground only); "zone" is always north-up
+  ground = "hybrid",   -- Local ground: "hybrid" (soft edge, north-up) | "native" (hard edge, can rotate) | "auto"
+  bars = "actions",    -- hidden while a map mode is open: "actions" | "all" (adds xp/rep bars) | "none"
+  iconScale = 1,       -- Minimap:SetIconScale for blips (1 = Blizzard's default)
   combatGuard = true,  -- refuse to open in combat and force "off" when combat starts
 })
 
-local NEXT = { off = "local", ["local"] = "both", both = "off" }
+local NEXT = { off = "local", ["local"] = "zone", zone = "off" }
+-- Blizzard frames faded to alpha 0 while a map mode is open (frame names read from
+-- Blizzard_ActionBar/*.xml and Blizzard_StatusTrackingBar/Mainline/StatusTrackingBar.xml)
+local BAR_FRAMES = {
+  actions = { "MainActionBar", "MultiBarBottomLeft", "MultiBarBottomRight", "MultiBarLeft", "MultiBarRight",
+    "MultiBar5", "MultiBar6", "MultiBar7", "StanceBar", "PetActionBar", "PossessActionBar" },
+  status = { "StatusTrackingBarManager" },
+}
 local TICK = 0.25                       -- seconds between verify passes while open
 
 local TEX = "Interface\\AddOns\\" .. ADDON .. "\\Textures\\"
@@ -45,6 +55,10 @@ mod.zoneReady = false    -- Zone style may be (re)applied by hooks
 mod.maskMode = "ours"    -- debug: "ours" | "stock" (/qb overlay mask)
 mod.localTweaks = { order = {}, map = {} }
 mod.zoneTweaks = { order = {}, map = {} }
+mod.barTweaks = { order = {}, map = {} }
+mod.mode = "off"         -- the mode being laid out ("local" panel is square, "zone" follows `aspect`)
+mod.groundNow = "native" -- what Local actually uses right now ("hybrid" | "native")
+mod.hybridFails = 0
 
 -- ---------------------------------------------------------------- helpers
 
@@ -124,6 +138,22 @@ local function TweakUndoAll(set)
     end
   end
   return failed
+end
+
+-- Undo only the tweaks whose id starts with `prefix` (switching a sub-feature off alone).
+local function TweakUndoPrefix(set, prefix)
+  for i = #set.order, 1, -1 do
+    local t = set.order[i]
+    if t.id:sub(1, #prefix) == prefix then
+      local ok, err = pcall(t.undo, t.obj, t.orig)
+      if ok then
+        set.map[t.id] = nil
+        table.remove(set.order, i)
+      else
+        mod:Note("undo " .. t.id, err)
+      end
+    end
+  end
 end
 
 local function TAlpha(set, id, o, a)
@@ -216,7 +246,9 @@ function mod:Geometry()
   local W, H = UIParent:GetWidth(), UIParent:GetHeight()
   local h = math.max(64, clamp(tonumber(db.size) or 0.62, 0.1, 1.5) * H)
   local aspect = 1
-  if db.shape ~= "circle" then aspect = clamp(tonumber(db.aspect) or 1.25, 0.5, 3) end
+  -- the minimap is ALWAYS square: a stretched widget put the ground and the blips on different
+  -- scales (the first client run showed pins off in position and direction)
+  if db.shape ~= "circle" and self.mode ~= "local" then aspect = clamp(tonumber(db.aspect) or 1.25, 0.5, 3) end
   return h * aspect, h, (tonumber(db.offsetX) or 0) * W, (tonumber(db.offsetY) or 0) * H
 end
 
@@ -253,9 +285,7 @@ function mod:ApplyRotation()
   local want
   if self.state == "local" then
     want = self.db.rotate and "1" or "0"
-  elseif self.state == "both" then
-    want = "0"            -- north-up so it stays aligned with the north-up Zone layer
-  end
+  end                     -- "zone" / "off": the user's own value
   if want then
     if self.db.rotateBackup == nil then
       local cur = GetC(ROTATE_CVAR)
@@ -308,6 +338,7 @@ function mod:LocalUpdate()
   if not (mm and panel) then return end
   local set = self.localTweaks
   local w, h = panel:GetSize()
+  local resized = false
   self.layouting = true
   -- reparent first, then anchor, then size (undone in reverse)
   TweakDo(set, "mm.parent", mm,
@@ -319,7 +350,7 @@ function mod:LocalUpdate()
     function(x) local a, b = x:GetSize() return { a, b } end,
     function(x)
       local cw, ch = x:GetSize()
-      if math.abs(cw - w) > 0.5 or math.abs(ch - h) > 0.5 then x:SetSize(w, h) end
+      if math.abs(cw - w) > 0.5 or math.abs(ch - h) > 0.5 then x:SetSize(w, h); resized = true end
     end,
     function(x, orig) x:SetSize(orig[1], orig[2]) end)
   TAlpha(set, "mm.alpha", mm, clamp(tonumber(self.db.localAlpha) or 0.55, 0, 1))
@@ -339,6 +370,165 @@ function mod:LocalUpdate()
   self.layouting = false
   self.layoutDirty = false
   self:ApplyMinimapMask()
+  if resized then self:RefreshMinimapZoom() end
+  Try("ground", self.ApplyGround, self)
+  Try("icon scale", self.ApplyIconScale, self)
+end
+
+-- After the widget changes size the client keeps blip positions from the old size until the
+-- zoom is touched. UNVERIFIED: remembered addon trick (nudge the zoom and put it back); the
+-- frames involved are the ones documented in MinimapFrameAPIDocumentation.lua (GetZoom/SetZoom).
+function mod:RefreshMinimapZoom()
+  local mm = G("Minimap")
+  if not (mm and mm.GetZoom and mm.SetZoom) then return end
+  local ok, z = pcall(mm.GetZoom, mm)
+  if not (ok and type(z) == "number") then return end
+  local alt = (z > 0) and (z - 1) or (z + 1)
+  pcall(mm.SetZoom, mm, alt)
+  pcall(mm.SetZoom, mm, z)
+end
+
+function mod:ApplyIconScale()
+  local mm = G("Minimap")
+  if not (mm and mm.SetIconScale) then return end
+  local want = clamp(tonumber(self.db.iconScale) or 1, 0.5, 4)
+  if self.iconApplied ~= want then
+    if pcall(mm.SetIconScale, mm, want) then self.iconApplied = want end
+  end
+end
+
+-- ---------------------------------------------------------------- Local ground (hybrid / native)
+--
+-- The first client run showed the native Minimap cuts its ground with a HARD edge (a dead-straight
+-- line; it ignores a soft-alpha mask). Blizzard's own HybridMinimap draws the ground from the zone
+-- map art instead (a MapCanvas whose textures DO take a mask) while the native Minimap keeps
+-- drawing the blips, arrow and quest areas on top (Blizzard_HybridMinimap/*.lua: it turns the
+-- Minimap's ground textures off in OnShow and is parented to the Minimap). Trade-off: the hybrid
+-- ground is north-up only (SetIgnoreRotateMinimap(true) in its OnShow).
+
+local function HybridFrame()
+  local hm = G("HybridMinimap")
+  if hm then return hm end
+  if type(HybridMinimap_LoadUI) == "function" then     -- (Blizzard_Minimap/Mainline/Minimap.lua)
+    pcall(HybridMinimap_LoadUI)
+    return G("HybridMinimap")
+  end
+  return nil
+end
+
+function mod:WantHybrid()
+  if self.hybridBroken then return false end
+  local g = self.db.ground
+  if g == "native" then return false end
+  if g == "hybrid" then return true end
+  -- "auto": hybrid where Blizzard itself uses it, or indoors (native ground is blank there)
+  if C_Minimap and C_Minimap.ShouldUseHybridMinimap then
+    local ok, v = pcall(C_Minimap.ShouldUseHybridMinimap)
+    if ok and v then return true end
+  end
+  if type(IsIndoors) == "function" then
+    local ok, v = pcall(IsIndoors)
+    if ok and v then return true end
+  end
+  return false
+end
+
+function mod:HybridOn()
+  local hm = HybridFrame()
+  if not (hm and hm.Enable and hm.CheckMap and hm.MapCanvas and hm.MapCanvas.SetMaskTexture
+      and hm.CreateMaskTexture) then
+    return false, "HybridMinimap frame not available on this client"
+  end
+  -- map id source: Blizzard assigns exactly this when it uses the hybrid minimap
+  -- (Blizzard_Minimap/Mainline/Minimap.lua, PLAYER_ENTERING_WORLD)
+  if C_Minimap and C_Map and C_Map.GetBestMapForUnit and not self.uiMapOverride then
+    self.uiMapOrig = C_Minimap.GetUiMapID
+    self.uiMapOverride = function() return C_Map.GetBestMapForUnit("player") end
+  end
+  if self.uiMapOverride and C_Minimap.GetUiMapID ~= self.uiMapOverride then
+    C_Minimap.GetUiMapID = self.uiMapOverride
+  end
+  local set = self.localTweaks
+  if hm.Background then TAlpha(set, "hy.bg", hm.Background, 0) end      -- no black disc
+  if not self.hybridMask then
+    local m = hm:CreateMaskTexture()
+    m:SetAllPoints(hm)
+    self.hybridMask = m
+    self.hybridMaskShape = nil
+  end
+  if self.hybridMaskShape ~= self.db.shape then
+    self.hybridMask:SetTexture(MASK_PATHS[self.db.shape] or MASK_PATHS.rect, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    self.hybridMaskShape = self.db.shape
+  end
+  local mask = self.hybridMask
+  TweakDo(set, "hy.mask", hm.MapCanvas,
+    function(x) return x:GetMaskTexture() end,
+    function(x)
+      if x:GetMaskTexture() ~= mask then x:SetMaskTexture(mask) end
+      if not x:GetUseMaskTexture() then x:SetUseMaskTexture(true) end
+    end,
+    function(x, orig) if orig then x:SetMaskTexture(orig) end end)
+  hm:Enable()
+  hm:CheckMap()
+  if hm.mapID and hm.UpdateZoom then pcall(hm.UpdateZoom, hm) end
+  self.hybridEnabled = true
+  return true
+end
+
+function mod:HybridOff()
+  TweakUndoPrefix(self.localTweaks, "hy.")
+  local hm = G("HybridMinimap")
+  if hm and self.hybridEnabled then
+    local blizzardWants = false
+    if C_Minimap and C_Minimap.ShouldUseHybridMinimap then
+      local ok, v = pcall(C_Minimap.ShouldUseHybridMinimap)
+      blizzardWants = ok and v and true or false
+    end
+    if not blizzardWants and hm.Disable then pcall(hm.Disable, hm) end
+  end
+  self.hybridEnabled = false
+  if C_Minimap and self.uiMapOverride and C_Minimap.GetUiMapID == self.uiMapOverride then
+    C_Minimap.GetUiMapID = self.uiMapOrig
+  end
+  self.uiMapOrig, self.uiMapOverride = nil, nil
+end
+
+-- Idempotent; follows db.ground and (for "auto") the indoors state.
+function mod:ApplyGround()
+  if not self.localOn then return end
+  local want = self:WantHybrid()
+  if want then
+    local ok, why = self:HybridOn()
+    if ok then
+      self.groundNow = "hybrid"
+      return
+    end
+    self.hybridBroken = true
+    self:Note("hybrid ground", why)
+    QB:Say("overlay: hybrid ground not available (" .. tostring(why) .. "); using the native ground (hard edge)")
+  end
+  if self.groundNow == "hybrid" or self.hybridEnabled then self:HybridOff() end
+  self.groundNow = "native"
+end
+
+-- While hybrid is wanted the Blizzard frame must actually be shown; if it never shows
+-- (no map art for this place) fall back to the native ground instead of an empty minimap.
+function mod:VerifyGround()
+  if self.groundNow ~= "hybrid" then return end
+  local hm = G("HybridMinimap")
+  if hm and hm:IsShown() then self.hybridFails = 0 return end
+  if hm and hm.CheckMap then pcall(hm.CheckMap, hm) end
+  self.hybridFails = (self.hybridFails or 0) + 1
+  if self.hybridFails >= 8 then          -- ~2 s
+    self.hybridFails = 0
+    if self.db.ground == "hybrid" then
+      QB:Say("overlay: the hybrid ground is not showing here; native ground for now (/qb overlay diag)")
+    end
+    self.hybridBroken = true
+    self:HybridOff()
+    self.groundNow = "native"
+    if C_Minimap and C_Minimap.SetDrawGroundTextures then pcall(C_Minimap.SetDrawGroundTextures, true) end
+  end
 end
 
 function mod:LocalEnter()
@@ -359,7 +549,13 @@ function mod:LocalLeave()
   self.localOn = false
   self.layouting = true
   local failed = TweakUndoAll(self.localTweaks)
+  self:HybridOff()
+  self.hybridBroken = false
   self.layouting = false
+  if mm and mm.SetIconScale and self.iconApplied and self.iconApplied ~= 1 then
+    pcall(mm.SetIconScale, mm, 1)
+  end
+  self.iconApplied = nil
   if mm and mm.SetMaskTexture then
     -- the stock mask is what Skin.lua installs; no getter exists to remember it
     self.maskSetting = true
@@ -601,14 +797,14 @@ function mod:InstallZoneHooks()
 end
 
 function mod:OnZoneClosedExternally()
-  QB:Say("overlay: the game closed the zone layer; staying on Local")
-  self:SetState("local", true)
+  QB:Say("overlay: the game closed the map; overlay off")
+  self:SetState("off", true)
 end
 
 function mod:ZoneEnter()
   local wmf = G("WorldMapFrame")
   if not (wmf and wmf.ScrollContainer and wmf.SetMapID and wmf.GetMaskTexture) then
-    QB:Say("overlay: world map not available, zone layer skipped")
+    QB:Say("overlay: the world map frame is not available (/qb overlay diag)")
     return false
   end
   self:InstallZoneHooks()
@@ -625,7 +821,7 @@ function mod:ZoneEnter()
   end
   if not wmf:IsShown() then
     self.zoneOn = false
-    QB:Say("overlay: could not show the world map, zone layer skipped")
+    QB:Say("overlay: could not show the world map (/qb overlay diag)")
     return false
   end
   -- OnShow makes the character play the READ emote (Blizzard_WorldMap.lua); cancel it
@@ -654,32 +850,64 @@ function mod:ZoneLeave()
   end
 end
 
+-- ---------------------------------------------------------------- bars
+
+-- Action bars are faded to alpha 0 (not hidden): SetAlpha is not protected, so it is also
+-- safe to undo from the combat-start path, and Edit Mode keeps its own show/hide state.
+function mod:ApplyBars(on)
+  local set = self.barTweaks
+  local mode = self.db.bars
+  if not on or mode == "none" then
+    if #set.order > 0 then TweakUndoAll(set) end
+    return
+  end
+  local lists = { BAR_FRAMES.actions }
+  if mode == "all" then lists[#lists + 1] = BAR_FRAMES.status end
+  local found = 0
+  for _, list in ipairs(lists) do
+    for _, name in ipairs(list) do
+      local f = G(name)
+      if f and f.SetAlpha then
+        TAlpha(set, "bar." .. name, f, 0)
+        found = found + 1
+      end
+    end
+  end
+  self.barsFound = found
+end
+
 -- ---------------------------------------------------------------- state machine
 
 function mod:Apply(target)
-  local needLocal = target ~= "off"
-  local needZone = target == "both"
+  self.mode = target
+  local needLocal = target == "local"
+  local needZone = target == "zone"
   local panel = self:EnsurePanel()
 
   if self.zoneOn and not needZone then self:ZoneLeave() end
   if self.localOn and not needLocal then self:LocalLeave() end
-  if needLocal and not self.localOn then
-    if not self:LocalEnter() then needLocal = false; needZone = false; target = "off" end
-  elseif needLocal then
-    self:LayoutPanel()
-    self:LocalUpdate()
-  end
-  if needZone and not self.zoneOn then
-    if not self:ZoneEnter() then needZone = false; target = "local" end
+  self:LayoutPanel()                      -- the panel is square for "local", `aspect` for "zone"
+  if needLocal then
+    if not self.localOn then
+      if not self:LocalEnter() then target = "off" end
+    else
+      self:LocalUpdate()
+    end
   elseif needZone then
-    self:ReapplyZone()
+    if not self.zoneOn then
+      if not self:ZoneEnter() then target = "off" end
+    else
+      self:ReapplyZone()
+    end
   end
 
   local achieved = "off"
-  if self.localOn then achieved = self.zoneOn and "both" or "local" end
+  if self.localOn then achieved = "local" elseif self.zoneOn then achieved = "zone" end
   if target == "off" then achieved = "off" end   -- a failed cleanup is retried via self.dirty
   self.state = achieved
+  self.mode = achieved
   self:ApplyRotation()
+  self:ApplyBars(achieved ~= "off")
 
   if self.localOn or self.zoneOn then
     panel:SetScript("OnUpdate", function(_, elapsed)
@@ -688,7 +916,7 @@ function mod:Apply(target)
       mod.acc = 0
       QB:Safe(mod, mod.Tick, mod)
     end)
-    if self.localOn then panel:Show() end
+    panel:Show()
   else
     panel:SetScript("OnUpdate", nil)
     panel:Hide()
@@ -696,7 +924,7 @@ function mod:Apply(target)
 end
 
 function mod:SetState(state, force)
-  if state ~= "off" and state ~= "local" and state ~= "both" then return false end
+  if state ~= "off" and state ~= "local" and state ~= "zone" then return false end
   if state ~= "off" and not force and self.db.combatGuard and QB:InCombat() then
     QB:Say("map overlay: not in combat")
     return false
@@ -755,7 +983,12 @@ function mod:Tick()
       self.rotFixes = 0
     end
   end
-  if self.zoneOn and self.state == "both" then self:TickZone() end
+  if self.state ~= "off" then self:ApplyBars(true) end     -- Blizzard code may set the alpha back
+  if self.localOn then
+    if self.db.ground == "auto" then self:ApplyGround() end
+    self:VerifyGround()
+  end
+  if self.zoneOn and self.state == "zone" then self:TickZone() end
 end
 
 -- ---------------------------------------------------------------- hooks / cluster
@@ -809,8 +1042,7 @@ function mod:InstallHooks()
       SafeHook(mm, m, dirty)
     end
   end
-  -- combat toggle of the panel manager is moot; the toggle key on the world map is
-  -- left to Blizzard (see report: M while "both")
+  -- the toggle key on the world map is left to Blizzard (M while in "zone")
 end
 
 -- ---------------------------------------------------------------- lifecycle
@@ -856,6 +1088,7 @@ mod.events.PLAYER_REGEN_ENABLED = function(self)
     self:ReapplyZone()
   end
 end
+mod.events.ZONE_CHANGED_INDOORS = function(self) if self.localOn then self:ApplyGround() end end
 mod.events.DISPLAY_SIZE_CHANGED = function(self) self:Layout() end
 mod.events.UI_SCALE_CHANGED = function(self) self:Layout() end
 mod.events.EDIT_MODE_LAYOUTS_UPDATED = function(self) self:HideCluster() end
@@ -881,29 +1114,85 @@ QB:On("open_full", function() mod:OpenFull() end, mod)
 local function Status()
   local db = mod.db
   local s = string.format(
-    "overlay: %s | shape=%s size=%.2f pos=%.2f,%.2f aspect=%.2f alpha=%.2f/%.2f zonezoom=%.1f rotate=%s mask=%s",
+    "overlay: %s | shape=%s size=%.2f pos=%.2f,%.2f zone-aspect=%.2f alpha=%.2f/%.2f zonezoom=%.1f rotate=%s ground=%s(now %s) bars=%s icons=%.1f mask=%s",
     mod.state, db.shape, db.size, db.offsetX, db.offsetY, db.aspect, db.localAlpha, db.zoneAlpha,
-    db.zoneZoom, db.rotate and "on" or "off", mod.maskMode)
+    db.zoneZoom, db.rotate and "on" or "off", db.ground, mod.groundNow, db.bars, db.iconScale, mod.maskMode)
   if mod.lastError then s = s .. " | last error: " .. mod.lastError end
   return s
+end
+
+local function Fmt(v)
+  if type(v) == "number" then return string.format("%.2f", v) end
+  return tostring(v)
+end
+
+local function FrameLine(label, f)
+  if not f then return label .. ": missing" end
+  local parts = { label .. ":" }
+  local function add(name, fn)
+    if type(f[fn]) == "function" then
+      local ok, a, b = pcall(f[fn], f)
+      if ok then parts[#parts + 1] = name .. "=" .. Fmt(a) .. ((b ~= nil and type(b) == "number") and ("x" .. Fmt(b)) or "") end
+    end
+  end
+  add("shown", "IsShown"); add("visible", "IsVisible"); add("alpha", "GetAlpha"); add("effAlpha", "GetEffectiveAlpha")
+  add("size", "GetSize"); add("strata", "GetFrameStrata"); add("level", "GetFrameLevel"); add("scale", "GetScale")
+  local okp, parent = pcall(f.GetParent, f)
+  if okp and parent and parent.GetName then parts[#parts + 1] = "parent=" .. tostring(parent:GetName() or "?") end
+  return table.concat(parts, " ")
+end
+
+-- /qb overlay diag: the facts needed to debug what the client does (paste it back).
+local function Diag()
+  QB:Say(Status())
+  QB:Say(FrameLine("Minimap", G("Minimap")))
+  local mm = G("Minimap")
+  if mm and mm.GetZoom then
+    local ok, z = pcall(mm.GetZoom, mm)
+    QB:Say("Minimap zoom=" .. tostring(ok and z or "?") .. " rotateMinimap=" .. tostring(GetC(ROTATE_CVAR)))
+  end
+  if C_Minimap then
+    local function q(name)
+      if not C_Minimap[name] then return "n/a" end
+      local ok, v = pcall(C_Minimap[name])
+      return ok and tostring(v) or "error"
+    end
+    QB:Say("C_Minimap: ShouldUseHybrid=" .. q("ShouldUseHybridMinimap") .. " GetDrawGroundTextures=" .. q("GetDrawGroundTextures")
+      .. " GetUiMapID=" .. q("GetUiMapID") .. " IsIndoors=" .. (type(IsIndoors) == "function" and tostring(IsIndoors()) or "n/a"))
+  end
+  local hm = G("HybridMinimap")
+  QB:Say(hm and (FrameLine("HybridMinimap", hm) .. " mapID=" .. tostring(hm.mapID) .. " enabledByUs=" .. tostring(mod.hybridEnabled)
+    .. " broken=" .. tostring(mod.hybridBroken)) or "HybridMinimap: not loaded")
+  local wmf = G("WorldMapFrame")
+  QB:Say(FrameLine("WorldMapFrame", wmf) .. " mapID=" .. tostring(wmf and wmf.GetMapID and wmf:GetMapID()))
+  if wmf and wmf.ScrollContainer then QB:Say(FrameLine("  ScrollContainer", wmf.ScrollContainer)) end
+  QB:Say("bars: mode=" .. tostring(mod.db.bars) .. " frames faded=" .. tostring(#mod.barTweaks.order)
+    .. " (found " .. tostring(mod.barsFound or 0) .. ")")
+  if mod.lastError then QB:Say("last error: " .. mod.lastError) end
 end
 
 QB:RegisterSlash(mod, "overlay", function(rest)
   local sub, arg = (rest or ""):match("^(%S*)%s*(.-)$")
   sub = (sub or ""):lower()
-  arg = arg or ""
+  arg = (arg or ""):lower()
   local db = mod.db
   local a, b = arg:match("^(%S+)%s*(%S*)$")
   local n1, n2 = tonumber(a), tonumber(b)
 
   if sub == "cycle" then
     mod:Cycle()
-  elseif sub == "off" or sub == "local" or sub == "both" then
+  elseif sub == "off" or sub == "local" or sub == "zone" then
     mod:SetState(sub)
+  elseif sub == "minimap" then
+    mod:SetState("local")
+  elseif sub == "map" then
+    mod:SetState("zone")
+  elseif sub == "both" then
+    QB:Say("'both' was removed: the minimap and the map are separate modes now (local | zone)")
   elseif sub == "shape" and (arg == "rect" or arg == "circle") then
     db.shape = arg
     mod:Layout()
-    if mod.localOn then mod:ApplyMinimapMask() end
+    if mod.localOn then mod:ApplyMinimapMask(); mod:ApplyGround() end
   elseif sub == "size" and n1 then
     if n1 > 1.5 then n1 = n1 / 100 end      -- allow percent
     db.size = clamp(n1, 0.1, 1.5)
@@ -926,13 +1215,27 @@ QB:RegisterSlash(mod, "overlay", function(rest)
     db.rotate = (arg == "on")
     mod:ApplyRotation()
     if mod.localOn then mod:ApplyMinimapMask() end
+  elseif sub == "ground" and (arg == "hybrid" or arg == "native" or arg == "auto") then
+    db.ground = arg
+    mod.hybridBroken = false
+    if mod.localOn then mod:ApplyGround() end
+  elseif sub == "bars" and (arg == "actions" or arg == "all" or arg == "none") then
+    mod:ApplyBars(false)
+    db.bars = arg
+    mod:ApplyBars(mod.state ~= "off")
+  elseif sub == "icons" and n1 then
+    db.iconScale = clamp(n1, 0.5, 4)
+    if mod.localOn then mod:ApplyIconScale() end
   elseif sub == "mask" then
     -- debug: compare our soft-alpha mask with Blizzard's stock mask in the client
     mod.maskMode = (mod.maskMode == "ours") and "stock" or "ours"
     if mod.localOn then mod:ApplyMinimapMask() end
     QB:Say("overlay mask: " .. mod.maskMode .. " (" .. tostring(mod.maskMode == "stock" and STOCK_MASK or MASK_PATHS[db.shape]) .. ")")
+  elseif sub == "diag" then
+    Diag()
+    return
   elseif sub ~= "" and sub ~= "status" then
-    QB:Say("/qb overlay cycle | off | local | both | shape rect|circle | size <n> | aspect <n> | pos <x> <y> | alpha <local> [zone] | zoom <n> | rotate on|off | mask")
+    QB:Say("/qb overlay cycle | off | local | zone | shape rect|circle | size <n> | aspect <n> | pos <x> <y> | alpha <local> [zone] | zoom <n> | rotate on|off | ground hybrid|native|auto | bars actions|all|none | icons <n> | mask | diag")
   end
   QB:Say(Status())
-end, "map overlay (cycle | off | local | both | shape | size | alpha | rotate | mask)")
+end, "map overlay (cycle | off | local | zone | shape | size | alpha | rotate | ground | bars | icons | mask | diag)")

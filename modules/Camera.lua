@@ -15,7 +15,7 @@
 -- restored from there. A leftover backup at login (crash / closed with the
 -- overlay open) is restored immediately.
 --
--- Bus: listens "overlay_state" ("off" | "local" | "both") fired by Overlay.lua.
+-- Bus: listens "overlay_state" ("off" | "local" | "zone") fired by Overlay.lua.
 -- Slash: /qb camera ...
 
 local ADDON, QB = ...
