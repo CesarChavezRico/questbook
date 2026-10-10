@@ -250,3 +250,29 @@ function Minimap:SetIconScale(s) __iconScale = s end
 for _, n in ipairs({ "MainActionBar", "MultiBarBottomLeft", "MultiBarBottomRight", "MultiBarLeft", "MultiBarRight", "StanceBar", "PetActionBar", "StatusTrackingBarManager" }) do
   newFrame("Frame", n, UIParent)
 end
+-- real mask bookkeeping on the world map + a pooled detail layer (v0.7.2)
+do
+  local wmf = WorldMapFrame
+  wmf.__maskables = {}
+  function wmf:SetMaskTexture(m) self.__mask = m end
+  function wmf:GetMaskTexture() return self.__mask end
+  function wmf:SetUseMaskTexture(b) self.__useMask = b end
+  function wmf:GetUseMaskTexture() return not not self.__useMask end
+  function wmf:AddMaskableTexture(t)
+    if not self.__mask then return end            -- Blizzard: no mask set -> not registered
+    if self.__maskables[t] == nil then self.__maskables[t] = true end
+  end
+  local tile = newFrame("Texture", nil, wmf)
+  local layer = newFrame("Frame", nil, wmf)
+  layer.detailTilePool = { EnumerateActive = function() local done = false return function() if not done then done = true return tile end end end }
+  wmf.detailLayerPool = { EnumerateActive = function() local done = false return function() if not done then done = true return layer end end end }
+  wmf.__tile = tile
+  function wmf.ScrollContainer:HasZoomLevels() return true end
+  function wmf.ScrollContainer:GetScaleForMinZoom() return 1 end
+  function wmf.ScrollContainer:GetScaleForMaxZoom() return 4 end
+  function wmf.ScrollContainer:GetCanvasScale() return self.__scale2 or 1 end
+  function wmf.ScrollContainer:InstantPanAndZoom(sc2) self.__scale2 = sc2; __zoomed = (__zoomed or 0) + 1 end
+  function wmf.ScrollContainer:CalculateScrollExtentsAtScale() return 0, 1, 0, 1 end
+  function wmf.ScrollContainer:SetPanTarget() end
+  function wmf.ScrollContainer:GetWidth() return 500 end
+end

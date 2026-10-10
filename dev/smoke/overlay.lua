@@ -14,23 +14,29 @@ assert(O:GetState() == "local", "first press = local")
 local w, h = Minimap:GetSize()
 assert(w == h, "the minimap must be square, got " .. w .. "x" .. h)
 assert(Minimap:GetParent() ~= MinimapCluster, "minimap moved into the panel")
-assert(O.groundNow == "hybrid", "hybrid ground by default, got " .. tostring(O.groundNow))
-assert(HybridMinimap:IsShown(), "hybrid frame shown")
-assert(HybridMinimap.MapCanvas:GetMaskTexture() == O.hybridMask, "our soft mask on the hybrid canvas")
-assert(HybridMinimap.Background:GetAlpha() == 0, "no black disc")
-assert(C_Minimap.GetUiMapID() == 37, "map id override installed")
+assert(O.groundNow == "native", "the REAL minimap ground is the default outdoors, got " .. tostring(O.groundNow))
+assert(not HybridMinimap:IsShown(), "no painted hybrid art outdoors")
+assert(C_Minimap.GetUiMapID() == nil, "no map id override outdoors")
+assert(O.maskMode == "ours", "our soft mask by default")
 local a1, a2, a3 = barsAlpha(); assert(a1 == 0 and a2 == 0, "action bars hidden in local mode")
 assert(a3 == 1, "xp/rep bars untouched by default")
 assert((__zoomSets or 0) >= 2, "zoom nudged after the resize")
 print("local ok: square", w, h, "bars alpha", a1, a2, a3)
 
-slash("overlay cycle"); __tick(10)
+slash("overlay cycle")          -- no frames have run yet
 assert(O:GetState() == "zone", "second press = zone (separate mode)")
 assert(Minimap:GetParent() == MinimapCluster, "minimap restored when the map mode opens")
-assert(not HybridMinimap:IsShown(), "hybrid off again")
-assert(C_Minimap.GetUiMapID() == nil, "map id function restored")
-assert(__ground() == true or true)
-assert(WorldMapFrame:IsShown() and WorldMapFrame:GetAlpha() == 1, "world map shown")
+assert(not HybridMinimap:IsShown())
+assert(C_Minimap.GetUiMapID() == nil, "map id function untouched")
+-- the Map mode: masked before it is visible, positioned before it is revealed
+assert(WorldMapFrame:IsShown(), "world map shown")
+assert(WorldMapFrame:GetMaskTexture() == O.zoneMask and WorldMapFrame:GetUseMaskTexture(), "soft mask set on the map canvas")
+assert(WorldMapFrame.__maskables[WorldMapFrame.__tile] == true, "existing detail tile registered with the mask")
+assert((__zoomed or 0) >= 1, "zoomed to the player on the very first pass, not on a later tick")
+assert(WorldMapFrame:GetAlpha() == 0, "hidden until positioned (no flash of the whole zone)")
+__tick(1, 0.016); assert(WorldMapFrame:GetAlpha() == 0, "still hidden after one frame")
+__tick(4, 0.016)
+assert(WorldMapFrame:GetAlpha() == 1, "revealed after the position pass, got " .. WorldMapFrame:GetAlpha())
 assert(WorldMapFrame.ScrollContainer:GetAlpha() < 1, "map translucent")
 a1, a2 = barsAlpha(); assert(a1 == 0 and a2 == 0, "action bars hidden in zone mode")
 print("zone ok")
@@ -50,20 +56,24 @@ slash("overlay bars actions")
 slash("overlay off")
 
 -- native ground + auto indoors
-slash("overlay ground native"); slash("overlay local"); __tick(3)
-assert(O.groundNow == "native" and not HybridMinimap:IsShown(), "native ground")
-slash("overlay ground auto"); __tick(3); assert(O.groundNow == "native", "auto outdoors = native")
+slash("overlay local"); __tick(3)
+assert(O.db.ground == "auto" and O.groundNow == "native" and not HybridMinimap:IsShown(), "auto outdoors = native")
 __indoors = true; __fire("ZONE_CHANGED_INDOORS"); __tick(3)
 assert(O.groundNow == "hybrid" and HybridMinimap:IsShown(), "auto indoors = hybrid")
-__indoors = false; __tick(3); assert(O.groundNow == "native", "auto back outdoors = native")
+__indoors = false; __tick(10); assert(O.groundNow == "native", "auto back outdoors = native")
 slash("overlay off")
 
--- hybrid never showing falls back to native
+-- explicit hybrid never showing falls back to native
 slash("overlay ground hybrid")
 local saved = C_Map.GetBestMapForUnit; C_Map.GetBestMapForUnit = function() return nil end
 slash("overlay local"); __tick(60)
 assert(O.groundNow == "native", "fallback when the hybrid frame never shows")
 C_Map.GetBestMapForUnit = saved
+slash("overlay off")
+slash("overlay ground auto")
+
+-- mask debug cycle
+slash("overlay local"); slash("overlay mask"); assert(O.maskMode == "stock"); slash("overlay mask"); assert(O.maskMode == "solid"); slash("overlay mask"); assert(O.maskMode == "ours")
 slash("overlay off")
 
 -- combat start closes everything and gives the bars back
