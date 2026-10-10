@@ -26,7 +26,8 @@ local mod = QB:NewModule("overlay", {
   zoneAlpha = 0.45,
   zoneZoom = 2.0,      -- Zone layer magnification over "whole zone fits the panel"
   rotate = true,       -- "local" rotates with facing (native ground only); "zone" is always north-up
-  ground = "hybrid",   -- Local ground: "hybrid" (soft edge, north-up) | "native" (hard edge, can rotate) | "auto"
+  ground = "auto",     -- Local ground: "native" (the real minimap) | "hybrid" (painted zone art, north-up) |
+                       -- "auto" = native, but hybrid where the native ground is blank (indoors)
   bars = "actions",    -- hidden while a map mode is open: "actions" | "all" (adds xp/rep bars) | "none"
   iconScale = 1,       -- Minimap:SetIconScale for blips (1 = Blizzard's default)
   combatGuard = true,  -- refuse to open in combat and force "off" when combat starts
@@ -46,6 +47,7 @@ local TEX = "Interface\\AddOns\\" .. ADDON .. "\\Textures\\"
 local MASK_PATHS = { rect = TEX .. "mask_rect.tga", circle = TEX .. "mask_circle.tga" }
 -- (Blizzard_Minimap/Camelot/Skin.lua) the stock mask Blizzard puts on the Minimap
 local STOCK_MASK = "ui-hud-minimap-frame-generic-mask"
+local SOLID_MASK = "Interface\\Buttons\\WHITE8x8"      -- debug: a fully opaque square, no gradient
 local ROTATE_CVAR = "rotateMinimap"
 
 mod.state = "off"
@@ -317,6 +319,7 @@ function mod:ApplyMinimapMask()
   if not (mm and mm.SetMaskTexture) then return false end
   local path = MASK_PATHS[self.db.shape] or MASK_PATHS.rect
   if self.maskMode == "stock" then path = STOCK_MASK end
+  if self.maskMode == "solid" then path = SOLID_MASK end
   self.wantMask = path
   self.maskSetting = true
   local ok, err = pcall(mm.SetMaskTexture, mm, path)
@@ -399,12 +402,13 @@ end
 
 -- ---------------------------------------------------------------- Local ground (hybrid / native)
 --
--- The first client run showed the native Minimap cuts its ground with a HARD edge (a dead-straight
--- line; it ignores a soft-alpha mask). Blizzard's own HybridMinimap draws the ground from the zone
--- map art instead (a MapCanvas whose textures DO take a mask) while the native Minimap keeps
--- drawing the blips, arrow and quest areas on top (Blizzard_HybridMinimap/*.lua: it turns the
--- Minimap's ground textures off in OnShow and is parented to the Minimap). Trade-off: the hybrid
--- ground is north-up only (SetIgnoreRotateMinimap(true) in its OnShow).
+-- CORRECTION (2026-10-10, second client run): v0.7.1 made "hybrid" the default on the claim that the
+-- native Minimap ignores a soft mask. That was never established (the first test used a stretched,
+-- non-square widget whose square ground ended before the mask did). The hybrid ground is Blizzard's
+-- PAINTED zone art at minimap scale (pixelated, not the real terrain; Cesar rejected it). So the
+-- default is now the real native ground with the soft mask on a SQUARE widget; hybrid stays for
+-- indoors (where Blizzard itself uses it, Blizzard_HybridMinimap/*.lua) and as an option.
+-- Hybrid is north-up only (SetIgnoreRotateMinimap(true) in its OnShow).
 
 local function HybridFrame()
   local hm = G("HybridMinimap")
@@ -605,6 +609,30 @@ end
 -- Soft edge for the Zone layer: MapCanvasMixin mask mechanism
 -- (Blizzard_MapCanvas.lua SetMaskTexture / SetUseMaskTexture / AddMaskableTexture).
 -- Only the map art (detail tiles + tiled background) is masked; pins are not.
+-- Blizzard's canvas only masks textures that are REGISTERED with it (AddMaskableTexture), and
+-- registration only happens while a mask is set (Blizzard_MapCanvas.lua). Detail tiles built before
+-- our mask existed, or kept by the frame pool, were never registered: that was the hard edge in the
+-- second client run. Register every live tile (idempotent: already-known textures are skipped).
+function mod:ZoneRegisterTiles()
+  local wmf = G("WorldMapFrame")
+  local pool = wmf and wmf.detailLayerPool
+  if not (pool and pool.EnumerateActive and wmf.AddMaskableTexture) then return 0 end
+  local n = 0
+  for layer in pool:EnumerateActive() do
+    local tp = layer.detailTilePool
+    if tp and tp.EnumerateActive then
+      for tile in tp:EnumerateActive() do
+        wmf:AddMaskableTexture(tile)
+        n = n + 1
+      end
+    end
+  end
+  local sc = wmf.ScrollContainer
+  local bg = sc and sc.Child and sc.Child.TiledBackground
+  if bg then wmf:AddMaskableTexture(bg) end
+  return n
+end
+
 function mod:ZoneApplyMask()
   local wmf = G("WorldMapFrame")
   local sc = wmf and wmf.ScrollContainer
@@ -621,12 +649,9 @@ function mod:ZoneApplyMask()
   end
   if wmf:GetMaskTexture() ~= self.zoneMask then
     wmf:SetMaskTexture(self.zoneMask)
-    -- register textures that already exist (tiles built before the mask was set)
-    local bg = sc.Child and sc.Child.TiledBackground
-    if bg and wmf.AddMaskableTexture then wmf:AddMaskableTexture(bg) end
-    if wmf.mapID and wmf.ForceRefreshDetailLayers then wmf:ForceRefreshDetailLayers() end
   end
   if not wmf:GetUseMaskTexture() then wmf:SetUseMaskTexture(true) end
+  self.zoneTilesMasked = self:ZoneRegisterTiles()
   return true
 end
 
@@ -676,7 +701,8 @@ function mod:ZoneStyle()
   end
 
   -- look: translucent, behind the Local layer and the HUD
-  TAlpha(set, "z.alpha.wmf", wmf, 1)
+  -- invisible until the first position pass is done (no flash of the whole, unmasked zone)
+  TAlpha(set, "z.alpha.wmf", wmf, self.zoneRevealed and 1 or 0)
   TAlpha(set, "z.alpha.sc", sc, clamp(tonumber(db.zoneAlpha) or 0.45, 0, 1))
   TStrata(set, "z.strata", wmf, "BACKGROUND")
 
@@ -812,6 +838,12 @@ function mod:ZoneEnter()
   self.zoneReady = false          -- hooks stay quiet while Blizzard's own OnShow runs
   self.zoomDirty = true
   self.lastSW = nil
+  self.zoneRevealed = false
+  self.revealFrames = 3
+  -- mask BEFORE the map is first shown (tiles built afterwards register themselves), and hide it
+  -- until it is styled, masked and positioned
+  Try("zone mask (pre)", self.ZoneApplyMask, self)
+  TAlpha(self.zoneTweaks, "z.alpha.wmf", wmf, 0)
   -- UI panel path: the same one the M key uses (OpenWorldMap -> ShowUIPanel, Blizzard_WorldMap.lua)
   if not wmf:IsShown() then
     if type(ShowUIPanel) == "function" then
@@ -828,13 +860,28 @@ function mod:ZoneEnter()
   if C_ChatInfo and C_ChatInfo.CancelEmote then Try("CancelEmote", C_ChatInfo.CancelEmote) end
   self.zoneReady = true
   self:ReapplyZone()
+  Try("first position", self.TickZone, self)
   return true
+end
+
+-- Runs every frame right after the Map opens: position, then reveal (3 frames: layout needs one).
+function mod:RevealStep()
+  if not (self.zoneOn and self.revealFrames and self.revealFrames > 0) then return end
+  self:TickZone()
+  self.revealFrames = self.revealFrames - 1
+  if self.revealFrames <= 0 then
+    self.revealFrames = nil
+    self.zoneRevealed = true
+    self:ReapplyZone()
+  end
 end
 
 function mod:ZoneLeave()
   local wmf = G("WorldMapFrame")
   self.zoneOn = false
   self.zoneReady = false
+  self.zoneRevealed = false
+  self.revealFrames = nil
   self.zoneLeaving = true
   Try("remove mask", self.ZoneRemoveMask, self)
   self:PinsRestore()
@@ -911,6 +958,7 @@ function mod:Apply(target)
 
   if self.localOn or self.zoneOn then
     panel:SetScript("OnUpdate", function(_, elapsed)
+      if mod.revealFrames then QB:Safe(mod, mod.RevealStep, mod) end
       mod.acc = (mod.acc or 0) + elapsed
       if mod.acc < TICK then return end
       mod.acc = 0
@@ -1228,9 +1276,12 @@ QB:RegisterSlash(mod, "overlay", function(rest)
     if mod.localOn then mod:ApplyIconScale() end
   elseif sub == "mask" then
     -- debug: compare our soft-alpha mask with Blizzard's stock mask in the client
-    mod.maskMode = (mod.maskMode == "ours") and "stock" or "ours"
+    -- ours (soft) -> stock (Blizzard's circle) -> solid (opaque square): compare the Minimap's edge
+    local NEXTMASK = { ours = "stock", stock = "solid", solid = "ours" }
+    mod.maskMode = NEXTMASK[mod.maskMode] or "ours"
     if mod.localOn then mod:ApplyMinimapMask() end
-    QB:Say("overlay mask: " .. mod.maskMode .. " (" .. tostring(mod.maskMode == "stock" and STOCK_MASK or MASK_PATHS[db.shape]) .. ")")
+    QB:Say("overlay mask: " .. mod.maskMode .. " (" .. tostring(mod.maskMode == "stock" and STOCK_MASK
+      or mod.maskMode == "solid" and SOLID_MASK or MASK_PATHS[db.shape]) .. ")")
   elseif sub == "diag" then
     Diag()
     return
