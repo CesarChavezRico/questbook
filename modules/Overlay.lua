@@ -26,6 +26,7 @@ local mod = QB:NewModule("overlay", {
   zoneAlpha = 0.45,
   zoneZoom = 2.0,      -- Zone layer magnification over "whole zone fits the panel"
   rotate = true,       -- "local" rotates with facing (native ground only); "zone" is always north-up
+  v = 2,               -- settings version (migration in OnInit)
   ground = "auto",     -- Local ground: "native" (the real minimap) | "hybrid" (painted zone art, north-up) |
                        -- "auto" = native, but hybrid where the native ground is blank (indoors)
   bars = "actions",    -- hidden while a map mode is open: "actions" | "all" (adds xp/rep bars) | "none"
@@ -1104,6 +1105,14 @@ function mod:OnInit()
   if not (mm and mm.SetMaskTexture and mm.SetParent) then
     self.unavailable = "native Minimap widget missing"
     return
+  end
+  -- Settings migration. Core only fills MISSING keys, so a value saved by an older build beats a
+  -- changed default: v0.7.1 saved ground="hybrid", which kept the painted-art minimap alive after
+  -- v0.7.2 made "auto" (the real ground) the default.
+  local db = self.db
+  if (db.v or 0) < 2 then
+    if db.ground == "hybrid" then db.ground = "auto" end
+    db.v = 2
   end
 end
 

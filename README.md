@@ -4,7 +4,7 @@ A quest log you can read, and the HUD around it — for World of Warcraft: Forev
 (and retail). One addon, built as isolated modules: a fault in one cannot take
 down the others (`/qb modules`, `/qb errors`, `/qb disable <module>`).
 
-> **Status: v0.7.2. Two client runs so far; each round of fixes is unverified until the next run.** The quest-log module is the tested v0.6 reader plus new duties. Each module
+> **Status: v0.7.3. Two client runs so far; each round of fixes is unverified until the next run.** The quest-log module is the tested v0.6 reader plus new duties. Each module
 > is written against the Forever client's UI dump and says `UNVERIFIED` in its
 > comments wherever it relies on a guess. Design and decisions:
 > `notes/2026-10-09-hud-map-addon-design.md` in the 4bits-cesar repo.
