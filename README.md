@@ -36,7 +36,7 @@ modules are on, unavailable (with the reason) or off.
   `say`, `debug`, `log replace|blizzard`, `blizzlog`, `dock left|right`.
 - Overlay, camera, strip, drawers: `/qb overlay`, `/qb camera`, `/qb strip`, `/qb drawers`.
 - `/qb overlay diag` prints the facts needed to debug the map in the client (paste it into the thread).
-- `/qb overlay ground auto|native|hybrid` (auto = the real minimap, painted hybrid art only indoors), `mask` (cycles soft / Blizzard's circle / solid square to compare edges), `bars actions|all|none`, `icons <n>`.
+- `/qb overlay ground auto|native|hybrid` (auto = the real minimap always; native also hides Blizzard's own indoor hybrid art), `mask` (cycles soft / Blizzard's circle / solid square to compare edges), `bars actions|all|none`, `icons <n>`.
 
 ## Install
 

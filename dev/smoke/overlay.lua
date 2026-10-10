@@ -58,9 +58,17 @@ slash("overlay off")
 -- native ground + auto indoors
 slash("overlay local"); __tick(3)
 assert(O.db.ground == "auto" and O.groundNow == "native" and not HybridMinimap:IsShown(), "auto outdoors = native")
+-- indoors: the REAL minimap stays (auto never switches to the painted art)
 __indoors = true; __fire("ZONE_CHANGED_INDOORS"); __tick(3)
-assert(O.groundNow == "hybrid" and HybridMinimap:IsShown(), "auto indoors = hybrid")
-__indoors = false; __tick(10); assert(O.groundNow == "native", "auto back outdoors = native")
+assert(O.groundNow == "native" and not HybridMinimap:IsShown(), "indoors in auto = still the real minimap")
+-- Blizzard's own hybrid turns on indoors: auto leaves it, native suppresses it
+HybridMinimap:Show()
+__tick(3); assert(HybridMinimap:IsShown(), "auto leaves Blizzard's own hybrid alone")
+slash("overlay ground native"); __tick(3)
+assert(not HybridMinimap:IsShown(), "native suppresses Blizzard's hybrid")
+HybridMinimap:Show(); __tick(3)
+assert(not HybridMinimap:IsShown(), "and keeps it hidden when Blizzard shows it again")
+slash("overlay ground auto"); __indoors = false
 slash("overlay off")
 
 -- explicit hybrid never showing falls back to native
