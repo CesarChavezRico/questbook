@@ -425,16 +425,36 @@ function mod:WantHybrid()
   local g = self.db.ground
   if g == "native" then return false end
   if g == "hybrid" then return true end
-  -- "auto": hybrid where Blizzard itself uses it, or indoors (native ground is blank there)
-  if C_Minimap and C_Minimap.ShouldUseHybridMinimap then
-    local ok, v = pcall(C_Minimap.ShouldUseHybridMinimap)
-    if ok and v then return true end
-  end
-  if type(IsIndoors) == "function" then
-    local ok, v = pcall(IsIndoors)
-    if ok and v then return true end
-  end
+  -- "auto": WE never switch to the painted art. v0.7.2 did it indoors on the unverified assumption
+  -- that the real ground is blank there; the third client run showed that is not what Cesar wants.
+  -- Where Blizzard's own code turns its hybrid minimap on (ShouldUseHybridMinimap), that is left
+  -- alone; `ground native` suppresses even that.
   return false
+end
+
+-- `ground native`: keep Blizzard's own HybridMinimap hidden too, so the real minimap ground is
+-- always what shows. Hiding it runs its own OnHide, which turns the ground textures back on
+-- (Blizzard_HybridMinimap/Blizzard_HybridMinimap.lua). UNVERIFIED: that the native ground has
+-- anything to draw in those places; if not, the minimap is blank there (use `ground auto`).
+function mod:SuppressBlizzardHybrid()
+  if not (self.localOn and self.db.ground == "native") then return end
+  local hm = G("HybridMinimap")
+  if not hm then return end
+  if not self.hybridHooked then
+    self.hybridHooked = true
+    local function rehide()
+      if mod.active and mod.localOn and mod.db.ground == "native" and not mod.suppressing and hm:IsShown() then
+        mod:SuppressBlizzardHybrid()
+      end
+    end
+    SafeHook(hm, "Show", rehide)
+    SafeHook(hm, "SetShown", rehide)
+  end
+  if hm:IsShown() then
+    self.suppressing = true
+    pcall(hm.Hide, hm)
+    self.suppressing = false
+  end
 end
 
 function mod:HybridOn()
@@ -513,6 +533,7 @@ function mod:ApplyGround()
   end
   if self.groundNow == "hybrid" or self.hybridEnabled then self:HybridOff() end
   self.groundNow = "native"
+  self:SuppressBlizzardHybrid()
 end
 
 -- While hybrid is wanted the Blizzard frame must actually be shown; if it never shows
@@ -1033,7 +1054,7 @@ function mod:Tick()
   end
   if self.state ~= "off" then self:ApplyBars(true) end     -- Blizzard code may set the alpha back
   if self.localOn then
-    if self.db.ground == "auto" then self:ApplyGround() end
+    if self.db.ground == "native" then self:SuppressBlizzardHybrid() end
     self:VerifyGround()
   end
   if self.zoneOn and self.state == "zone" then self:TickZone() end
@@ -1104,6 +1125,15 @@ function mod:OnInit()
   if not (mm and mm.SetMaskTexture and mm.SetParent) then
     self.unavailable = "native Minimap widget missing"
     return
+  end
+  -- Settings migration. (`v` is deliberately NOT in the defaults: Core fills defaults before OnInit,
+  -- which would make an old settings file look already migrated.) Core only fills MISSING keys, so a value saved by an older build beats a
+  -- changed default: v0.7.1 saved ground="hybrid", which kept the painted-art minimap alive after
+  -- v0.7.2 made "auto" (the real ground) the default.
+  local db = self.db
+  if (db.v or 0) < 2 then
+    if db.ground == "hybrid" then db.ground = "auto" end
+    db.v = 2
   end
 end
 
