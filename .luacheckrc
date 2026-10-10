@@ -27,6 +27,7 @@ read_globals = {
   "GetCVar", "SetCVar", "GetCameraZoom", "CameraZoomIn", "CameraZoomOut",
   "GetZoneText", "GetSubZoneText", "HasNewMail", "CursorHasItem", "GetMouseFoci", "GetMouseFocus",
   "ShowUIPanel", "HideUIPanel", "ToggleWorldMap", "PlayerMovementFrameFader",
+  "HybridMinimap_LoadUI", "IsIndoors",
   "Minimap", "MinimapCluster", "WorldMapFrame", "AddonCompartmentFrame", "MicroMenu",
   "MicroMenuContainer",
 }

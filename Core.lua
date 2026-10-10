@@ -10,7 +10,7 @@
 
 local ADDON, QB = ...
 QB.name = ADDON
-QB.version = "0.7.0"
+QB.version = "0.7.1"
 QB.modules = {}      -- name -> module table
 QB.order = {}        -- registration order
 QB.errors = {}       -- module name -> { msg = string, count = number }
@@ -76,7 +76,7 @@ end
 -- ---------------------------------------------------------------- bus
 
 -- Loose coupling between modules: topics, not references.
--- Used topics: "overlay_state" (state string "off"|"local"|"both"),
+-- Used topics: "overlay_state" (state string "off"|"local"|"zone"),
 -- "open_full" (request to open the Full map), "combat_start", "combat_end".
 function QB:On(topic, fn, owner)
   local list = QB.listeners[topic]

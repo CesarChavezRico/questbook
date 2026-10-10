@@ -2,7 +2,7 @@
 ## Title: QuestBook
 ## Notes: A readable quest log that replaces Blizzard's, plus a HUD map overlay, a text strip and drawers for the menu, bags and addons. Type /qb or bind a key.
 ## Author: Cesar & Nibble
-## Version: 0.7.0
+## Version: 0.7.1
 ## SavedVariables: QuestBookDB
 ## X-License: MIT
 

@@ -216,3 +216,37 @@ function WorldMapFrame:SetMaskTexture() end
 function WorldMapFrame:IsMaximized() return true end
 function WorldMapFrame:GetCanvasContainer() return self.ScrollContainer end
 QuestMapFrame = newFrame("Frame", "QuestMapFrame", WorldMapFrame)
+-- hybrid minimap + C_Minimap pieces (v0.7.1)
+local groundOn = true
+C_Minimap.GetUiMapID = function() return nil end
+C_Minimap.ShouldUseHybridMinimap = function() return __hybridWanted or false end
+C_Minimap.GetDrawGroundTextures = function() return groundOn end
+C_Minimap.SetDrawGroundTextures = function(b) groundOn = b end
+function IsIndoors() return __indoors or false end
+HybridMinimap = newFrame("Frame", "HybridMinimap", Minimap)
+HybridMinimap.__shown = false
+HybridMinimap.Background = newFrame("Texture", nil, HybridMinimap)
+HybridMinimap.CircleMask = newFrame("MaskTexture", nil, HybridMinimap)
+HybridMinimap.MapCanvas = newFrame("Frame", nil, HybridMinimap)
+HybridMinimap.MapCanvas.__mask = HybridMinimap.CircleMask
+HybridMinimap.MapCanvas.__useMask = true
+function HybridMinimap.MapCanvas:GetMaskTexture() return self.__mask end
+function HybridMinimap.MapCanvas:SetMaskTexture(m) self.__mask = m end
+function HybridMinimap.MapCanvas:GetUseMaskTexture() return self.__useMask end
+function HybridMinimap.MapCanvas:SetUseMaskTexture(b) self.__useMask = b end
+function HybridMinimap:Enable() self.__enabledNow = true; self:CheckMap() end
+function HybridMinimap:Disable() self.__enabledNow = false; self:Hide() end
+function HybridMinimap:CheckMap()
+  local id = C_Minimap.GetUiMapID()
+  if not id then self:Hide() else self.mapID = id; self:Show(); C_Minimap.SetDrawGroundTextures(false) end
+end
+function HybridMinimap:UpdateZoom() end
+function HybridMinimap_LoadUI() return true end
+function __ground() return groundOn end
+function Minimap:GetZoom() return 1 end
+function Minimap:SetZoom(z) __zoomSets = (__zoomSets or 0) + 1 end
+function Minimap:SetIconScale(s) __iconScale = s end
+-- action bars
+for _, n in ipairs({ "MainActionBar", "MultiBarBottomLeft", "MultiBarBottomRight", "MultiBarLeft", "MultiBarRight", "StanceBar", "PetActionBar", "StatusTrackingBarManager" }) do
+  newFrame("Frame", n, UIParent)
+end
