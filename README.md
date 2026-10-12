@@ -1,26 +1,37 @@
 # QuestBook
 
-A quest log you can read, and the HUD around it — for World of Warcraft: Forever
-(and retail). One addon, built as isolated modules: a fault in one cannot take
-down the others (`/qb modules`, `/qb errors`, `/qb disable <module>`).
+A quest log you can read, and a HUD that gets the minimap and the chrome out of your way, for
+World of Warcraft: Forever (it targets the Forever client's UI; retail is not tested).
 
-> **Status: v0.7.4. Three client runs so far; each round of fixes is unverified until the next run.** The quest-log module is the tested v0.6 reader plus new duties. Each module
-> is written against the Forever client's UI dump and says `UNVERIFIED` in its
-> comments wherever it relies on a guess. Design and decisions:
-> `notes/2026-10-09-hud-map-addon-design.md` in the 4bits-cesar repo.
+It is one addon built from isolated modules, so a fault in one cannot take down the others:
+`/qb modules` shows what is on, `/qb errors` what broke, `/qb disable <module>` switches one off.
 
-## Modules
+> **Status: v0.7.4, in active development.** Everything here was written against Blizzard's UI
+> source for the Forever client and has been run in the game client only in short sessions by one
+> person. Code that relies on a guess says `UNVERIFIED:` in its comment, with what to check
+> in-game. Treat a feature as working only when this file or an issue says it was seen working.
+
+## What it does
 
 | module | what it does |
 |---|---|
-| `questlog` | The readable quest log and the replacement for Blizzard's: choose the active quest, track / untrack, turn-in readiness, abandon, share, zone / campaign headers. Walk-and-listen narration. The default quest-log key and the micro menu button open this book. |
-| `overlay` | The map beside your character, two SEPARATE modes on one key: **Off, Minimap, Map**. Minimap is the real minimap, blown up and always square, with a soft edge mask (whether the minimap honours it is being tested); Map is the world map, restyled, translucent, soft-edged, opens already positioned on you. Rectangle or circle, no frame. Action bars are hidden while either is open. |
-| `camera` | Slides the camera sideways while the overlay is open so the character sits left of centre (the same trick as Dialogue UI, gentler). Backs up your camera settings and restores them. |
-| `strip` | A minimal text strip where the minimap used to be: zone, coordinates, mail. Click it to open the Full map. Hosts the drawer handles. |
-| `drawers` | The Menu drawer (Blizzard's micro menu and the bag bar, re-anchored) and the Addons button (Blizzard's addon compartment). |
+| `questlog` | A readable replacement for Blizzard's quest log: choose the active quest, track and untrack, turn-in readiness, abandon, share, zone and campaign headers, narrated walk-and-listen. The default key, the micro menu button and the objective tracker's "open quest" clicks open this book. Blizzard's log stays reachable as a fallback. |
+| `overlay` | The map beside your character, two separate modes on one key: **Off, Minimap, Map**. Minimap is the real minimap, blown up and always square, with a soft edge. Map is the world map, restyled, translucent, soft-edged, opened already centred on you. Action bars are hidden while either is open. The old corner minimap is retired. |
+| `camera` | Slides the camera sideways and a little back while the overlay is open, so the character sits left of centre. Backs up your camera settings and restores them, also after a crash. |
+| `strip` | A one-line text strip where the minimap used to be: zone, coordinates, mail. Click it to open Blizzard's full map. |
+| `drawers` | The Menu drawer (Blizzard's micro menu and bag bar, re-anchored into one quiet panel) and the Addons button (Blizzard's addon compartment). |
 
-Blizzard's own quest log stays reachable as a fallback: `/qb blizzlog`, or
-`/qb log blizzard` to give the default key back to it.
+Not built yet, discussed: a small always-on minimap for glancing in combat, replacing the
+objective tracker with a compact quest list, and tuning how quest areas look on the big minimap.
+The design record is `notes/2026-10-09-hud-map-addon-design.md` in the 4bits-cesar repo (the
+Chavez family's knowledge repo); this addon's decisions are in that note, not in this one.
+
+## Install
+
+Clone this repo (or unzip a Release) as `Interface/AddOns/QuestBook`, so that
+`Interface/AddOns/QuestBook/QuestBook.toc` exists (a nested `QuestBook/QuestBook/` folder will not
+load). Restart the game after pulling: the TOC lists files, and `/reload` does not pick up new ones.
+Settings are saved in `QuestBookDB`.
 
 ## Keys
 
@@ -29,23 +40,26 @@ Options > Keybindings > AddOns > QuestBook: **Toggle quest log**, **Map overlay:
 
 ## Commands
 
-`/qb` toggles the book. `/qb help` lists every subcommand, `/qb modules` shows which
-modules are on, unavailable (with the reason) or off.
+`/qb` toggles the book. `/qb help` lists the subcommands; `/qb modules` shows module state, with the
+reason when a module is unavailable.
 
-- Quest log: `size <n>`, `dark`, `voice`, `rate <n>`, `prosody`, `voices`, `usevoice <id>`,
-  `say`, `debug`, `log replace|blizzard`, `blizzlog`, `dock left|right`.
-- Overlay, camera, strip, drawers: `/qb overlay`, `/qb camera`, `/qb strip`, `/qb drawers`.
-- `/qb camera zoomout <n>` pulls the camera back by n while the overlay is open (default 3, 0 = off). `/qb bg <0-1>` sets the book's panel opacity.
-- `/qb overlay diag` prints the facts needed to debug the map in the client (paste it into the thread).
-- `/qb overlay ground auto|native|hybrid` (auto = the real minimap always; native also hides Blizzard's own indoor hybrid art), `mask` (cycles soft / Blizzard's circle / solid square to compare edges), `bars actions|all|none`, `icons <n>`.
+- Quest log: `size <n>`, `dark`, `bg <0-1>`, `voice`, `rate <n>`, `prosody`, `voices`, `usevoice <id>`,
+  `say`, `debug`, `dock left|right`, `log replace|blizzard`, `blizzlog`.
+- Overlay: `/qb overlay cycle | off | local | zone`, `shape`, `size`, `alpha`, `rotate`,
+  `ground auto|native|hybrid`, `bars actions|all|none`, `icons <n>`, `mask`, `diag`.
+- Camera: `/qb camera flip | strength <n> | zoomout <n> | zoom <n> | ease <s> | on | off`.
+- Strip and drawers: `/qb strip ...`, `/qb drawers open|close|toggle|status`.
 
-## Install
+`/qb overlay diag` prints the state of the minimap, the hybrid frame and the world map: paste it into
+a bug report.
 
-Clone (or unzip a Release) as `Interface/AddOns/QuestBook`. The repo root is the
-addon root. Settings live in `QuestBookDB`.
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md): how the code is organised, how to add a module, how to check
+a change without the game (and what that does not prove), and the branch and review flow.
 
 ## Branches
 
-`main` = known-good · `dev` = live iteration (the beta lab runs on dev).
+`main` = known-good · `dev` = where work lands and is tested in the game.
 
 Built by Cesar & Nibble for the Chavez family's WoW: Forever launch. MIT.
