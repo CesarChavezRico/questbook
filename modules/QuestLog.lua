@@ -33,6 +33,7 @@ local mod = QB:NewModule("questlog", {
   replaceLog = true,    -- ToggleQuestLog (default key, micro menu button) opens this book
   dock = "right",       -- docked side while walking: the freed right-wing minimap slot
   collapsed = {},       -- our own zone-header collapse state (header title -> true)
+  bgAlpha = 0.62,       -- book background opacity (the Menu drawer's look is a faint dark panel)
 })
 
 local db              -- QB.db: the flat legacy QuestBookDB settings
@@ -388,8 +389,10 @@ local function BuildBook()
   Book:RegisterForDrag("LeftButton")
   Book:SetScript("OnDragStart", Book.StartMoving)
   Book:SetScript("OnDragStop", Book.StopMovingOrSizing)
-  Book:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
-  Book:SetBackdropColor(0.07, 0.06, 0.05, 0.96)
+  -- the Menu drawer's look: faint dark panel, hairline edge in the text colour
+  Book:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
+  Book:SetBackdropColor(0.04, 0.04, 0.04, mod.db.bgAlpha or 0.62)
+  Book:SetBackdropBorderColor(0.85, 0.82, 0.72, 0.22)
   Book:Hide()
   Book:SetScript("OnHide", StopSpeaking)   -- ANY close path silences the voice
   tinsert(UISpecialFrames, "QuestBookFrame")
@@ -627,35 +630,81 @@ mod.events.VOICE_CHAT_TTS_PLAYBACK_FAILED = function() SetSpeaking(false) end
 
 -- ---------------------------------------------------------------- replace Blizzard's log
 
--- In this UI ToggleQuestLog() opens the quest tab of the WORLD MAP panel
--- (Blizzard_UIPanels_Game/Mainline/QuestMapFrame.lua:2170), and both the default
--- key (Blizzard_FrameXML/Bindings_Camelot.xml) and the micro menu button
--- (Blizzard_MicroMenu/Mainline/MainMenuBarMicroButtons.lua:1138) call that one
--- global, so replacing it reroutes both.
--- UNVERIFIED: that replacing a global function from an addon taints nothing the map
--- needs; /qb log blizzard (or /qb disable questlog) puts Blizzard's back at once.
-local function InstallToggleOverride()
-  if type(_G.ToggleQuestLog) ~= "function" then
-    Say("ToggleQuestLog not found on this client: the default key still opens Blizzard's log")
-    return
+-- Open the book (and on a quest, if given). Used by every rerouted Blizzard entry point.
+function mod:OpenBook(questID)
+  if not Book then BuildBook() end
+  if not Book:IsShown() then
+    docked = false
+    ApplyLayout()
+    Book:Show()
   end
-  if mod.origToggle then return end
-  mod.origToggle = _G.ToggleQuestLog
-  mod.ourToggle = function(...)
-    if mod.active and mod.db.replaceLog then
-      QB:Safe(mod, mod.Toggle, mod)
+  RefreshList(questID or (lastEntry and lastEntry.questID), false)
+  if questID and lastEntry and lastEntry.questID ~= questID then
+    Say("quest " .. tostring(questID) .. " is not in your log")
+  end
+  if IsPlayerMoving and IsPlayerMoving() then OnStartedMoving() end
+end
+
+-- Blizzard's quest log is reached through several globals, all rerouted here while the book is
+-- the default (/qb log replace):
+--   ToggleQuestLog()                     default key, micro menu button
+--   OpenQuestLog(mapID)                  "view in quest log" paths, objective tracker bonus blocks
+--   QuestMapFrame_OpenToQuestDetails(id) objective tracker click on a quest (it calls OpenQuestLog)
+--   QuestUtil.OpenQuestDetails(id)       tracker menu "view in quest log" (popup detail frame)
+-- (Blizzard_UIPanels_Game/Mainline/QuestMapFrame.lua, Blizzard_ObjectiveTracker/*.lua,
+--  Blizzard_FrameXMLUtil/Mainline/QuestUtils.lua)
+-- UNVERIFIED: that replacing these taints nothing the map needs; /qb log blizzard (or
+-- /qb disable questlog) puts every original back at once.
+local OVERRIDES = {
+  { name = "ToggleQuestLog", run = function() mod:Toggle() end },
+  { name = "OpenQuestLog", run = function() mod:OpenBook() end },
+  { name = "QuestMapFrame_OpenToQuestDetails", run = function(questID) mod:OpenBook(questID) end },
+  { name = "QuestUtil.OpenQuestDetails", table = "QuestUtil", field = "OpenQuestDetails",
+    run = function(questID) mod:OpenBook(questID) end },
+}
+
+local function Owner(o)
+  if o.table then return _G[o.table], o.field end
+  return _G, o.name
+end
+
+local function InstallToggleOverride()
+  mod.orig = mod.orig or {}
+  local missing = {}
+  for _, o in ipairs(OVERRIDES) do
+    local t, k = Owner(o)
+    if type(t) == "table" and type(t[k]) == "function" then
+      if not mod.orig[o.name] then
+        local orig = t[k]
+        mod.orig[o.name] = orig
+        o.ours = function(...)
+          if mod.active and mod.db.replaceLog then
+            QB:Safe(mod, o.run, ...)
+          else
+            return orig(...)
+          end
+        end
+        t[k] = o.ours
+      end
     else
-      return mod.origToggle(...)
+      missing[#missing + 1] = o.name
     end
   end
-  _G.ToggleQuestLog = mod.ourToggle
+  if #missing > 0 then
+    mod.missingOverrides = table.concat(missing, ", ")
+    Say("not found on this client, still Blizzard's: " .. mod.missingOverrides)
+  end
 end
 
 local function RemoveToggleOverride()
-  if mod.origToggle and _G.ToggleQuestLog == mod.ourToggle then
-    _G.ToggleQuestLog = mod.origToggle
+  for _, o in ipairs(OVERRIDES) do
+    local t, k = Owner(o)
+    if mod.orig and mod.orig[o.name] and type(t) == "table" and t[k] == o.ours then
+      t[k] = mod.orig[o.name]
+    end
+    if mod.orig then mod.orig[o.name] = nil end
+    o.ours = nil
   end
-  mod.origToggle, mod.ourToggle = nil, nil
 end
 
 function mod:OnInit()
@@ -675,7 +724,7 @@ end
 -- ---------------------------------------------------------------- slash
 
 QB:RegisterSlash(mod, "blizzlog", function()
-  if mod.origToggle then mod.origToggle() else Say("Blizzard's quest log is already the default") end
+  if mod.orig and mod.orig.ToggleQuestLog then mod.orig.ToggleQuestLog() else Say("Blizzard's quest log is already the default") end
 end, "open Blizzard's own quest log once (the fallback)")
 
 QB:RegisterSlash(mod, "log", function(rest)
@@ -687,6 +736,15 @@ QB:RegisterSlash(mod, "log", function(rest)
   end
   Say("the default quest log key opens " .. (mod.db.replaceLog and "QuestBook" or "Blizzard's log"))
 end, "log replace|blizzard: which quest log the default key / menu button opens")
+
+QB:RegisterSlash(mod, "bg", function(rest)
+  local n = tonumber(rest)
+  if n then
+    mod.db.bgAlpha = math.max(0, math.min(1, n))
+    if Book then Book:SetBackdropColor(0.04, 0.04, 0.04, mod.db.bgAlpha) end
+  end
+  Say("book background opacity " .. string.format("%.2f", mod.db.bgAlpha) .. " (/qb bg <0-1>)")
+end, "bg <0-1>: opacity of the book's panel")
 
 QB:RegisterSlash(mod, "dock", function(rest)
   rest = (rest or ""):lower()

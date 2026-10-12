@@ -276,3 +276,8 @@ do
   function wmf.ScrollContainer:SetPanTarget() end
   function wmf.ScrollContainer:GetWidth() return 500 end
 end
+-- Blizzard quest-log entry points that the tracker uses (v0.7.4)
+function OpenQuestLog(mapID) __blizzOpenQuestLog = true end
+function QuestMapFrame_OpenToQuestDetails(id) __blizzOpenDetails = id end
+QuestUtil = { OpenQuestDetails = function(id) __blizzPopupDetails = id end }
+function IsPlayerMoving() return false end
