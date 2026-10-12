@@ -2,7 +2,7 @@
 ## Title: QuestBook
 ## Notes: A readable quest log that replaces Blizzard's, plus a map overlay (minimap or world map beside your character), a text strip and drawers for the menu, bags and addons. /qb or bind a key.
 ## Author: Cesar & Nibble
-## Version: 0.7.4
+## Version: 0.7.5
 ## SavedVariables: QuestBookDB
 ## X-License: MIT
 

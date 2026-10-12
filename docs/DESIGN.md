@@ -1,7 +1,7 @@
 # QuestBook: design and decisions
 
 What the addon is for, what was decided and why, what has been seen working, and what is still open.
-Written for a new contributor. Status is as of **2026-10-12 (v0.7.4)**. A claim marked *seen* was
+Written for a new contributor. Status is as of **2026-10-12 (v0.7.5)**. A claim marked *seen* was
 reported working in the game by Cesar; *written* means the code exists and has not been seen working;
 *unverified* means it rests on a reading of Blizzard's UI source that nobody has confirmed in the client.
 
@@ -77,6 +77,15 @@ charter was dropped on purpose.
 - **Combat guard:** the toggle is ignored in combat and the overlay closes when combat starts (both
   settings). The frames involved are not protected as far as the UI source shows; every step is
   protected and retried after combat, but this is *unverified* in real combat.
+- **A small corner minimap, for glancing in combat** (*written*, v0.7.5). There is one native `Minimap`
+  widget, so there cannot be a second live copy: it has two hosts, the big panel (Minimap mode) and a
+  small square panel in the top-right corner, where the retired minimap used to be. The corner one is up
+  whenever the big one is not in use: overlay Off, Map mode, and after the overlay closes itself at combat
+  start, which is exactly when it is wanted. Defaults, all tunable live with `/qb overlay corner`: 16%
+  of screen height, just under the text strip, a crisp circle (the soft mask eats too much of a small
+  circle), 0.9 opacity, rotating with facing, click-through so it never eats a combat click. Chosen as
+  defaults to be tuned in the client, not decided by anyone; moving the widget between hosts in combat
+  rests on it not being a protected frame (*unverified*).
 - **The action bars fade out while a map mode is open** (`bars` setting: actions, all, none). "The
   bars" was read as the action bars; xp and reputation bars are the `all` option.
 - **Opacity** has defaults and is tuned live (`/qb overlay alpha`); no target value was ever chosen.
@@ -132,6 +141,7 @@ charter was dropped on purpose.
 | Minimap indoors (real ground kept) | fix written (v0.7.3), not re-reported |
 | Camera sideways shift | seen (2026-10-12) |
 | Camera zoom-out, crash restore | written |
+| Small corner minimap | written (v0.7.5) |
 | Action bars hidden in map modes | written, not re-reported |
 | Strip, Menu drawer look | seen; bags and Edit Mode behaviour not reported |
 | Quest reader, narration | seen (earlier versions) |
@@ -140,10 +150,6 @@ charter was dropped on purpose.
 
 ## Open
 
-- **A small always-on minimap for glancing in combat.** There is one native minimap widget; in Minimap
-  mode it is in the big panel, so a second live copy is not possible. The working idea: the same widget
-  sits small in the corner whenever the overlay is Off, and in Map mode, and the overlay's combat
-  close-out brings it back when combat starts. Size, position and rotation are undecided.
 - **The objective tracker** ("All Objectives" in the right wing) is still Blizzard's. Replace it with a
   compact list in the drawer style, or keep it? Undecided.
 - **How quest areas look on the enlarged minimap.** The area fill and outline can be tuned through
