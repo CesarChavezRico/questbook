@@ -1,0 +1,6 @@
+{
+  "name": "questbook-dev-tools",
+  "private": true,
+  "description": "Offline checks for the addon: syntax + undefined-globals lint, and a stubbed-API smoke test.",
+  "dependencies": { "luaparse": "^0.3.1", "wasmoon": "^1.16.0" }
+}
