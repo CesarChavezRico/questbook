@@ -89,14 +89,43 @@ A PR is only as honest as its "not verified" list. Write it.
 
 ## Branches, commits and PRs
 
-- Branch from `dev`; PR into `dev`. `main` is known-good and gets `dev` merged when a build has been
-  played. Never push to `dev` or `main` directly.
+- Branch from `dev`; PR into `dev`. Never push to `dev` or `main` directly. Cesar reviews and merges.
 - Commit message: `topic: what changed, was X now Y (why)`, one logical change per commit.
 - PR description: what changed and why, **Verified**, **NOT verified (client only)**. If you found
   that an earlier claim was wrong, say so in the PR rather than quietly fixing the code.
-- CI (luacheck on the repo root) and the release workflow currently live on `main` only; a PR that
-  brings them to `dev` is pending. Until then run the lint in `dev/` yourself.
-- Releases are tags `vX.Y.Z`; the workflow zips the whole addon directory.
+
+## Pipeline: dev, main, releases
+
+```
+feature branch --PR--> dev --PR--> main --tag vX.Y.Z--> GitHub Release (zip)
+   (CI runs)           (CI runs)   (CI runs)             (release workflow)
+```
+
+- **`dev`** is where work lands and is played in the game. It can be ahead of what anyone has seen
+  working; the README status line says how far.
+- **`main`** is known-good: a `dev` build that has been **played in the game**, with its checks
+  (`/qb modules`, `/qb errors`, the thing that changed) written down in the PR. Promote with a PR
+  from `dev` into `main`, never by pushing.
+- **CI** (`.github/workflows/ci.yml`) runs luacheck on the repo root for every push and every pull
+  request. It uses `.luacheckrc`: real errors (undefined or accidental globals, syntax) fail; style
+  warnings are ignored; `dev/` is excluded. When you use a new Blizzard global, add it to
+  `read_globals` in `.luacheckrc`, as luacheck is how a typo'd API name gets caught before the game.
+  CI does not run the smoke tests in `dev/smoke`; run them yourself.
+- **Release** (`.github/workflows/release.yml`) runs when a tag matching `v*` is pushed. It zips the
+  whole addon folder (everything except `.git*`, `.github`, `dist`, `dev` and `.luacheckrc`) as
+  `QuestBook-<tag>.zip` and publishes a GitHub Release with generated notes. Merging into `main`
+  does **not** release anything; only a tag does.
+- **Version:** edit `## Version:` in `QuestBook.toc` and `QB.version` in `Core.lua` together in the
+  PR that changes behaviour. The tag should equal the TOC version (`v0.7.4` for `0.7.4`); nothing
+  checks that, so check it when you tag.
+- **Keeping `dev` and `main` in step:** the workflows must exist on a branch for CI to run on its
+  PRs. They are on both now. If `main` gets a commit that `dev` lacks (a hotfix, a workflow change),
+  merge `main` back into `dev` by PR straight away so the two do not drift.
+
+**Release cadence: not decided.** Nothing here sets one. Until Cesar decides, the working rule is:
+promote `dev` to `main` after a play session that exercised the changes, and tag a release when
+`main` holds something worth giving to another player. A proposal is in the PR that added this
+section; change this paragraph when it is settled.
 
 ## Design decisions
 

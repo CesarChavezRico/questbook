@@ -17,7 +17,7 @@ read_globals = {
   "UnitAffectingCombat", "IsLoggedIn", "IsInGroup", "IsMounted", "IsPlayerMoving", "issecretvalue",
   "CreateColor", "tinsert", "wipe", "print", "GameTooltip", "GameTooltip_SetTitle",
   -- namespaces and constants
-  "C_Timer", "C_CVar", "C_Map", "C_QuestLog", "C_SuperTrack", "C_VoiceChat", "C_Minimap",
+  "C_Timer", "C_CVar", "C_Map", "C_QuestLog", "C_SuperTrack", "C_VoiceChat",
   "C_Texture", "C_ChatInfo", "Enum", "Constants", "MapUtil",
   -- quest log (modern and classic fallbacks)
   "GetNumQuestLogEntries", "GetQuestLogTitle", "GetQuestLogQuestText", "SelectQuestLogEntry",
@@ -33,6 +33,9 @@ read_globals = {
 }
 -- globals the addon defines (slash, keybindings, saved variables, the ToggleQuestLog reroute)
 globals = {
+  -- Overlay swaps C_Minimap.GetUiMapID for the hybrid ground, as Blizzard's own minimap code does
+  -- (Blizzard_Minimap/Mainline/Minimap.lua), and puts the original back afterwards
+  "C_Minimap",
   "SlashCmdList", "ToggleQuestLog",
   "QuestBookDB", "QuestBook_Toggle", "QuestBook_MapCycle", "QuestBook_FullMap",
   "BINDING_HEADER_QUESTBOOK", "BINDING_NAME_QUESTBOOK_TOGGLE",

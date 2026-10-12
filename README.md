@@ -60,6 +60,6 @@ a change without the game (and what that does not prove), and the branch and rev
 
 ## Branches
 
-`main` = known-good · `dev` = where work lands and is tested in the game.
+`main` = known-good · `dev` = where work lands and is tested in the game. Releases are `vX.Y.Z` tags on `main`. The pipeline and how work moves between them: [CONTRIBUTING.md](CONTRIBUTING.md#pipeline-dev-main-releases).
 
 Built by Cesar & Nibble for the Chavez family's WoW: Forever launch. MIT.
