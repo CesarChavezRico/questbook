@@ -2,6 +2,7 @@ __fire("ADDON_LOADED", "QuestBook"); __loggedIn = true; __fire("PLAYER_LOGIN")
 local function slash(s) SlashCmdList.QUESTBOOK(s) end
 local function flush(tag) for _, l in ipairs(__take()) do io.write(tag .. " | " .. l .. "\n") end end
 local O = QB.modules.overlay
+slash("overlay corner off")   -- these assertions are about the big layers; the corner has corner.lua
 assert(O and O.active and not O.unavailable, "overlay should be active")
 local seen = {}
 QB:On("overlay_state", function(s) seen[#seen + 1] = s end, "test")

@@ -6,6 +6,12 @@
 --
 -- One key cycles ONE toggle:  "off" -> "local" -> "zone" -> "off".
 -- While either mode is open the action bars are hidden (setting `bars`).
+--
+-- The native Minimap widget has two possible HOSTS: the big panel (state "local") and a small
+-- "corner" panel in the right wing, where the retired corner minimap used to be. The corner one is
+-- the glance-in-combat minimap: it is up whenever the big panel is not using the widget (state off,
+-- state zone, and after the overlay closes itself at combat start). There is ONE widget, so a second
+-- live copy is impossible; it moves between hosts.
 -- Public API: Cycle(), SetState(state), GetState(), OpenFull().
 -- Bus: fires "overlay_state" (state) after every change; listens "combat_start"
 -- (force off when db.combatGuard) and "open_full" (Strip -> OpenFull).
@@ -30,6 +36,13 @@ local mod = QB:NewModule("overlay", {
                        -- "auto" = native, but hybrid where the native ground is blank (indoors)
   bars = "actions",    -- hidden while a map mode is open: "actions" | "all" (adds xp/rep bars) | "none"
   iconScale = 1,       -- Minimap:SetIconScale for blips (1 = Blizzard's default)
+  corner = true,       -- the small always-on minimap (when the big one is not in use)
+  cornerSize = 0.16,   -- fraction of screen height (square)
+  cornerX = -24,       -- offset from the top-right corner of the screen (UI units; x < 0 = inwards)
+  cornerY = -44,       -- (y < 0 = downwards); -44 sits just under the text strip
+  cornerAlpha = 0.9,
+  cornerRotate = true, -- the small one rotates with facing (the CVar is shared, set per host)
+  cornerMask = "stock", -- "stock" = Blizzard's crisp circle (readable at a glance) | "soft" = our soft circle
   combatGuard = true,  -- refuse to open in combat and force "off" when combat starts
 })
 
@@ -59,6 +72,7 @@ mod.localTweaks = { order = {}, map = {} }
 mod.zoneTweaks = { order = {}, map = {} }
 mod.barTweaks = { order = {}, map = {} }
 mod.mode = "off"         -- the mode being laid out ("local" panel is square, "zone" follows `aspect`)
+mod.host = nil           -- who holds the Minimap right now: nil | "big" | "corner"
 mod.groundNow = "native" -- what Local actually uses right now ("hybrid" | "native")
 mod.hybridFails = 0
 
@@ -264,6 +278,36 @@ function mod:EnsurePanel()
   return panel
 end
 
+function mod:EnsureCorner()
+  if self.cornerPanel then return self.cornerPanel end
+  local c = CreateFrame("Frame", nil, UIParent)
+  c:SetFrameStrata("LOW")
+  c:EnableMouse(false)               -- click-through: never eats a combat click
+  c:Hide()
+  self.cornerPanel = c
+  return c
+end
+
+function mod:LayoutCorner()
+  local c = self:EnsureCorner()
+  local db = self.db
+  local H = UIParent:GetHeight()
+  local s = math.max(48, clamp(tonumber(db.cornerSize) or 0.16, 0.05, 0.5) * H)
+  c:SetSize(s, s)
+  c:ClearAllPoints()
+  c:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", tonumber(db.cornerX) or -24, tonumber(db.cornerY) or -44)
+end
+
+function mod:HostPanel()
+  if self.host == "corner" then return self:EnsureCorner() end
+  return self.panel
+end
+
+function mod:LocalAlpha()
+  if self.host == "corner" then return clamp(tonumber(self.db.cornerAlpha) or 0.9, 0, 1) end
+  return clamp(tonumber(self.db.localAlpha) or 0.55, 0, 1)
+end
+
 function mod:LayoutPanel()
   local panel = self:EnsurePanel()
   local w, h, cx, cy = self:Geometry()
@@ -275,6 +319,7 @@ end
 function mod:Layout()
   if not self.panel then return end
   Try("layout panel", self.LayoutPanel, self)
+  Try("layout corner", self.LayoutCorner, self)
   if self.localOn then Try("layout local", self.LocalUpdate, self) end
   if self.zoneOn then Try("layout zone", self.ReapplyZone, self) end
 end
@@ -287,7 +332,9 @@ function mod:ApplyRotation()
   local want
   if self.state == "local" then
     want = self.db.rotate and "1" or "0"
-  end                     -- "zone" / "off": the user's own value
+  elseif self.host == "corner" then
+    want = self.db.cornerRotate and "1" or "0"
+  end                     -- otherwise: the user's own value
   if want then
     if self.db.rotateBackup == nil then
       local cur = GetC(ROTATE_CVAR)
@@ -318,6 +365,9 @@ function mod:ApplyMinimapMask()
   local mm = G("Minimap")
   if not (mm and mm.SetMaskTexture) then return false end
   local path = MASK_PATHS[self.db.shape] or MASK_PATHS.rect
+  if self.host == "corner" then
+    path = (self.db.cornerMask == "soft") and MASK_PATHS.circle or STOCK_MASK
+  end
   if self.maskMode == "stock" then path = STOCK_MASK end
   if self.maskMode == "solid" then path = SOLID_MASK end
   self.wantMask = path
@@ -337,7 +387,7 @@ end
 -- Put all Local-layer properties in place (idempotent; also the layout pass).
 function mod:LocalUpdate()
   local mm = G("Minimap")
-  local panel = self.panel
+  local panel = self:HostPanel()
   if not (mm and panel) then return end
   local set = self.localTweaks
   local w, h = panel:GetSize()
@@ -356,7 +406,7 @@ function mod:LocalUpdate()
       if math.abs(cw - w) > 0.5 or math.abs(ch - h) > 0.5 then x:SetSize(w, h); resized = true end
     end,
     function(x, orig) x:SetSize(orig[1], orig[2]) end)
-  TAlpha(set, "mm.alpha", mm, clamp(tonumber(self.db.localAlpha) or 0.55, 0, 1))
+  TAlpha(set, "mm.alpha", mm, self:LocalAlpha())
   TStrata(set, "mm.strata", mm, "LOW")
   TLevel(set, "mm.level", mm, panel:GetFrameLevel() + 1)
   -- click-through: the widget, its wheel, and the small zoom hit areas
@@ -563,7 +613,9 @@ function mod:LocalEnter()
     return false
   end
   self:LayoutPanel()
-  self.panel:Show()
+  self:LayoutCorner()
+  local host = self:HostPanel()
+  if host then host:Show() end
   self.localOn = true       -- before the hooks can fire
   self:LocalUpdate()
   return true
@@ -572,6 +624,7 @@ end
 function mod:LocalLeave()
   local mm = G("Minimap")
   self.localOn = false
+  self.host = nil
   self.layouting = true
   local failed = TweakUndoAll(self.localTweaks)
   self:HybridOff()
@@ -590,6 +643,7 @@ function mod:LocalLeave()
   end
   if failed > 0 then
     self.localOn = true     -- keep the cleanup pending
+    self.host = self.host or "big"
     self.dirty = true
   end
 end
@@ -948,20 +1002,35 @@ end
 
 function mod:Apply(target)
   self.mode = target
-  local needLocal = target == "local"
   local needZone = target == "zone"
   local panel = self:EnsurePanel()
+  local corner = self:EnsureCorner()
+  local hostWanted
+  if target == "local" then
+    hostWanted = "big"
+  elseif self.db.corner and not self.noCorner then
+    hostWanted = "corner"
+  end
 
   if self.zoneOn and not needZone then self:ZoneLeave() end
-  if self.localOn and not needLocal then self:LocalLeave() end
+  if self.localOn and not hostWanted then self:LocalLeave() end
   self:LayoutPanel()                      -- the panel is square for "local", `aspect` for "zone"
-  if needLocal then
+  self:LayoutCorner()
+
+  if hostWanted then
+    local changed = self.host ~= hostWanted
+    self.host = hostWanted
     if not self.localOn then
-      if not self:LocalEnter() then target = "off" end
+      if not self:LocalEnter() then
+        self.host = nil
+        if target == "local" then target = "off" end
+      end
     else
+      if changed then self.iconApplied = nil end
       self:LocalUpdate()
     end
-  elseif needZone then
+  end
+  if needZone then
     if not self.zoneOn then
       if not self:ZoneEnter() then target = "off" end
     else
@@ -970,7 +1039,7 @@ function mod:Apply(target)
   end
 
   local achieved = "off"
-  if self.localOn then achieved = "local" elseif self.zoneOn then achieved = "zone" end
+  if self.host == "big" then achieved = "local" elseif self.zoneOn then achieved = "zone" end
   if target == "off" then achieved = "off" end   -- a failed cleanup is retried via self.dirty
   self.state = achieved
   self.mode = achieved
@@ -978,18 +1047,21 @@ function mod:Apply(target)
   self:ApplyBars(achieved ~= "off")
 
   if self.localOn or self.zoneOn then
-    panel:SetScript("OnUpdate", function(_, elapsed)
+    -- the tick driver is its own frame: the panels come and go with the host
+    local d = self.driver
+    if not d then d = CreateFrame("Frame"); self.driver = d end
+    d:SetScript("OnUpdate", function(_, elapsed)
       if mod.revealFrames then QB:Safe(mod, mod.RevealStep, mod) end
       mod.acc = (mod.acc or 0) + elapsed
       if mod.acc < TICK then return end
       mod.acc = 0
       QB:Safe(mod, mod.Tick, mod)
     end)
-    panel:Show()
-  else
-    panel:SetScript("OnUpdate", nil)
-    panel:Hide()
+  elseif self.driver then
+    self.driver:SetScript("OnUpdate", nil)
   end
+  panel:SetShown(self.host == "big" or self.zoneOn)
+  corner:SetShown(self.host == "corner")
 end
 
 function mod:SetState(state, force)
@@ -1035,10 +1107,10 @@ function mod:Tick()
     self:Apply(self.state)
     return
   end
-  if self.localOn and self.state ~= "off" then
+  if self.localOn then
     local mm = G("Minimap")
-    if mm and (self.layoutDirty or mm:GetParent() ~= self.panel
-        or math.abs(mm:GetAlpha() - clamp(tonumber(self.db.localAlpha) or 0.55, 0, 1)) > 0.01) then
+    if mm and (self.layoutDirty or mm:GetParent() ~= self:HostPanel()
+        or math.abs(mm:GetAlpha() - self:LocalAlpha()) > 0.01) then
       self:LocalUpdate()
     end
     -- something (Edit Mode layout apply) may have flipped the CVar back
@@ -1147,10 +1219,14 @@ function mod:OnEnable()
   end
   self:InstallHooks()
   self:HideCluster()
+  self.noCorner = false
+  self:Apply("off")             -- puts the small minimap up (setting `corner`)
 end
 
 function mod:OnDisable()
+  self.noCorner = true          -- give the Minimap back to Blizzard's cluster
   self:SetState("off", true)
+  self.noCorner = false
   self:ShowCluster()
 end
 
@@ -1171,11 +1247,11 @@ mod.events.DISPLAY_SIZE_CHANGED = function(self) self:Layout() end
 mod.events.UI_SCALE_CHANGED = function(self) self:Layout() end
 mod.events.EDIT_MODE_LAYOUTS_UPDATED = function(self) self:HideCluster() end
 -- make sure the saved CVar holds the user's value, not ours
-mod.events.PLAYER_LOGOUT = function(self) self:SetState("off", true) end
+mod.events.PLAYER_LOGOUT = function(self) self.noCorner = true; self:SetState("off", true) end
 
 function mod:OnCombatStart()
   if not self.db.combatGuard then return end
-  if self.state ~= "off" or self.localOn or self.zoneOn then
+  if self.state ~= "off" or self.zoneOn or self.host == "big" then
     -- Deviation from "no changes in combat": the frames involved (Minimap, WorldMapFrame,
     -- MinimapCluster) are not protected; every step is pcall-guarded and anything that
     -- fails is retried on PLAYER_REGEN_ENABLED.
@@ -1195,6 +1271,9 @@ local function Status()
     "overlay: %s | shape=%s size=%.2f pos=%.2f,%.2f zone-aspect=%.2f alpha=%.2f/%.2f zonezoom=%.1f rotate=%s ground=%s(now %s) bars=%s icons=%.1f mask=%s",
     mod.state, db.shape, db.size, db.offsetX, db.offsetY, db.aspect, db.localAlpha, db.zoneAlpha,
     db.zoneZoom, db.rotate and "on" or "off", db.ground, mod.groundNow, db.bars, db.iconScale, mod.maskMode)
+  s = s .. string.format(" | corner=%s host=%s size=%.2f pos=%d,%d alpha=%.2f rotate=%s mask=%s",
+    db.corner and "on" or "off", tostring(mod.host), db.cornerSize, db.cornerX, db.cornerY,
+    db.cornerAlpha, db.cornerRotate and "on" or "off", db.cornerMask)
   if mod.lastError then s = s .. " | last error: " .. mod.lastError end
   return s
 end
@@ -1244,6 +1323,7 @@ local function Diag()
   local wmf = G("WorldMapFrame")
   QB:Say(FrameLine("WorldMapFrame", wmf) .. " mapID=" .. tostring(wmf and wmf.GetMapID and wmf:GetMapID()))
   if wmf and wmf.ScrollContainer then QB:Say(FrameLine("  ScrollContainer", wmf.ScrollContainer)) end
+  QB:Say(FrameLine("cornerPanel", mod.cornerPanel) .. " host=" .. tostring(mod.host))
   QB:Say("bars: mode=" .. tostring(mod.db.bars) .. " frames faded=" .. tostring(#mod.barTweaks.order)
     .. " (found " .. tostring(mod.barsFound or 0) .. ")")
   if mod.lastError then QB:Say("last error: " .. mod.lastError) end
@@ -1304,6 +1384,27 @@ QB:RegisterSlash(mod, "overlay", function(rest)
   elseif sub == "icons" and n1 then
     db.iconScale = clamp(n1, 0.5, 4)
     if mod.localOn then mod:ApplyIconScale() end
+  elseif sub == "corner" then
+    -- /qb overlay corner on|off | size <n> | pos <x> <y> | alpha <n> | rotate on|off | mask stock|soft
+    local what, v1, v2 = arg:match("^(%S*)%s*(%S*)%s*(%S*)$")
+    local m1, m2 = tonumber(v1), tonumber(v2)
+    if what == "on" or what == "off" then
+      db.corner = (what == "on")
+    elseif what == "size" and m1 then
+      if m1 > 0.5 then m1 = m1 / 100 end
+      db.cornerSize = clamp(m1, 0.05, 0.5)
+    elseif what == "pos" and m1 and m2 then
+      db.cornerX, db.cornerY = m1, m2
+    elseif what == "alpha" and m1 then
+      db.cornerAlpha = clamp(m1, 0, 1)
+    elseif what == "rotate" and (v1 == "on" or v1 == "off") then
+      db.cornerRotate = (v1 == "on")
+    elseif what == "mask" and (v1 == "stock" or v1 == "soft") then
+      db.cornerMask = v1
+    elseif what ~= "" and what ~= "status" then
+      QB:Say("/qb overlay corner on|off | size <n> | pos <x> <y> | alpha <n> | rotate on|off | mask stock|soft   (pos: from the top-right corner, y negative = down)")
+    end
+    if not QB:InCombat() then mod:Layout(); mod:Apply(mod.state) else QB:Say("overlay: applied after combat"); mod.dirty = true end
   elseif sub == "mask" then
     -- debug: compare our soft-alpha mask with Blizzard's stock mask in the client
     -- ours (soft) -> stock (Blizzard's circle) -> solid (opaque square): compare the Minimap's edge
@@ -1316,7 +1417,7 @@ QB:RegisterSlash(mod, "overlay", function(rest)
     Diag()
     return
   elseif sub ~= "" and sub ~= "status" then
-    QB:Say("/qb overlay cycle | off | local | zone | shape rect|circle | size <n> | aspect <n> | pos <x> <y> | alpha <local> [zone] | zoom <n> | rotate on|off | ground hybrid|native|auto | bars actions|all|none | icons <n> | mask | diag")
+    QB:Say("/qb overlay corner ... (the small minimap) | cycle | off | local | zone | shape rect|circle | size <n> | aspect <n> | pos <x> <y> | alpha <local> [zone] | zoom <n> | rotate on|off | ground hybrid|native|auto | bars actions|all|none | icons <n> | mask | diag")
   end
   QB:Say(Status())
 end, "map overlay (cycle | off | local | zone | shape | size | alpha | rotate | ground | bars | icons | mask | diag)")
