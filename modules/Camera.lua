@@ -23,7 +23,8 @@ local ADDON, QB = ...
 local mod = QB:NewModule("camera", {
   strength = 0.5,     -- multiplier (times side); 1.0 is Dialogue UI's full shift
   side = 1,           -- +1 / -1; which sign moves the character left is UNVERIFIED, see /qb camera flip
-  zoomGoal = 0,       -- 0 = leave zoom alone, else camera zoom to ease to while shifted
+  zoomGoal = 0,       -- 0 = off, else an ABSOLUTE camera zoom to go to while shifted (wins over zoomOut)
+  zoomOut = 3,        -- RELATIVE: zoom out by this much while shifted, back when it ends (0 = off)
   ease = 0.35,        -- seconds
   shift = true,       -- /qb camera on|off: master switch for the shift itself
   mountMult = 4.8,    -- extra multiplier while mounted (MOUNTED_CAMERA_MULTIPLIER in Dialogue UI)
@@ -220,9 +221,13 @@ function mod:Engage()
     self.engaged = true
     self.cur = tonumber(GetCV(CVAR_SHOULDER)) or 0
     local goal = self.db.zoomGoal
+    local out = tonumber(self.db.zoomOut) or 0
     if type(goal) == "number" and goal > 0 then
       self.oldZoom = Zoom()
       self:ZoomTo(goal)
+    elseif out > 0 then
+      self.oldZoom = Zoom()
+      self:ZoomTo(self.oldZoom + out)      -- the client clamps at its own maximum distance
     end
   end
   self:StartEase(self:Target(), self.db.ease)
@@ -329,8 +334,9 @@ QB:On("overlay_state", function(state) mod:OnOverlayState(state) end, mod)
 local function Status()
   local db = mod.db
   return string.format(
-    "camera: shift=%s strength=%.2f side=%+d zoomGoal=%s ease=%.2fs mountMult=%.2f | overlay=%s engaged=%s offset=%.3f",
+    "camera: shift=%s strength=%.2f side=%+d zoomOut=%s zoomGoal=%s ease=%.2fs mountMult=%.2f | overlay=%s engaged=%s offset=%.3f",
     db.shift and "on" or "off", db.strength, db.side,
+    (db.zoomOut and db.zoomOut > 0) and tostring(db.zoomOut) or "off",
     (db.zoomGoal and db.zoomGoal > 0) and tostring(db.zoomGoal) or "off",
     db.ease, db.mountMult, mod.overlayState, tostring(mod.engaged), mod.cur or 0)
 end
@@ -346,6 +352,11 @@ QB:RegisterSlash(mod, "camera", function(rest)
   elseif sub == "strength" and n then
     db.strength = math.max(0, math.min(n, 3))
     if mod.engaged and not mod.releasing then mod:StartEase(mod:Target(), mod.db.ease) end
+  elseif sub == "zoomout" and n then
+    -- relative: how far to pull the camera back while the overlay is open (0 = off); takes
+    -- effect the next time the overlay opens, or now if it is open
+    db.zoomOut = math.max(0, math.min(n, 30))
+    if mod.engaged and not mod.releasing and mod.oldZoom then mod:ZoomTo(mod.oldZoom + db.zoomOut) end
   elseif sub == "zoom" and n then
     db.zoomGoal = math.max(0, n)
   elseif sub == "ease" and n then
@@ -360,7 +371,7 @@ QB:RegisterSlash(mod, "camera", function(rest)
     db.shift = true
     mod:Sync()
   elseif sub ~= "" and sub ~= "status" then
-    QB:Say("/qb camera flip | strength <n> | zoom <n|0> | ease <s> | mount <n> | on | off")
+    QB:Say("/qb camera flip | strength <n> | zoomout <n> | zoom <n|0> | ease <s> | mount <n> | on | off")
   end
   QB:Say(Status())
-end, "camera shift tied to the map overlay (flip | strength <n> | zoom <n> | on | off)")
+end, "camera shift tied to the map overlay (flip | strength <n> | zoomout <n> | zoom <n> | on | off)")
