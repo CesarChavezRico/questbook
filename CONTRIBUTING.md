@@ -129,6 +129,6 @@ section; change this paragraph when it is settled.
 
 ## Design decisions
 
-The map layout, the keybinding plan and the reasoning behind the module split are recorded in the
-design note named in the README, with the open questions marked. If a change reverses one of those
-decisions, raise it with Cesar first; the note gets amended in the same breath.
+The map layout, the reasoning behind the module split, what has been seen working and the open
+questions are in [docs/DESIGN.md](docs/DESIGN.md). If a change reverses one of those decisions, raise
+it with Cesar first, and amend `docs/DESIGN.md` in the same PR.
