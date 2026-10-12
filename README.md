@@ -9,7 +9,7 @@ It is one addon built from isolated modules, so a fault in one cannot take down 
 > **Status: v0.7.4, in active development.** Everything here was written against Blizzard's UI
 > source for the Forever client and has been run in the game client only in short sessions by one
 > person. Code that relies on a guess says `UNVERIFIED:` in its comment, with what to check
-> in-game. Treat a feature as working only when this file or an issue says it was seen working.
+> in-game. Treat a feature as working only when this file, `docs/DESIGN.md` or an issue says it was seen working.
 
 ## What it does
 
@@ -23,8 +23,8 @@ It is one addon built from isolated modules, so a fault in one cannot take down 
 
 Not built yet, discussed: a small always-on minimap for glancing in combat, replacing the
 objective tracker with a compact quest list, and tuning how quest areas look on the big minimap.
-The design record is `notes/2026-10-09-hud-map-addon-design.md` in the 4bits-cesar repo (the
-Chavez family's knowledge repo); this addon's decisions are in that note, not in this one.
+What was decided and why, what has been seen working in the game and what has not, and what is
+still open: [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Install
 
