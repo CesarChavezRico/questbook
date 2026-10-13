@@ -298,3 +298,14 @@ function __setLog(newlog) for i = #log, 1, -1 do log[i] = nil end for i, e in ip
 local qtext = {}
 function __setQuestText(id, desc, obj) qtext[id] = { desc, obj } end
 function GetQuestLogQuestText() local sel = C_QuestLog.GetSelectedQuest(); local t = qtext[sel]; if t then return t[1], t[2] end return "Go and slay the beasts.\n\nThen return.", "Kill 5 things" end
+
+-- quest map positions for the book's plate (v0.8)
+__waypoints, __pois, __noArt = {}, {}, {}
+C_QuestLog.GetNextWaypoint = function(qid) local w = __waypoints[qid]; if w then return w[1], w[2], w[3] end end
+C_QuestLog.GetQuestsOnMap = function(map) return __pois[map] or {} end
+C_Map.GetMapInfo = function(id) return { name = "Map " .. tostring(id), mapID = id, parentMapID = (id == 37) and 13 or 0 } end
+C_Map.MapHasArt = function(id) return not __noArt[id] end
+WorldMapFrame.__focus = nil
+function WorldMapFrame:SetFocusedQuestID(id) self.__focus = id end
+function WorldMapFrame:ClearFocusedQuestID() self.__focus = nil end
+function WorldMapFrame.ScrollContainer:InstantPanAndZoom(sc2, x, y) self.__scale2 = sc2; self.__pan = { x, y }; __zoomed = (__zoomed or 0) + 1 end

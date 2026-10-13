@@ -34,6 +34,7 @@ local mod = QB:NewModule("questlog", {
   replaceLog = true,    -- ToggleQuestLog (default key, micro menu button) opens this book
   dock = "right",       -- docked side while walking: the freed right-wing minimap slot
   collapsed = {},       -- our own zone-header collapse state (header title -> true)
+  plate = true,         -- the map plate on the left page (/qb book map on|off)
   bgAlpha = 0.62,       -- dark theme only: the panel's opacity
   theme = "paper",      -- "paper" (two parchment pages) | "dark" (the faint dark panel)
 })
@@ -454,6 +455,7 @@ local function FitLeft()
   Book.pageChild:SetWidth(G.textW)
   Book.pageChild:SetHeight(math.max(total, availText))
   Book.page:SetVerticalScroll(0)
+  if plateOn then QB:Call("overlay", "PlateLayout") end    -- the map follows the plate's new size
 end
 
 local function ApplyLayout()
@@ -561,7 +563,7 @@ local function BuildBook()
   Book:Hide()
   Book:SetScript("OnHide", function()
     StopSpeaking()
-    QB:Call("plate", "Hide")           -- gives the world map back (modules/Plate.lua, if on)
+    QB:Call("overlay", "PlateHide")    -- gives the world map back (the overlay module hosts it)
   end)
   tinsert(UISpecialFrames, "QuestBookFrame")
 
@@ -651,11 +653,16 @@ local function MarkSelected()
   end
 end
 
--- Ask the map module (if on) for a map plate for this quest; the text then makes room for it.
+-- Ask the overlay module (which owns the world map frame) for a map plate for this quest; the text then makes room for it.
 -- `Book.plateWanted` is only true where it really has something to show.
 local function UpdatePlate(entry)
-  local ok, shown = QB:Call("plate", "Show", Book.plate, entry, Book.plateCap)
-  Book.plateWanted = (ok and shown) and not docked and true or false
+  if docked or mod.db.plate == false then
+    QB:Call("overlay", "PlateHide")
+    Book.plateWanted = false
+    return
+  end
+  local ok, shown = QB:Call("overlay", "PlateShow", Book.plate, entry, Book.plateCap)
+  Book.plateWanted = (ok and shown) and true or false
 end
 
 ShowQuest = function(entry)
@@ -780,7 +787,7 @@ RefreshList = function(keepID, keepScroll)
   else
     lastEntry, lastDesc = nil, nil
     Book.plateWanted = false
-    QB:Call("plate", "Hide")
+    QB:Call("overlay", "PlateHide")
     Book.title:SetText("No quests in your log.")
     Book.objectives:SetText(""); Book.body:SetText("")
     FitLeft()
@@ -860,6 +867,15 @@ local function QueueRefresh()
     end
   end
 end
+
+-- the world map is the one thing the plate shares: Map mode, ESC, the M key or combat can take it
+QB:On("plate_lost", function()
+  if Book then Book.plateWanted = false; if Book:IsShown() then FitLeft() end end
+end, mod)
+-- a plate refused in combat is tried again when combat ends
+QB:On("combat_end", function()
+  if Book and Book:IsShown() and lastEntry and not Book.plateWanted then ShowQuest(lastEntry) end
+end, mod)
 
 mod.events.QUEST_LOG_UPDATE = QueueRefresh
 mod.events.QUEST_WATCH_LIST_CHANGED = QueueRefresh
@@ -990,7 +1006,10 @@ end, "bg <0-1>: opacity of the dark theme's panel")
 
 QB:RegisterSlash(mod, "book", function(rest)
   rest = (rest or ""):lower()
-  if rest == "paper" or rest == "dark" then
+  if rest == "map on" or rest == "map off" then
+    mod.db.plate = (rest == "map on")
+    if Book and Book:IsShown() and lastEntry then ShowQuest(lastEntry) end
+  elseif rest == "paper" or rest == "dark" then
     mod.db.theme = rest
     if Book then
       ApplyLayout()
@@ -998,7 +1017,7 @@ QB:RegisterSlash(mod, "book", function(rest)
     end
   end
   local f, r = G.fit, G.rows
-  Say("book theme: " .. mod.db.theme .. "  (/qb book paper|dark)")
+  Say("book theme: " .. mod.db.theme .. "  map plate: " .. (mod.db.plate and "on" or "off") .. "  (/qb book paper|dark, /qb book map on|off)")
   if f then
     Say(string.format("  left page: text %d px at font %d (set %d) in %d px, %s%s", f.total or 0, f.font or 0, f.base or 0,
       f.avail or 0, f.fits and "fits" or "SCROLLS", f.plate and (", plate " .. f.plateH .. " px") or ", no map plate"))
