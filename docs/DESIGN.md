@@ -104,12 +104,19 @@ charter was dropped on purpose.
 
 ### The quest log
 
-- **It is an open book** (v0.8.0, *written*): left page the quest text, right page the list. The whole
+- **It is an open book** (v0.8.0 and v0.8.1, *written*): left page the quest text, right page the list. The whole
   list fits its page (rows shrink to a 16 px minimum); the text fits its page (map plate shrinks first, then
   the font down to 11, then it scrolls). Parchment theme by default, `/qb book dark` for the faint dark
   panel. Chosen by Cesar from a mock-up on 2026-10-13: option A (map and text stacked on the left page)
   over option B (ribbon tabs); a three-panel variant with a thinner list is **open**. Style rules:
-  [STYLE.md](STYLE.md). The map plate itself is a separate step.
+  [STYLE.md](STYLE.md).
+- **The map plate** (*written*, v0.8.1): above the quest text on the left page, the quest's map with Blizzard's own
+  quest area and pins. It is the same world map frame the overlay's Map mode restyles, hosted inside the plate
+  (crisp edge, opaque, above the book) by the overlay module, which owns that frame; the position comes from
+  the game's next-waypoint for the quest, else the quest's marker on the player's map or its parents. There is one
+  world map frame, so Map mode and the plate exclude each other (opening one closes the other, and the book
+  re-fits). No plate in combat (retried when it ends), in the docked walking panel, or for a quest with no map
+  position; `/qb book map off` turns it off. *Unverified*: that the frame can be hosted this way in the client.
 - **It replaces Blizzard's.** Duties: choose the active quest (the "super-tracked" one the game points
   at), track and untrack, turn-in readiness, abandon (through Blizzard's own confirmation), share,
   zone and campaign headers. The reader and the narrated walk-and-listen mode *were seen working* in
