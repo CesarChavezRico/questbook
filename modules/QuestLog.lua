@@ -28,12 +28,14 @@
 -- marked and announced by the narrator. v0.5: dock controls [<] [read] [>].
 
 local _, QB = ...
+local Style = QB.Style
 
 local mod = QB:NewModule("questlog", {
   replaceLog = true,    -- ToggleQuestLog (default key, micro menu button) opens this book
   dock = "right",       -- docked side while walking: the freed right-wing minimap slot
   collapsed = {},       -- our own zone-header collapse state (header title -> true)
-  bgAlpha = 0.62,       -- book background opacity (the Menu drawer's look is a faint dark panel)
+  bgAlpha = 0.62,       -- dark theme only: the panel's opacity
+  theme = "paper",      -- "paper" (two parchment pages) | "dark" (the faint dark panel)
 })
 
 local db              -- QB.db: the flat legacy QuestBookDB settings
@@ -174,7 +176,7 @@ local function GetQuestText(entry)
     if ok and type(list) == "table" then
       for _, item in ipairs(list) do
         if item.text and item.text ~= "" then
-          lines[#lines + 1] = (item.finished and "|cff6fca6f" or "|cffd8c88a") .. "- " .. item.text .. "|r"
+          lines[#lines + 1] = "|cff" .. Style.Hex(item.finished and Style.Get(mod.db.theme).done or Style.Get(mod.db.theme).pending) .. "- " .. item.text .. "|r"
         end
       end
     end
@@ -184,7 +186,7 @@ local function GetQuestText(entry)
       for j = 1, n do
         local ok2, text, _, finished = pcall(GetQuestLogLeaderBoard, j, entry.index)
         if ok2 and text then
-          lines[#lines + 1] = (finished and "|cff6fca6f" or "|cffd8c88a") .. "- " .. text .. "|r"
+          lines[#lines + 1] = "|cff" .. Style.Hex(finished and Style.Get(mod.db.theme).done or Style.Get(mod.db.theme).pending) .. "- " .. text .. "|r"
         end
       end
     end
@@ -348,29 +350,195 @@ end
 
 local FONT = "Fonts\\FRIZQT__.TTF"
 
+-- ---------------------------------------------------------------- layout
+--
+-- Non-docked book = an open book: LEFT page = (map plate, when there is one) + the quest's
+-- text; RIGHT page = the quest list. The whole list fits its page (rows shrink to fit) and the
+-- quest text fits its page (the plate shrinks first, then the font, then it scrolls).
+-- Docked (walk-and-listen) = one single page of text, as before.
+
+local PAD, SB = 14, 24                 -- page padding; room kept for a scrollbar
+local TOP, BOTTOM = 36, 12             -- below the button row; above the cover's lower edge
+local MIN_FONT = 11                    -- the quest text never shrinks below this
+local PLATE_STEPS = { 0.42, 0.32, 0.22 }   -- the plate's share of the left page, largest first
+local ROW_MIN, ROW_MAX = 16, 26
+local G = {}                           -- the last computed geometry and fit (also read by /qb book)
+mod.layout = G
+
+local function Theme() return Style.Get(mod.db.theme) end
+
+-- Page textures, the spine shade and the plate's frame follow the theme.
+local function ApplyTheme()
+  if not Book then return end
+  local th = Theme()
+  Book:SetBackdropColor(th.cover[1], th.cover[2], th.cover[3], th.paper and th.cover[4] or (mod.db.bgAlpha or 0.62))
+  Book:SetBackdropBorderColor(th.coverEdge[1], th.coverEdge[2], th.coverEdge[3], th.coverEdge[4])
+  if th.paper then
+    Book.pageL:SetColorTexture(th.pageLeft[1], th.pageLeft[2], th.pageLeft[3], th.pageLeft[4])
+    Book.pageR:SetColorTexture(th.pageRight[1], th.pageRight[2], th.pageRight[3], th.pageRight[4])
+    for _, t in ipairs(Book.spine) do t:SetColorTexture(th.gutter[1], th.gutter[2], th.gutter[3], t.alphaWant) end
+  end
+  Style.SetInk(Book.listHead, th.faded)
+  Style.SetInk(Book.legend, th.faded)
+  Style.SetFont(Book.listHead, "body", 11, th)
+  Style.SetFont(Book.legend, "body", 10, th)
+  Style.SetShadow(Book.listHead, th); Style.SetShadow(Book.legend, th)
+  Style.SetInk(Book.plateCap, th.faded)
+  Style.SetFont(Book.plateCap, "body", 10, th)
+  Book.plateEdge:SetColorTexture(th.plateEdge[1], th.plateEdge[2], th.plateEdge[3], th.plateEdge[4])
+  Book.plateBg:SetColorTexture(th.plateFill[1], th.plateFill[2], th.plateFill[3], th.plateFill[4])
+end
+
+-- Measure the quest text at body size `f` into the three strings (their widths are already set).
+local function MeasureText(f, th)
+  local gap = math.floor(f * 0.8)
+  Style.SetFont(Book.title, "title", f + 7, th)
+  Style.SetFont(Book.objectives, "body", f, th)
+  Style.SetFont(Book.body, "body", f, th)
+  Book.objectives:SetSpacing(math.max(2, math.floor(f * 0.35)))
+  Book.body:SetSpacing(math.max(2, math.floor(f * 0.4)))
+  Book.objectives:ClearAllPoints()
+  Book.objectives:SetPoint("TOPLEFT", Book.title, "BOTTOMLEFT", 0, -gap)
+  Book.body:ClearAllPoints()
+  Book.body:SetPoint("TOPLEFT", Book.objectives, "BOTTOMLEFT", 0, -(gap + 4))
+  local total = Book.title:GetStringHeight() + gap + Book.objectives:GetStringHeight()
+    + gap + 4 + Book.body:GetStringHeight()
+  return total
+end
+
+-- Pick the plate size and the font so the quest text fits the left page.
+-- Order (Cesar, 2026-10-13: "reduce the text size or the map size"): shrink the plate through
+-- PLATE_STEPS first, keeping the text at its set size; then shrink the font down to MIN_FONT;
+-- if it still does not fit, the page scrolls (G.fit.scrolls).
+local function FitLeft()
+  if not (Book and G.leftW) then return end
+  local th = Theme()
+  local inner = G.H - TOP - BOTTOM - 2 * PAD
+  local plateOn = Book.plateWanted and not G.docked
+  local base = G.docked and math.max(12, db.fontSize - 2) or db.fontSize
+  local capH = plateOn and 16 or 0
+  local ph = 0
+  local chosenF, total, availText, fits = base, 0, inner, false
+  local steps = plateOn and PLATE_STEPS or { 0 }
+  for _, frac in ipairs(steps) do
+    ph = plateOn and math.floor(inner * frac) or 0
+    availText = inner - (plateOn and (ph + capH + 8) or 0)
+    total = MeasureText(base, th)
+    chosenF = base
+    if total <= availText then fits = true break end
+  end
+  if not fits then
+    for f = base - 1, MIN_FONT, -1 do
+      total = MeasureText(f, th)
+      chosenF = f
+      if total <= availText then fits = true break end
+    end
+  end
+  G.fit = { plateH = ph, font = chosenF, base = base, total = total, avail = availText,
+    fits = fits, scrolls = not fits, plate = plateOn and true or false }
+  -- apply
+  local blockH = plateOn and (ph + capH + 8) or 0
+  Book.plate:SetShown(plateOn and true or false)
+  Book.plateCap:SetShown(plateOn and true or false)
+  if plateOn then
+    Book.plate:ClearAllPoints()
+    Book.plate:SetPoint("TOPLEFT", Book, "TOPLEFT", G.leftX + PAD, -(TOP + PAD))
+    Book.plate:SetSize(G.leftW - 2 * PAD, ph)
+    Book.plateCap:ClearAllPoints()
+    Book.plateCap:SetPoint("TOP", Book.plate, "BOTTOM", 0, -3)
+    Book.plateCap:SetWidth(G.leftW - 2 * PAD)
+  end
+  Book.page:ClearAllPoints()
+  Book.page:SetPoint("TOPLEFT", Book, "TOPLEFT", G.leftX + PAD, -(TOP + PAD + blockH))
+  Book.page:SetPoint("BOTTOMRIGHT", Book, "BOTTOMLEFT", G.leftX + G.leftW - PAD - SB, BOTTOM + PAD)
+  Book.pageChild:SetWidth(G.textW)
+  Book.pageChild:SetHeight(math.max(total, availText))
+  Book.page:SetVerticalScroll(0)
+end
+
 local function ApplyLayout()
+  local th = Theme()
+  local W, H
+  Book:ClearAllPoints()
   if docked then
-    Book:ClearAllPoints()
     if mod.db.dock == "left" then
       Book:SetPoint("LEFT", UIParent, "LEFT", 40, 80)
     else
       -- the freed right-wing slot where the corner minimap used to be (decision 13)
       Book:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", -24, -90)
     end
-    Book:SetSize(440, 540)
-    Book.list:Hide(); Book.shade:Hide()
-    Book.page:ClearAllPoints()
-    Book.page:SetPoint("TOPLEFT", 16, -40); Book.page:SetPoint("BOTTOMRIGHT", -30, 14)
+    W, H = 440, 540
   else
-    Book:ClearAllPoints(); Book:SetPoint("CENTER")
-    Book:SetSize(db.width, db.height)
-    Book.list:Show(); Book.shade:SetShown(db.darken)
-    Book.page:ClearAllPoints()
-    Book.page:SetPoint("TOPLEFT", 340, -36); Book.page:SetPoint("BOTTOMRIGHT", -36, 20)
+    Book:SetPoint("CENTER")
+    W, H = db.width, db.height
   end
-  local w = docked and 380 or (db.width - 400)
-  Book.title:SetWidth(w); Book.objectives:SetWidth(w); Book.body:SetWidth(w)
-  Book.pageChild:SetWidth(w + 20)
+  Book:SetSize(W, H)
+  Book.shade:SetShown(not docked and db.darken and true or false)
+
+  local leftX, leftW, rightX, rightW
+  if docked then
+    leftX, leftW = 10, W - 20
+    rightX, rightW = 0, 0
+  else
+    local mid = math.floor(W / 2)
+    leftX, leftW = 12, mid - 12 - 6
+    rightX, rightW = mid + 6, W - mid - 6 - 12
+  end
+  G.W, G.H, G.docked = W, H, docked
+  G.leftX, G.leftW, G.rightX, G.rightW = leftX, leftW, rightX, rightW
+  G.textW = leftW - 2 * PAD - SB
+  G.listW = rightW - 2 * PAD - SB
+  G.listH = H - TOP - BOTTOM - 2 * PAD - 22 - 18     -- minus the heading above and the legend below
+
+  -- the pages (paper theme only; the dark theme is one faint panel)
+  local showPages = th.paper
+  Book.pageL:SetShown(showPages)
+  Book.pageR:SetShown(showPages and not docked)
+  if showPages then
+    Book.pageL:ClearAllPoints()
+    Book.pageL:SetPoint("TOPLEFT", Book, "TOPLEFT", leftX, -TOP)
+    Book.pageL:SetPoint("BOTTOMRIGHT", Book, "BOTTOMLEFT", leftX + leftW, BOTTOM)
+    Book.pageR:ClearAllPoints()
+    Book.pageR:SetPoint("TOPLEFT", Book, "TOPLEFT", rightX, -TOP)
+    Book.pageR:SetPoint("BOTTOMRIGHT", Book, "BOTTOMRIGHT", -12, BOTTOM)
+  end
+  for i, t in ipairs(Book.spine) do
+    t:SetShown(showPages and not docked)
+    if showPages and not docked then
+      local left = (i % 2 == 1)
+      local k = math.ceil(i / 2)
+      t:ClearAllPoints()
+      if left then
+        t:SetPoint("TOPRIGHT", Book.pageL, "TOPRIGHT", -2 * (k - 1), 0)
+        t:SetPoint("BOTTOMRIGHT", Book.pageL, "BOTTOMRIGHT", -2 * (k - 1), 0)
+      else
+        t:SetPoint("TOPLEFT", Book.pageR, "TOPLEFT", 2 * (k - 1), 0)
+        t:SetPoint("BOTTOMLEFT", Book.pageR, "BOTTOMLEFT", 2 * (k - 1), 0)
+      end
+      t:SetWidth(2)
+    end
+  end
+
+  -- the list (right page)
+  Book.list:SetShown(not docked)
+  Book.listHead:SetShown(not docked)
+  Book.legend:SetShown(not docked)
+  if not docked then
+    Book.listHead:ClearAllPoints()
+    Book.listHead:SetPoint("TOPLEFT", Book, "TOPLEFT", rightX + PAD, -(TOP + PAD))
+    Book.list:ClearAllPoints()
+    Book.list:SetPoint("TOPLEFT", Book, "TOPLEFT", rightX + PAD, -(TOP + PAD + 22))
+    Book.list:SetPoint("BOTTOMRIGHT", Book, "BOTTOMRIGHT", -(12 + PAD + SB), BOTTOM + PAD + 18)
+    Book.listChild:SetWidth(G.listW)
+    Book.legend:ClearAllPoints()
+    Book.legend:SetPoint("BOTTOMLEFT", Book, "BOTTOMLEFT", rightX + PAD, BOTTOM + PAD)
+  end
+
+  -- the text page widths (set before any measuring)
+  Book.title:SetWidth(G.textW); Book.objectives:SetWidth(G.textW); Book.body:SetWidth(G.textW)
+  Book.pageChild:SetWidth(G.textW)
+  ApplyTheme()
+  FitLeft()
   if lastEntry then ShowQuest(lastEntry) end
 end
 
@@ -389,12 +557,12 @@ local function BuildBook()
   Book:RegisterForDrag("LeftButton")
   Book:SetScript("OnDragStart", Book.StartMoving)
   Book:SetScript("OnDragStop", Book.StopMovingOrSizing)
-  -- the Menu drawer's look: faint dark panel, hairline edge in the text colour
   Book:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
-  Book:SetBackdropColor(0.04, 0.04, 0.04, mod.db.bgAlpha or 0.62)
-  Book:SetBackdropBorderColor(0.85, 0.82, 0.72, 0.22)
   Book:Hide()
-  Book:SetScript("OnHide", StopSpeaking)   -- ANY close path silences the voice
+  Book:SetScript("OnHide", function()
+    StopSpeaking()
+    QB:Call("plate", "Hide")           -- gives the world map back (modules/Plate.lua, if on)
+  end)
   tinsert(UISpecialFrames, "QuestBookFrame")
 
   Book.shade = Book:CreateTexture(nil, "BACKGROUND", nil, -8)
@@ -402,6 +570,17 @@ local function BuildBook()
   Book.shade:SetVertexColor(0, 0, 0, 0.45)
   Book.shade:SetPoint("TOPLEFT", UIParent, -400, 400)
   Book.shade:SetPoint("BOTTOMRIGHT", UIParent, 400, -400)
+
+  -- paper pages and the shade along the spine (flat colour: Blizzard's paper textures cost
+  -- contrast in this client, per the Social Diary author)
+  Book.pageL = Book:CreateTexture(nil, "BACKGROUND", nil, -6)
+  Book.pageR = Book:CreateTexture(nil, "BACKGROUND", nil, -6)
+  Book.spine = {}
+  for i = 1, 12 do        -- odd = left page strips, even = right page strips; 6 each, fading out
+    local t = Book:CreateTexture(nil, "BACKGROUND", nil, -5)
+    t.alphaWant = 0.05 * (7 - math.ceil(i / 2))
+    Book.spine[i] = t
+  end
 
   Book.close = CreateFrame("Button", nil, Book, "UIPanelCloseButton")
   Book.close:SetPoint("TOPRIGHT", -2, -2)
@@ -419,38 +598,42 @@ local function BuildBook()
   Book.btnShare = MakeButton(Book, "Share", 262, 56, function() ShareQuest(lastEntry) end)
   Book.btnAbandon = MakeButton(Book, "Abandon", 322, 70, function() AbandonQuest(lastEntry) end)
 
+  -- right page: the list
+  Book.listHead = Book:CreateFontString(nil, "ARTWORK")
+  Book.listHead:SetJustifyH("LEFT")
+  Book.legend = Book:CreateFontString(nil, "ARTWORK")
+  Book.legend:SetJustifyH("LEFT")
+  Book.legend:SetText("> active    * tracked")
   Book.list = CreateFrame("ScrollFrame", nil, Book, "UIPanelScrollFrameTemplate")
-  Book.list:SetPoint("TOPLEFT", 16, -34)
-  Book.list:SetSize(280, db.height - 50)
   Book.listChild = CreateFrame("Frame", nil, Book.list)
   Book.listChild:SetSize(280, 10)
   Book.list:SetScrollChild(Book.listChild)
 
+  -- left page: the plate (the map goes here, modules/Plate.lua) and its caption
+  Book.plate = CreateFrame("Frame", nil, Book)
+  Book.plate:Hide()
+  Book.plateEdge = Book.plate:CreateTexture(nil, "BACKGROUND", nil, -3)
+  Book.plateEdge:SetAllPoints(Book.plate)
+  Book.plateBg = Book.plate:CreateTexture(nil, "BACKGROUND", nil, -2)
+  Book.plateBg:SetPoint("TOPLEFT", Book.plate, "TOPLEFT", 1, -1)
+  Book.plateBg:SetPoint("BOTTOMRIGHT", Book.plate, "BOTTOMRIGHT", -1, 1)
+  Book.plateCap = Book:CreateFontString(nil, "ARTWORK")
+  Book.plateCap:SetJustifyH("CENTER")
+  Book.plateCap:Hide()
+
+  -- left page: the quest text
   Book.page = CreateFrame("ScrollFrame", nil, Book, "UIPanelScrollFrameTemplate")
   Book.pageChild = CreateFrame("Frame", nil, Book.page)
-  Book.pageChild:SetSize(db.width - 380, 10)
+  Book.pageChild:SetSize(400, 10)
   Book.page:SetScrollChild(Book.pageChild)
 
   Book.title = Book.pageChild:CreateFontString(nil, "ARTWORK")
   Book.title:SetPoint("TOPLEFT", 0, 0)
   Book.title:SetJustifyH("LEFT")
-
   Book.objectives = Book.pageChild:CreateFontString(nil, "ARTWORK")
-  Book.objectives:SetPoint("TOPLEFT", Book.title, "BOTTOMLEFT", 0, -18)
-  Book.objectives:SetJustifyH("LEFT"); Book.objectives:SetSpacing(6)
-
+  Book.objectives:SetJustifyH("LEFT")
   Book.body = Book.pageChild:CreateFontString(nil, "ARTWORK")
-  Book.body:SetPoint("TOPLEFT", Book.objectives, "BOTTOMLEFT", 0, -22)
-  Book.body:SetJustifyH("LEFT"); Book.body:SetSpacing(7)
-end
-
-local function ApplyFonts()
-  local base = docked and math.max(12, db.fontSize - 2) or db.fontSize
-  Book.title:SetFont(FONT, base + 7, "")
-  Book.title:SetTextColor(0.95, 0.87, 0.65)
-  Book.objectives:SetFont(FONT, base, "")
-  Book.body:SetFont(FONT, base, "")
-  Book.body:SetTextColor(0.92, 0.89, 0.82)
+  Book.body:SetJustifyH("LEFT")
 end
 
 local function UpdateButtons(entry)
@@ -460,73 +643,128 @@ local function UpdateButtons(entry)
   Book.btnAbandon:SetEnabled(true)
 end
 
+-- Which list row shows the quest on the page.
+local function MarkSelected()
+  local id = lastEntry and lastEntry.questID
+  for _, b in ipairs(ListButtons) do
+    if b.sel then b.sel:SetShown(b:IsShown() and b.questID ~= nil and b.questID == id) end
+  end
+end
+
+-- Ask the map module (if on) for a map plate for this quest; the text then makes room for it.
+-- `Book.plateWanted` is only true where it really has something to show.
+local function UpdatePlate(entry)
+  local ok, shown = QB:Call("plate", "Show", Book.plate, entry, Book.plateCap)
+  Book.plateWanted = (ok and shown) and not docked and true or false
+end
+
 ShowQuest = function(entry)
   for i, e in ipairs(currentEntries) do
     if e.questID == entry.questID then currentIndex = i break end
   end
+  local th = Theme()
   local desc, obj = GetQuestText(entry)
   lastEntry, lastDesc = entry, desc
-  ApplyFonts()
+  UpdatePlate(entry)
   local ready, done = IsReadyToTurnIn(entry), IsQuestDone(entry)
-  local mark = ready and "  |cff6fca6f(ready to turn in)|r" or (done and "  |cff6fca6f(complete)|r" or "")
+  local doneHex = Style.Hex(th.done)
+  local mark = ready and ("  |cff" .. doneHex .. "(ready to turn in)|r") or (done and ("  |cff" .. doneHex .. "(complete)|r") or "")
   Book.title:SetText((entry.level and ("[" .. entry.level .. "] ") or "") .. (entry.title or "") .. mark)
-  Book.objectives:SetText((ready and "|cff6fca6fReady to turn in.|r\n" or (done and "|cff6fca6fObjectives complete.|r\n" or "")) .. obj)
+  Book.objectives:SetText((ready and ("|cff" .. doneHex .. "Ready to turn in.|r\n") or (done and ("|cff" .. doneHex .. "Objectives complete.|r\n") or "")) .. obj)
   Book.body:SetText(desc)
-  Book.pageChild:SetHeight(Book.title:GetStringHeight() + Book.objectives:GetStringHeight()
-    + Book.body:GetStringHeight() + 80)
-  Book.page:SetVerticalScroll(0)
+  Style.SetInk(Book.title, th.strong)
+  Style.SetInk(Book.objectives, th.pending)
+  Style.SetInk(Book.body, th.ink)
+  Style.SetShadow(Book.title, th); Style.SetShadow(Book.objectives, th); Style.SetShadow(Book.body, th)
+  FitLeft()
+  -- a text height read right after SetText can lag a frame; settle once more
+  if C_Timer and C_Timer.After then
+    C_Timer.After(0.05, Guard(function() if Book:IsShown() and lastEntry == entry then FitLeft() end end))
+  end
   UpdateButtons(entry)
+  MarkSelected()
 end
 
--- List with zone / campaign headers (Blizzard's own headers), our own collapse.
+-- The list: zone / campaign headers (Blizzard's own), our own collapse, and EVERY quest on
+-- the page: rows shrink to fit the page (down to ROW_MIN); only a log too long even for that scrolls.
 -- `keepID`: select this quest again; `keepScroll`: leave the list scroll alone.
 RefreshList = function(keepID, keepScroll)
   local rows, quests = ScanLog()
   currentEntries = quests
+  local th = Theme()
   local scroll = keepScroll and Book.list:GetVerticalScroll() or 0
   for _, b in ipairs(ListButtons) do b:Hide() end
-  local y, shown = 0, 0
   local collapsed = mod.db.collapsed
+
+  -- visible rows, then the row height that fits them all
+  local visible, nHead, nQuest = {}, 0, 0
   for _, row in ipairs(rows) do
     local hidden = row.kind == "quest" and row.header and collapsed[row.header]
     if not hidden then
-      shown = shown + 1
-      local btn = ListButtons[shown]
-      if not btn then
-        btn = CreateFrame("Button", nil, Book.listChild)
-        btn:SetSize(270, 24)
-        btn.text = btn:CreateFontString(nil, "ARTWORK")
-        btn.text:SetPoint("LEFT", 4, 0)
-        btn.text:SetWidth(262); btn.text:SetJustifyH("LEFT"); btn.text:SetWordWrap(false)
-        btn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestLogTitleHighlight", "ADD")
-        ListButtons[shown] = btn
-      end
-      btn:ClearAllPoints()
-      btn:SetPoint("TOPLEFT", 0, -y)
-      btn.text:SetFont(FONT, 13, "")
-      if row.kind == "header" then
-        local isCollapsed = collapsed[row.title]
-        btn.text:SetTextColor(0.95, 0.87, 0.65)
-        btn.text:SetText((isCollapsed and "+ " or "- ") .. (row.title or "?"))
-        btn:SetScript("OnClick", Guard(function()
-          collapsed[row.title] = (not collapsed[row.title]) or nil
-          RefreshList(lastEntry and lastEntry.questID, true)
-        end))
-        y = y + 28
-      else
-        local e = row.entry
-        local tag = ""
-        if IsActiveQuest(e.questID) then tag = "> "
-        elseif IsWatched(e.questID) then tag = "* " end
-        local ready = IsReadyToTurnIn(e)
-        btn.text:SetTextColor(ready and 0.55 or 0.85, ready and 0.85 or 0.82, ready and 0.55 or 0.72)
-        btn.text:SetText("  " .. tag .. (e.title or "?"))
-        btn:SetScript("OnClick", Guard(function() ShowQuest(e) end))
-        y = y + 26
-      end
-      btn:Show()
+      visible[#visible + 1] = row
+      if row.kind == "header" then nHead = nHead + 1 else nQuest = nQuest + 1 end
     end
   end
+  local avail = G.listH or 600
+  local units = nQuest + 1.2 * nHead
+  local rowH = units > 0 and Style.Clamp(math.floor(avail / units), ROW_MIN, ROW_MAX) or ROW_MAX
+  local headH = math.floor(rowH * 1.2)
+  local fontSize = Style.Clamp(math.floor(rowH * 0.55), 9, 13)
+  local used = nQuest * rowH + nHead * headH
+  G.rows = { rowH = rowH, headH = headH, font = fontSize, quests = nQuest, headers = nHead,
+    used = used, avail = avail, scrolls = used > avail }
+  Book.listHead:SetText("QUESTS  (" .. nQuest .. ")")
+
+  local y = 0
+  for i, row in ipairs(visible) do
+    local btn = ListButtons[i]
+    if not btn then
+      btn = CreateFrame("Button", nil, Book.listChild)
+      btn.text = btn:CreateFontString(nil, "ARTWORK")
+      btn.text:SetPoint("LEFT", 4, 0)
+      btn.text:SetJustifyH("LEFT"); btn.text:SetWordWrap(false)
+      btn.sel = btn:CreateTexture(nil, "BACKGROUND", nil, -1)
+      btn.sel:SetAllPoints(btn); btn.sel:Hide()
+      btn.hov = btn:CreateTexture(nil, "BACKGROUND", nil, 0)
+      btn.hov:SetAllPoints(btn); btn.hov:Hide()
+      btn:SetScript("OnEnter", function(self) self.hov:Show() end)
+      btn:SetScript("OnLeave", function(self) self.hov:Hide() end)
+      ListButtons[i] = btn
+    end
+    local h = (row.kind == "header") and headH or rowH
+    btn:SetSize(G.listW or 280, h)
+    btn.text:SetWidth((G.listW or 280) - 8)
+    btn:ClearAllPoints()
+    btn:SetPoint("TOPLEFT", 0, -y)
+    btn.sel:SetColorTexture(th.selected[1], th.selected[2], th.selected[3], th.selected[4])
+    btn.hov:SetColorTexture(th.hover[1], th.hover[2], th.hover[3], th.hover[4])
+    Style.SetShadow(btn.text, th)
+    if row.kind == "header" then
+      Style.SetFont(btn.text, "body", fontSize, th)
+      Style.SetInk(btn.text, th.rubric)
+      local isCollapsed = collapsed[row.title]
+      btn.questID = nil
+      btn.text:SetText((isCollapsed and "+ " or "- ") .. string.upper(row.title or "?"))
+      btn:SetScript("OnClick", Guard(function()
+        collapsed[row.title] = (not collapsed[row.title]) or nil
+        RefreshList(lastEntry and lastEntry.questID, true)
+      end))
+    else
+      local e = row.entry
+      local tag = ""
+      if IsActiveQuest(e.questID) then tag = "> "
+      elseif IsWatched(e.questID) then tag = "* " end
+      local ready = IsReadyToTurnIn(e)
+      Style.SetFont(btn.text, "body", fontSize, th)
+      Style.SetInk(btn.text, ready and th.done or th.ink)
+      btn.questID = e.questID
+      btn.text:SetText("  " .. tag .. (e.title or "?"))
+      btn:SetScript("OnClick", Guard(function() ShowQuest(e) end))
+    end
+    y = y + h
+    btn:Show()
+  end
+  Book.listChild:SetWidth(G.listW or 280)
   Book.listChild:SetHeight(math.max(y, 10))
   Book.list:SetVerticalScroll(scroll)
   -- keep the selection if that quest still exists, else the first quest
@@ -541,9 +779,13 @@ RefreshList = function(keepID, keepScroll)
     ShowQuest(pick)
   else
     lastEntry, lastDesc = nil, nil
+    Book.plateWanted = false
+    QB:Call("plate", "Hide")
     Book.title:SetText("No quests in your log.")
     Book.objectives:SetText(""); Book.body:SetText("")
+    FitLeft()
   end
+  MarkSelected()
 end
 
 -- After a duty (track / active): refresh marks without losing the reading position.
@@ -741,10 +983,31 @@ QB:RegisterSlash(mod, "bg", function(rest)
   local n = tonumber(rest)
   if n then
     mod.db.bgAlpha = math.max(0, math.min(1, n))
-    if Book then Book:SetBackdropColor(0.04, 0.04, 0.04, mod.db.bgAlpha) end
+    ApplyTheme()
   end
-  Say("book background opacity " .. string.format("%.2f", mod.db.bgAlpha) .. " (/qb bg <0-1>)")
-end, "bg <0-1>: opacity of the book's panel")
+  Say("dark theme panel opacity " .. string.format("%.2f", mod.db.bgAlpha) .. " (/qb bg <0-1>; the paper theme ignores it)")
+end, "bg <0-1>: opacity of the dark theme's panel")
+
+QB:RegisterSlash(mod, "book", function(rest)
+  rest = (rest or ""):lower()
+  if rest == "paper" or rest == "dark" then
+    mod.db.theme = rest
+    if Book then
+      ApplyLayout()
+      if Book:IsShown() then RefreshList(lastEntry and lastEntry.questID, true) end
+    end
+  end
+  local f, r = G.fit, G.rows
+  Say("book theme: " .. mod.db.theme .. "  (/qb book paper|dark)")
+  if f then
+    Say(string.format("  left page: text %d px at font %d (set %d) in %d px, %s%s", f.total or 0, f.font or 0, f.base or 0,
+      f.avail or 0, f.fits and "fits" or "SCROLLS", f.plate and (", plate " .. f.plateH .. " px") or ", no map plate"))
+  end
+  if r then
+    Say(string.format("  list: %d quests + %d headers, rows %d px (font %d), %d of %d px, %s", r.quests, r.headers,
+      r.rowH, r.font, r.used, r.avail, r.scrolls and "SCROLLS" or "fits"))
+  end
+end, "book paper|dark: the quest book's theme; with no argument, how the page and the list fit")
 
 QB:RegisterSlash(mod, "dock", function(rest)
   rest = (rest or ""):lower()
@@ -761,7 +1024,7 @@ QB.legacySlash = function(msg)
   local usevoice = msg:match("^usevoice%s+(%d+)")
   if size then
     db.fontSize = math.min(30, math.max(10, tonumber(size)))
-    if Book and Book:IsShown() then ApplyFonts(); if lastEntry then ShowQuest(lastEntry) end end
+    if Book and Book:IsShown() and lastEntry then ShowQuest(lastEntry) end
     Say("font size " .. db.fontSize)
   elseif msg == "dark" then
     db.darken = not db.darken

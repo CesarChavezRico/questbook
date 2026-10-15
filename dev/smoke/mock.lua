@@ -58,7 +58,18 @@ function Frame:IsMouseEnabled() return self.__mouse end
 function Frame:SetText(t) self.__text = t end
 function Frame:GetText() return self.__text end
 function Frame:GetStringWidth() return #tostring(self.__text) * 7 end
-function Frame:GetStringHeight() return 14 end
+function Frame:SetFont(file, size) self.__fsize = size; self.__ffile = file; return true end
+function Frame:SetSpacing(s) self.__spacing = s end
+function Frame:GetStringHeight()
+  -- crude but monotone: wrap by width / (0.5 * font size), one line height = size + spacing
+  local size = self.__fsize or 12
+  local w = self.__w or 100
+  local cpl = math.max(1, math.floor(w / (size * 0.5)))
+  local text = tostring(self.__text or "")
+  local lines = 0
+  for para in (text .. "\n"):gmatch("(.-)\n") do lines = lines + math.max(1, math.ceil(#para / cpl)) end
+  return lines * (size + (self.__spacing or 0))
+end
 function Frame:SetEnabled(b) self.__enabled = b end
 function Frame:IsEnabled() return self.__enabled end
 function Frame:GetName() return self.__name end
@@ -281,3 +292,9 @@ function OpenQuestLog(mapID) __blizzOpenQuestLog = true end
 function QuestMapFrame_OpenToQuestDetails(id) __blizzOpenDetails = id end
 QuestUtil = { OpenQuestDetails = function(id) __blizzPopupDetails = id end }
 function IsPlayerMoving() return false end
+
+-- helpers for scenarios that need a different log / quest text (v0.8)
+function __setLog(newlog) for i = #log, 1, -1 do log[i] = nil end for i, e in ipairs(newlog) do log[i] = e end end
+local qtext = {}
+function __setQuestText(id, desc, obj) qtext[id] = { desc, obj } end
+function GetQuestLogQuestText() local sel = C_QuestLog.GetSelectedQuest(); local t = qtext[sel]; if t then return t[1], t[2] end return "Go and slay the beasts.\n\nThen return.", "Kill 5 things" end

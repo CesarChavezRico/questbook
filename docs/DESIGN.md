@@ -1,7 +1,7 @@
 # QuestBook: design and decisions
 
 What the addon is for, what was decided and why, what has been seen working, and what is still open.
-Written for a new contributor. Status is as of **2026-10-12 (v0.7.5)**. A claim marked *seen* was
+Written for a new contributor. Status is as of **2026-10-13 (v0.8.0)**. A claim marked *seen* was
 reported working in the game by Cesar; *written* means the code exists and has not been seen working;
 *unverified* means it rests on a reading of Blizzard's UI source that nobody has confirmed in the client.
 
@@ -104,6 +104,12 @@ charter was dropped on purpose.
 
 ### The quest log
 
+- **It is an open book** (v0.8.0, *written*): left page the quest text, right page the list. The whole
+  list fits its page (rows shrink to a 16 px minimum); the text fits its page (map plate shrinks first, then
+  the font down to 11, then it scrolls). Parchment theme by default, `/qb book dark` for the faint dark
+  panel. Chosen by Cesar from a mock-up on 2026-10-13: option A (map and text stacked on the left page)
+  over option B (ribbon tabs); a three-panel variant with a thinner list is **open**. Style rules:
+  [STYLE.md](STYLE.md). The map plate itself is a separate step.
 - **It replaces Blizzard's.** Duties: choose the active quest (the "super-tracked" one the game points
   at), track and untrack, turn-in readiness, abandon (through Blizzard's own confirmation), share,
   zone and campaign headers. The reader and the narrated walk-and-listen mode *were seen working* in
