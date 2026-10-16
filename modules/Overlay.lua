@@ -1171,6 +1171,7 @@ function mod:EnsureDriver()
 end
 
 function mod:Apply(target)
+  local hostBefore = self.host
   self.mode = target
   local needZone = target == "zone"
   local panel = self:EnsurePanel()
@@ -1221,6 +1222,8 @@ function mod:Apply(target)
   self:EnsureDriver()
   panel:SetShown(self.host == "big" or (self.zoneOn and self.zoneHost ~= "plate"))
   corner:SetShown(self.host == "corner")
+  -- tell the others where the minimap is now (the tracker sits under the corner one)
+  if self.host ~= hostBefore then QB:Fire("overlay_host", self.host) end
 end
 
 function mod:SetState(state, force)

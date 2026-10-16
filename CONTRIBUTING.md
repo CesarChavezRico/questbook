@@ -11,6 +11,7 @@ Style.lua           palettes (paper / dark), font helpers; see docs/STYLE.md
 modules/QuestLog.lua   the quest log and its duties (the oldest code, from before the modular split)
 modules/Overlay.lua    Off / Minimap / Map, masks, ground, bars, indoor handling
 modules/Camera.lua     lateral shift + zoom-out, CVar backup and restore
+modules/Tracker.lua    the compact quest list that replaces Blizzard's objective tracker
 modules/Strip.lua      the text strip, the Addons handle
 modules/Drawers.lua    the Menu panel (micro menu + bags)
 Textures/              the soft-alpha masks (TGA, 256x256, white with an alpha gradient)
@@ -46,8 +47,8 @@ Rules the design depends on:
    Overlay's "tweak sets" (record the original, apply, undo in reverse) are the pattern to copy.
 4. **No protected-frame work in combat.** Check `QB:InCombat()` and defer to `PLAYER_REGEN_ENABLED`.
 5. **Modules talk through the bus, not through each other's tables.** Current topics:
-   `overlay_state` (`"off" | "local" | "zone"`), `open_full`, `strip_state`, `combat_start`,
-   `combat_end`. Add a topic before you add a cross-module call.
+   `overlay_state` (`"off" | "local" | "zone"`), `overlay_host` (who holds the minimap), `open_full`,
+   `strip_state`, `combat_start`, `combat_end`. Add a topic before you add a cross-module call.
 6. **Settings:** Core fills only *missing* keys, so a value an old version saved beats a changed
    default. When you change what a default means, add a versioned migration (see `OnInit` in
    `Overlay.lua`, which fixed exactly this once). Keep a new version key *out* of the defaults table.
