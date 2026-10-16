@@ -372,7 +372,17 @@ local function Theme() return Style.Get(mod.db.theme) end
 local function ApplyTheme()
   if not Book then return end
   local th = Theme()
-  Book:SetBackdropColor(th.cover[1], th.cover[2], th.cover[3], th.paper and th.cover[4] or (mod.db.bgAlpha or 0.62))
+  -- The backdrop's own fill is drawn ABOVE ordinary BACKGROUND textures in this client (measured on a
+  -- screenshot, 2026-10-15: parchment showed at 2% through it). So on paper the fill is switched off and
+  -- the leather is a plain texture beneath the pages; the dark theme keeps the backdrop fill.
+  if th.paper then
+    Book:SetBackdropColor(th.cover[1], th.cover[2], th.cover[3], 0)
+    Book.coverTex:SetColorTexture(th.cover[1], th.cover[2], th.cover[3], th.cover[4])
+    Book.coverTex:Show()
+  else
+    Book:SetBackdropColor(th.cover[1], th.cover[2], th.cover[3], mod.db.bgAlpha or 0.62)
+    Book.coverTex:Hide()
+  end
   Book:SetBackdropBorderColor(th.coverEdge[1], th.coverEdge[2], th.coverEdge[3], th.coverEdge[4])
   Book.coverLow:SetShown(th.paper)
   for _, t in ipairs({ Book.shadeL, Book.shadeR, Book.shadeT, Book.shadeB }) do t:SetShown(th.paper) end
@@ -638,6 +648,9 @@ local function BuildBook()
 
   -- shading on the paper: the reference's pages are not flat (edges darken, the spine shades);
   -- flat colour read as "bad colours" in the first client run. Cover gradient and edge shades:
+  Book.coverTex = Book:CreateTexture(nil, "BACKGROUND", nil, -8)
+  Book.coverTex:SetPoint("TOPLEFT", Book, "TOPLEFT", 1, -1)
+  Book.coverTex:SetPoint("BOTTOMRIGHT", Book, "BOTTOMRIGHT", -1, 1)
   Book.coverLow = Book:CreateTexture(nil, "BACKGROUND", nil, -7)
   Book.coverLow:SetPoint("BOTTOMLEFT", Book, "BOTTOMLEFT", 1, 1)
   Book.coverLow:SetPoint("BOTTOMRIGHT", Book, "BOTTOMRIGHT", -1, 1)
