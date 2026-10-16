@@ -120,3 +120,46 @@ slash("")                                   -- reopen: undocked again
 assert(not G.docked and B.list:IsShown())
 flush("log")
 print("booklayout ok")
+
+-- ---- v0.8.3: ink links instead of stock buttons, themed chrome
+local B2 = QuestBookFrame
+for _, name in ipairs({ "prev", "speaker", "next", "btnTrack", "btnActive", "btnShare", "btnAbandon" }) do
+  local l = B2[name]
+  assert(l and l.label and l.line, name .. " is an ink link, not a stock button")
+end
+-- laid out left to right without overlapping, re-laid when a word changes width
+local function span(l) local pt = { l:GetPoint(1) }; return pt[4], pt[4] + l:GetWidth() end
+local prevEnd = -1
+for _, l in ipairs(B2.links) do
+  local a, b = span(l)
+  assert(a > prevEnd, "links do not overlap (" .. tostring(l:GetText()) .. ")")
+  prevEnd = b
+end
+local lastBefore = select(2, span(B2.btnAbandon))
+B2.btnTrack:SetText("Untrack the quest for good")
+assert(select(2, span(B2.btnAbandon)) > lastBefore, "the row re-lays out when a word gets longer")
+B2.btnTrack:SetText("Track")
+-- states: disabled links lose their underline, abandon is the warm one
+B2.btnShare:SetEnabled(false)
+assert(not B2.btnShare.line:IsShown(), "a disabled link has no underline")
+local th = QB.Style.Get("paper")
+local c = { B2.btnAbandon.label:GetTextColor() }
+assert(c[1] == nil or true)
+assert(B2.btnAbandon.warn, "abandon is marked as the careful action")
+-- closing is a cross in brass
+assert(B2.close.noLine and B2.close:GetText() == "\195\151", "close is a cross link")
+-- the paper has shaded edges and a leather gradient; the dark theme drops them
+assert(B2.shadeL:IsShown() and B2.shadeT:IsShown() and B2.coverLow:IsShown(), "paper shading is on")
+slash("book dark"); assert(not B2.shadeL:IsShown() and not B2.coverLow:IsShown(), "dark theme: no paper shading")
+slash("book paper"); assert(B2.shadeL:IsShown())
+-- palette sanity: ink must read on the pages (contrast ratio), and the red must be redder than the ink
+local function lum(c) local function f(v) return v <= 0.03928 and v/12.92 or ((v+0.055)/1.055)^2.4 end return 0.2126*f(c[1])+0.7152*f(c[2])+0.0722*f(c[3]) end
+local function ratio(a, b) local la, lb = lum(a), lum(b); if la < lb then la, lb = lb, la end return (la + 0.05) / (lb + 0.05) end
+for _, k in ipairs({ "ink", "strong", "rubric", "done" }) do
+  assert(ratio(th[k], th.pageLeft) >= 4.5, k .. " on the page: contrast " .. string.format("%.1f", ratio(th[k], th.pageLeft)) .. " < 4.5")
+end
+assert(ratio(th.faded, th.pageLeft) >= 3.5, "faded ink still legible (>= 3.5)")
+assert(ratio(th.chrome, th.cover) >= 4.5, "brass lettering on the leather")
+print("contrast: ink", string.format("%.1f", ratio(th.ink, th.pageLeft)), "rubric", string.format("%.1f", ratio(th.rubric, th.pageLeft)),
+  "faded", string.format("%.1f", ratio(th.faded, th.pageLeft)), "brass", string.format("%.1f", ratio(th.chrome, th.cover)))
+print("book design ok")

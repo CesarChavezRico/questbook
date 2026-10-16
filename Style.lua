@@ -21,22 +21,33 @@ Style.THEMES = {
   -- parchment pages in a dark leather cover
   paper = {
     paper = true,
-    cover = { 0.23, 0.16, 0.10, 0.97 },
-    coverEdge = { 0.07, 0.05, 0.03, 1 },
-    pageLeft = { 0.86, 0.77, 0.58, 1 },
-    pageRight = { 0.84, 0.74, 0.55, 1 },
-    gutter = { 0.20, 0.13, 0.06 },        -- shade near the spine, drawn as a few faint strips
-    ink = { 0.24, 0.16, 0.07 },
-    strong = { 0.13, 0.08, 0.03 },
-    faded = { 0.44, 0.35, 0.21 },
-    rubric = { 0.50, 0.10, 0.05 },        -- headings, the active mark
-    done = { 0.18, 0.36, 0.16 },          -- finished objectives, "ready to turn in"
-    pending = { 0.24, 0.16, 0.07 },
-    selected = { 0.45, 0.28, 0.08, 0.24 },
-    hover = { 0.24, 0.16, 0.07, 0.10 },
-    hairline = { 0.24, 0.16, 0.07, 0.45 },
-    plateEdge = { 0.24, 0.16, 0.07, 0.65 },
+    -- Sampled 2026-10-16 from a screenshot of the reference book in the game (pages about
+    -- 0.82/0.67/0.47, cover 0.28/0.20/0.14 fading to 0.17/0.11/0.08): the reference renders
+    -- warmer, darker and more saturated than its own flat-colour constants, because its pages
+    -- carry grain and shaded edges. We reach that look with edge shading instead of grain.
+    cover = { 0.25, 0.18, 0.12, 0.98 },
+    coverLow = { 0.15, 0.10, 0.07, 0.98 },
+    coverEdge = { 0.62, 0.47, 0.22, 0.85 },   -- the brass edge
+    pageLeft = { 0.83, 0.70, 0.50, 1 },
+    pageRight = { 0.81, 0.68, 0.48, 1 },
+    pageShade = { 0.30, 0.18, 0.06 },         -- the edge / spine shading, drawn at low alpha
+    gutter = { 0.30, 0.18, 0.06 },
+    ink = { 0.25, 0.15, 0.06 },
+    strong = { 0.12, 0.06, 0.02 },
+    faded = { 0.40, 0.29, 0.12 },
+    rubric = { 0.52, 0.12, 0.06 },            -- headings, the active mark
+    done = { 0.10, 0.28, 0.10 },              -- finished objectives, "ready to turn in"
+    pending = { 0.25, 0.15, 0.06 },
+    selected = { 0.45, 0.28, 0.08, 0.26 },
+    hover = { 0.25, 0.15, 0.06, 0.10 },
+    hairline = { 0.25, 0.15, 0.06, 0.45 },
+    plateEdge = { 0.33, 0.23, 0.13, 0.95 },   -- the map plate's frame (sampled: 0.33/0.23/0.14)
     plateFill = { 0.93, 0.87, 0.70, 1 },
+    -- lettering on the leather cover (the action links): tooled brass, cream when lit
+    chrome = { 0.85, 0.70, 0.42 },
+    chromeHot = { 0.98, 0.92, 0.76 },
+    chromeWarn = { 0.90, 0.50, 0.38 },
+    chromeOff = { 0.55, 0.47, 0.36 },
   },
   -- the faint dark panel of the strip and the Menu drawer
   dark = {
@@ -54,6 +65,11 @@ Style.THEMES = {
     hairline = { 0.85, 0.82, 0.72, 0.30 },
     plateEdge = { 0.85, 0.82, 0.72, 0.45 },
     plateFill = { 0.10, 0.09, 0.08, 1 },
+    chrome = { 0.85, 0.82, 0.72 },
+    chromeHot = { 1, 0.96, 0.82 },
+    chromeWarn = { 0.90, 0.50, 0.38 },
+    chromeOff = { 0.50, 0.48, 0.42 },
+    pageShade = { 0, 0, 0 },
   },
 }
 
@@ -110,4 +126,71 @@ function Style.Clamp(v, lo, hi)
   if v < lo then return lo end
   if v > hi then return hi end
   return v
+end
+
+-- A two-colour gradient on a texture. SetGradient takes colour objects in current clients; where
+-- that fails, a flat wash at the average alpha is close enough. `orient` HORIZONTAL or VERTICAL;
+-- `from` is the left (or bottom) end, `to` the right (or top). Colours are { r, g, b, a }.
+function Style.Gradient(tex, orient, from, to)
+  local ok = false
+  if tex.SetGradient and CreateColor then
+    ok = pcall(tex.SetGradient, tex, orient,
+      CreateColor(from[1], from[2], from[3], from[4] or 1), CreateColor(to[1], to[2], to[3], to[4] or 1))
+  end
+  if not ok then
+    tex:SetColorTexture((from[1] + to[1]) / 2, (from[2] + to[2]) / 2, (from[3] + to[3]) / 2,
+      ((from[4] or 1) + (to[4] or 1)) / 2)
+  end
+end
+
+-- Text that behaves like a link: a word with a hairline under it, brighter when the mouse is on
+-- it. This replaces the stock red buttons: the reference design names "rows of big red buttons
+-- that all look equally important" as the thing to avoid, and uses links for those choices.
+-- `tone`: a function returning the theme's colour table { normal, hot, warn, off }.
+-- Methods: SetText, SetEnabled, SetWarn(bool); `link.noLine = true` drops the underline (a cross). A parent that lays links out in a row sets
+-- link.onResize to be told when the text (and so the width) changed.
+function Style.Link(parent, onClick, getTone)
+  local link = CreateFrame("Button", nil, parent)
+  link:SetHeight(18)
+  link.label = link:CreateFontString(nil, "OVERLAY")
+  link.label:SetFont(Style.FRIZ, 12, "")
+  link.label:SetPoint("LEFT")
+  link.label:SetJustifyH("LEFT")
+  link.line = link:CreateTexture(nil, "ARTWORK")
+  link.line:SetHeight(1)
+  link.line:SetPoint("TOPLEFT", link.label, "BOTTOMLEFT", 0, -1)
+  link.line:SetPoint("TOPRIGHT", link.label, "BOTTOMRIGHT", 0, -1)
+  link.enabled, link.warn, link.over = true, false, false
+
+  local function Paint(self)
+    local t = getTone()
+    local c = t.chrome
+    if not self.enabled then c = t.chromeOff
+    elseif self.warn then c = t.chromeWarn
+    elseif self.over then c = t.chromeHot end
+    self.label:SetTextColor(c[1], c[2], c[3], 1)
+    self.line:SetColorTexture(c[1], c[2], c[3], self.over and 0.9 or 0.45)
+    self.line:SetShown(self.enabled and not self.noLine)
+  end
+  link.Paint = Paint
+
+  function link:SetText(text)
+    self.label:SetText(text)
+    self:SetWidth(math.max(self.label:GetStringWidth(), 8) + 2)
+    if self.onResize then self.onResize() end
+  end
+  function link:GetText() return self.label:GetText() end
+  function link:SetEnabled(on)
+    self.enabled = on and true or false
+    if not self.enabled then self.over = false end
+    self:Paint()
+  end
+  function link:IsEnabled() return self.enabled end
+  function link:SetWarn(on) self.warn = on and true or false; self:Paint() end
+
+  link:SetScript("OnEnter", function(self) self.over = true; self:Paint() end)
+  link:SetScript("OnLeave", function(self) self.over = false; self:Paint() end)
+  link:SetScript("OnClick", function(self, ...) if self.enabled then onClick(self, ...) end end)
+  link:Paint()
+  return link
 end

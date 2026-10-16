@@ -27,9 +27,20 @@ Do not mix them on one surface: a half-paper panel looks worse than either. The 
   refuses the Morpheus file the title falls back to the normal font.
 - **Selected and hovered rows** are shaded with ink at low alpha, not a bright highlight.
 - **Hairlines** (rules, borders) are ink at about 45% opacity, so the paper shows through.
-- Stock widgets (buttons, close button, scroll bars) are still Blizzard's; only the widely used ones
-  are borrowed, to keep taint risk low. They look out of place on paper and are the next thing to
-  restyle if the theme stays.
+- **Actions are ink links, not buttons.** A word with a hairline under it, brighter when the mouse is on
+  it; a disabled one loses its line; the careful action (Abandon) is the warm one. The reference design
+  lists "rows of big red buttons that all look equally important" as an anti-reference and uses links for
+  those choices. On the cover they are tooled brass (cream when lit); on a page they would be ink.
+  Close is a brass cross. `Style.Link` is the one widget for this; do not add a stock button to the book.
+- **Pages are shaded, not flat.** The reference renders warmer, darker and more saturated than its own
+  flat-colour constants because its pages carry grain and shaded edges. We sampled its screenshot
+  (pages about 0.82/0.67/0.47, cover 0.28/0.20/0.14 darkening to 0.17/0.11/0.08) and reach the look with
+  gradients: outer page edges, the top and bottom, the spine, and a leather that darkens downward.
+- **Contrast is tested** (`dev/smoke/booklayout.lua`): ink, rubric and the done-green must reach 4.5:1 on
+  the page, faded ink 3.5:1, brass lettering 4.5:1 on the leather. The first sampled palette failed it
+  (done-green 3.9:1); change a colour and the test tells you.
+- The scroll bars are still Blizzard's (widely used, low taint risk); they look out of place on paper and
+  are the next thing to restyle.
 
 ## Fit rules (the book)
 
