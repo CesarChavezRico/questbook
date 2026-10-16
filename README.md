@@ -25,7 +25,7 @@ It is one addon built from isolated modules, so a fault in one cannot take down 
 
 Also written, not yet played: a small corner minimap for glancing in combat (the same minimap widget, up whenever the big one is not in use, so it is back when combat closes the overlay).
 
-Written, not yet played: our own look for the quest areas on the enlarged minimap (flat brass fill and a thin outline instead of the default art).
+Written, not yet played: the `markers` module (our quest markers on the minimap, in place of the client's quest areas). The earlier attempt to restyle those areas did not change anything in the game and was removed.
 What was decided and why, what has been seen working in the game and what has not, and what is
 still open: [docs/DESIGN.md](docs/DESIGN.md).
 
@@ -50,7 +50,6 @@ reason when a module is unavailable.
   `say`, `debug`, `dock left|right`, `log replace|blizzard`, `blizzlog`.
 - Overlay: `/qb overlay cycle | off | local | zone`, `shape`, `size`, `alpha`, `rotate`, `corner on|off|size|pos|alpha|rotate|mask`,
   `ground auto|native|hybrid`, `bars actions|all|none`, `icons <n>`, `mask`, `diag`.
-- Quest areas on the minimap: `/qb overlay blobs brass|soft|off|native`, `fill|ring|halo <0-1>`, `thick auto|<n>`, `solo inside|outside|ring|none` (shows one layer at a time, to find out which is which).
 - Markers: `/qb markers all|tracked|map`, `size <n>`, `scale <n>`, `areas native|hidden` (no argument: status; `map` also draws quest givers, to line the markers up with the client's own "!" blips; `scale` corrects the distance).
 - Tracker: `/qb tracker all|tracked|width <n>|alpha <0-1>|lines <n>|max <fraction>` (no argument: status).
 - Camera: `/qb camera flip | strength <n> | zoomout <n> | zoom <n> | ease <s> | on | off`.
