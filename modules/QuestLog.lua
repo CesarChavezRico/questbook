@@ -374,11 +374,24 @@ local function ApplyTheme()
   local th = Theme()
   Book:SetBackdropColor(th.cover[1], th.cover[2], th.cover[3], th.paper and th.cover[4] or (mod.db.bgAlpha or 0.62))
   Book:SetBackdropBorderColor(th.coverEdge[1], th.coverEdge[2], th.coverEdge[3], th.coverEdge[4])
+  Book.coverLow:SetShown(th.paper)
+  for _, t in ipairs({ Book.shadeL, Book.shadeR, Book.shadeT, Book.shadeB }) do t:SetShown(th.paper) end
   if th.paper then
     Book.pageL:SetColorTexture(th.pageLeft[1], th.pageLeft[2], th.pageLeft[3], th.pageLeft[4])
     Book.pageR:SetColorTexture(th.pageRight[1], th.pageRight[2], th.pageRight[3], th.pageRight[4])
     for _, t in ipairs(Book.spine) do t:SetColorTexture(th.gutter[1], th.gutter[2], th.gutter[3], t.alphaWant) end
+    -- leather darkens toward the bottom
+    Style.Gradient(Book.coverLow, "VERTICAL", { th.coverLow[1], th.coverLow[2], th.coverLow[3], 0.9 },
+      { th.cover[1], th.cover[2], th.cover[3], 0 })
+    -- outer edges of each page shade into the paper (strength 0.28), drawn as gradients
+    local sh = th.pageShade
+    Style.Gradient(Book.shadeL, "HORIZONTAL", { sh[1], sh[2], sh[3], 0.30 }, { sh[1], sh[2], sh[3], 0 })
+    Style.Gradient(Book.shadeR, "HORIZONTAL", { sh[1], sh[2], sh[3], 0 }, { sh[1], sh[2], sh[3], 0.30 })
+    Style.Gradient(Book.shadeT, "VERTICAL", { sh[1], sh[2], sh[3], 0 }, { sh[1], sh[2], sh[3], 0.22 })
+    Style.Gradient(Book.shadeB, "VERTICAL", { sh[1], sh[2], sh[3], 0.22 }, { sh[1], sh[2], sh[3], 0 })
   end
+  for _, l in ipairs(Book.links or {}) do l:Paint() end
+  if Book.close then Book.close:Paint() end
   Style.SetInk(Book.listHead, th.faded)
   Style.SetInk(Book.legend, th.faded)
   Style.SetFont(Book.listHead, "body", 11, th)
@@ -504,6 +517,26 @@ local function ApplyLayout()
     Book.pageR:SetPoint("TOPLEFT", Book, "TOPLEFT", rightX, -TOP)
     Book.pageR:SetPoint("BOTTOMRIGHT", Book, "BOTTOMRIGHT", -12, BOTTOM)
   end
+  if showPages then
+    local SHW = 46
+    Book.shadeL:ClearAllPoints()
+    Book.shadeL:SetPoint("TOPLEFT", Book.pageL, "TOPLEFT", 0, 0)
+    Book.shadeL:SetPoint("BOTTOMLEFT", Book.pageL, "BOTTOMLEFT", 0, 0)
+    Book.shadeL:SetWidth(SHW)
+    Book.shadeR:ClearAllPoints()
+    Book.shadeR:SetPoint("TOPRIGHT", Book.pageR, "TOPRIGHT", 0, 0)
+    Book.shadeR:SetPoint("BOTTOMRIGHT", Book.pageR, "BOTTOMRIGHT", 0, 0)
+    Book.shadeR:SetWidth(SHW)
+    Book.shadeR:SetShown(not docked)
+    Book.shadeT:ClearAllPoints()
+    Book.shadeT:SetPoint("TOPLEFT", Book.pageL, "TOPLEFT", 0, 0)
+    Book.shadeT:SetPoint("TOPRIGHT", docked and Book.pageL or Book.pageR, "TOPRIGHT", 0, 0)
+    Book.shadeT:SetHeight(28)
+    Book.shadeB:ClearAllPoints()
+    Book.shadeB:SetPoint("BOTTOMLEFT", Book.pageL, "BOTTOMLEFT", 0, 0)
+    Book.shadeB:SetPoint("BOTTOMRIGHT", docked and Book.pageL or Book.pageR, "BOTTOMRIGHT", 0, 0)
+    Book.shadeB:SetHeight(28)
+  end
   for i, t in ipairs(Book.spine) do
     t:SetShown(showPages and not docked)
     if showPages and not docked then
@@ -552,12 +585,23 @@ local function NewText(parent, size)
   return fs
 end
 
-local function MakeButton(parent, label, x, w, onClick)
-  local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-  b:SetSize(w, 22); b:SetPoint("TOPLEFT", x, -6)
-  b:SetText(label)
-  b:SetScript("OnClick", Guard(onClick))
-  return b
+-- An action word on the cover: ink-link style (Style.Link), not a stock button. The row is laid out
+-- by LayoutLinks, since the words change (Track / Untrack, talk / stop) and so do their widths.
+local function MakeLink(parent, label, onClick)
+  local l = Style.Link(parent, Guard(onClick), function() return Theme() end)
+  l:SetText(label)
+  return l
+end
+
+-- The row: [<] [talk] [>]   Track  Active  Share  Abandon  ... close at the right.
+local function LayoutLinks()
+  if not (Book and Book.links) then return end
+  local x = 14
+  for i, l in ipairs(Book.links) do
+    l:ClearAllPoints()
+    l:SetPoint("TOPLEFT", Book, "TOPLEFT", x, -9)
+    x = x + l:GetWidth() + (l.gapAfter or 16)
+  end
 end
 
 local function BuildBook()
@@ -592,21 +636,41 @@ local function BuildBook()
     Book.spine[i] = t
   end
 
-  Book.close = CreateFrame("Button", nil, Book, "UIPanelCloseButton")
-  Book.close:SetPoint("TOPRIGHT", -2, -2)
-  Book.close:SetScript("OnClick", Guard(function()
+  -- shading on the paper: the reference's pages are not flat (edges darken, the spine shades);
+  -- flat colour read as "bad colours" in the first client run. Cover gradient and edge shades:
+  Book.coverLow = Book:CreateTexture(nil, "BACKGROUND", nil, -7)
+  Book.coverLow:SetPoint("BOTTOMLEFT", Book, "BOTTOMLEFT", 1, 1)
+  Book.coverLow:SetPoint("BOTTOMRIGHT", Book, "BOTTOMRIGHT", -1, 1)
+  Book.coverLow:SetHeight(120)
+  Book.shadeL = Book:CreateTexture(nil, "BACKGROUND", nil, -4)     -- left page: outer edge darkens
+  Book.shadeR = Book:CreateTexture(nil, "BACKGROUND", nil, -4)     -- right page: outer edge darkens
+  Book.shadeT = Book:CreateTexture(nil, "BACKGROUND", nil, -4)     -- under the cover's top edge
+  Book.shadeB = Book:CreateTexture(nil, "BACKGROUND", nil, -4)     -- bottom edge, a page stack's shadow
+
+  -- close: a cross in tooled brass, not the stock red-and-gold button
+  Book.close = Style.Link(Book, function()
     StopSpeaking()
     Book:Hide()
-  end))
+  end, function() return Theme() end)
+  Book.close.noLine = true                        -- a cross needs no underline
+  Book.close.label:SetFont(Style.FRIZ, 16, "")
+  Book.close:SetText("\195\151")                -- the multiplication sign, U+00D7
+  Book.close:SetHeight(20)
+  Book.close:SetPoint("TOPRIGHT", Book, "TOPRIGHT", -8, -6)
 
   -- control strip: [<] [talk] [>]  then the log duties (they act on the quest on the page)
-  Book.prev = MakeButton(Book, "<", 8, 26, function() NavQuest(-1) end)
-  Book.speaker = MakeButton(Book, "talk", 38, 52, function() SpeakerToggle() end)
-  Book.next = MakeButton(Book, ">", 94, 26, function() NavQuest(1) end)
-  Book.btnTrack = MakeButton(Book, "Track", 130, 62, function() ToggleTrack(lastEntry) end)
-  Book.btnActive = MakeButton(Book, "Active", 196, 62, function() ToggleActive(lastEntry) end)
-  Book.btnShare = MakeButton(Book, "Share", 262, 56, function() ShareQuest(lastEntry) end)
-  Book.btnAbandon = MakeButton(Book, "Abandon", 322, 70, function() AbandonQuest(lastEntry) end)
+  Book.prev = MakeLink(Book, "<", function() NavQuest(-1) end)
+  Book.speaker = MakeLink(Book, "talk", function() SpeakerToggle() end)
+  Book.next = MakeLink(Book, ">", function() NavQuest(1) end)
+  Book.btnTrack = MakeLink(Book, "Track", function() ToggleTrack(lastEntry) end)
+  Book.btnActive = MakeLink(Book, "Active", function() ToggleActive(lastEntry) end)
+  Book.btnShare = MakeLink(Book, "Share", function() ShareQuest(lastEntry) end)
+  Book.btnAbandon = MakeLink(Book, "Abandon", function() AbandonQuest(lastEntry) end)
+  Book.btnAbandon:SetWarn(true)
+  Book.prev.gapAfter, Book.next.gapAfter, Book.speaker.gapAfter = 10, 26, 10
+  Book.links = { Book.prev, Book.speaker, Book.next, Book.btnTrack, Book.btnActive, Book.btnShare, Book.btnAbandon }
+  for _, l in ipairs(Book.links) do l.onResize = LayoutLinks end
+  LayoutLinks()
 
   -- right page: the list
   Book.listHead = NewText(Book, 11)
@@ -651,6 +715,7 @@ local function UpdateButtons(entry)
   Book.btnActive:SetText(IsActiveQuest(entry.questID) and "Clear" or "Active")
   Book.btnShare:SetEnabled(CanShare(entry))
   Book.btnAbandon:SetEnabled(true)
+  LayoutLinks()
 end
 
 -- Which list row shows the quest on the page.
