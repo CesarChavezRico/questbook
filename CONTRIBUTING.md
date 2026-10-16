@@ -12,6 +12,7 @@ modules/QuestLog.lua   the quest log and its duties (the oldest code, from befor
 modules/Overlay.lua    Off / Minimap / Map, masks, ground, bars, indoor handling
 modules/Camera.lua     lateral shift + zoom-out, CVar backup and restore
 modules/Tracker.lua    the compact quest list that replaces Blizzard's objective tracker
+modules/Markers.lua    our quest markers on the minimap; switches the client's quest areas off
 modules/Strip.lua      the text strip, the Addons handle
 modules/Drawers.lua    the Menu panel (micro menu + bags)
 Textures/              the soft-alpha masks (TGA, 256x256, white with an alpha gradient)

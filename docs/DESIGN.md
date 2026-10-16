@@ -134,17 +134,24 @@ charter was dropped on purpose.
 
 - **The problem** (Cesar's screenshot, 2026-10-15): at about six times the stock size the client's own quest-area art
   becomes thick glowing blue outlines and a grey band of large squares, which fights the paper-and-brass look.
-- **What the game allows** (`MinimapFrameAPIDocumentation.lua`): setters only, no getters, no descriptions. For the
-  quest blob, the task blob (world quests) and the archaeology blob: an alpha and a texture for each of INSIDE,
-  OUTSIDE and RING, and a ring scalar. The functionality (the areas themselves, where they are) stays the
-  client's; we only restyle it.
-- **What v0.9.1 does** (*written*): replaces the textures with flat brass ones, so the look is ours: a faint fill
-  (0.14), a clear outline (0.80), no halo, and an outline thickness that follows the size (`auto` = stock width /
-  our width, so the big minimap does not get a fat band). Applied to the quest and task blobs, not archaeology.
-  `/qb overlay blobs` tunes every part live; `native` leaves the client alone (it takes a `/reload` to come back,
-  since the client's own values cannot be read).
-- **Unverified:** which layer makes which part of the ugly look, whether the scalar thins the ring, and whether a
-  flat texture is accepted as a blob texture. The `solo` command exists to answer the first from one screenshot.
+- **What was tried and did not work** (v0.9.1, seen in the game 2026-10-16): the Minimap widget has setters for the
+  quest, task and archaeology blobs (alpha and texture for INSIDE, OUTSIDE and RING, a ring scalar;
+  `MinimapFrameAPIDocumentation.lua`, no getters, no descriptions). Calling them with flat brass textures and
+  different alphas was accepted without error and changed nothing visible: `solo` on each layer, and every layer at
+  alpha 0, left the same green disc with a pale glow. The texture files were valid. The forever-bugs issue 156
+  (2026-09-26) reports that these areas also ignore the minimap's own alpha, which points to the client drawing them
+  outside the widget's normal path. Older addon work only ever hid the "waffle" ring (`SetQuestBlobRingScalar(0)`);
+  nobody documents replacing the art. The restyle code was removed in v0.10.0.
+- **What v0.10.0 does** (*written, not played*): the `markers` module. It switches the areas off through the minimap's
+  "Quest POIs" tracking filter (`Enum.MinimapTrackingFilter.QuestPOIs`, `C_Minimap.SetTracking`; remembered and
+  given back on disable) and draws its own marker per quest over the big and the corner minimap, from
+  `C_QuestLog.GetQuestsOnMap` and `C_Map.GetPlayerMapPosition`, with the distance scale from
+  `C_Minimap.GetViewRadius()`. This also gives every quest in the log a marker with the active one highlighted, which
+  is what Cesar remembers from retail; the client itself draws only one area.
+- **Unverified (the client has to say):** that the tracking filter removes the areas (and not the quest-giver "!"
+  blips with them); that `GetViewRadius()` is centre-to-edge as drawn on the enlarged widget (`/qb markers scale`
+  corrects it, `/qb markers map` draws quest givers so the markers can be lined up with the client's own "!" blips);
+  that the rotation formula matches the client's.
 
 ### The tracker
 
@@ -190,9 +197,7 @@ charter was dropped on purpose.
 
 ## Open
 
-- **Quest areas: which layer is which.** The client draws each area in three layers (inside, outside, ring) and the
-  docs describe none of them; `/qb overlay blobs solo <layer>` shows one at a time. Until someone has looked, the
-  defaults are a guess (see The quest areas, below).
+- **Quest markers on the minimap** are written and not yet played: see The quest areas on the enlarged minimap.
 - **Which extra pin kinds** a future custom map shows (flight points, vignettes, points of interest).
 - **A new name.** The addon keeps the name `QuestBook` until its first merged release, then is renamed
   (repo name, install folder, whether `/qb` stays as an alias, whether `QuestBookDB` is kept so settings
