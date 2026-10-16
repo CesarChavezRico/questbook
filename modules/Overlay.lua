@@ -36,6 +36,11 @@ local mod = QB:NewModule("overlay", {
                        -- "auto" = native, but hybrid where the native ground is blank (indoors)
   bars = "actions",    -- hidden while a map mode is open: "actions" | "all" (adds xp/rep bars) | "none"
   iconScale = 1,       -- Minimap:SetIconScale for blips (1 = Blizzard's default)
+  blobs = "brass",     -- quest areas: "brass" (our fill + thin outline) | "soft" (fill only) | "off" | "native" (untouched)
+  blobFill = 0.14,     -- alpha of the area's fill
+  blobRing = 0.80,     -- alpha of its outline
+  blobHalo = 0.0,      -- alpha of the "outside" layer (what it is, exactly, is not documented)
+  blobScalar = "auto", -- outline thickness: "auto" = native size / our size, or a number
   plateZoom = 1.6,     -- the quest book's map plate: magnification over "whole zone fits the plate"
   corner = true,       -- the small always-on minimap (when the big one is not in use)
   cornerSize = 0.16,   -- fraction of screen height (square)
@@ -429,6 +434,7 @@ function mod:LocalUpdate()
   if resized then self:RefreshMinimapZoom() end
   Try("ground", self.ApplyGround, self)
   Try("icon scale", self.ApplyIconScale, self)
+  Try("quest areas", self.ApplyBlobs, self)
 end
 
 -- After the widget changes size the client keeps blip positions from the old size until the
@@ -442,6 +448,78 @@ function mod:RefreshMinimapZoom()
   local alt = (z > 0) and (z - 1) or (z + 1)
   pcall(mm.SetZoom, mm, alt)
   pcall(mm.SetZoom, mm, z)
+end
+
+-- ---------------------------------------------------------------- quest areas
+--
+-- The client draws a quest's area on the minimap itself, in three layers (the setters exist for the
+-- quest blob, the task blob = world quests, and the archaeology blob; Blizzard_APIDocumentationGenerated/
+-- MinimapFrameAPIDocumentation.lua): INSIDE (the fill), OUTSIDE and the RING (the outline), each with an
+-- alpha and a texture, and a ring "scalar". The docs give no descriptions and there are NO getters.
+-- Enlarged about 6x, the default art turned into thick glowing blue outlines and a grey band of big
+-- squares (Cesar's screenshot, 2026-10-15), so the textures are replaced with flat brass ones, which
+-- makes the look our alphas and the outline thickness.
+-- UNVERIFIED: which layer is which in practice, whether the scalar thins the ring, and whether a flat
+-- texture is accepted. /qb overlay blobs solo <layer> shows one layer at a time to find out.
+-- Without getters the client's own values cannot be put back: they return at the next /reload.
+
+local NATIVE_MINIMAP = 140            -- the stock minimap's width in UI units, for the "auto" scalar
+local BLOB_LAYERS = { "Inside", "Outside", "Ring" }
+
+local function CallBlob(mm, kind, layer, what, value)
+  local fn = mm["Set" .. kind .. "Blob" .. layer .. what]
+  if type(fn) == "function" then return (pcall(fn, mm, value)) end
+  return false
+end
+
+function mod:BlobValues()
+  local db = self.db
+  local mm = G("Minimap")
+  local w = (mm and mm.GetWidth and mm:GetWidth()) or NATIVE_MINIMAP
+  local scalar = db.blobScalar
+  if scalar == "auto" or tonumber(scalar) == nil then
+    scalar = clamp(NATIVE_MINIMAP / math.max(w, 1), 0.05, 1)
+  else
+    scalar = clamp(tonumber(scalar), 0.02, 4)
+  end
+  local fill, ring, halo = clamp(tonumber(db.blobFill) or 0.14, 0, 1), clamp(tonumber(db.blobRing) or 0.8, 0, 1),
+    clamp(tonumber(db.blobHalo) or 0, 0, 1)
+  local style = db.blobs
+  if style == "off" then fill, ring, halo = 0, 0, 0
+  elseif style == "soft" then ring, halo = 0, 0 end
+  return { Inside = fill, Outside = halo, Ring = ring }, scalar
+end
+
+function mod:ApplyBlobs()
+  local mm = G("Minimap")
+  if not mm then return end
+  local style = self.db.blobs
+  if style == "native" and not self.blobTouched then return end     -- never touched: leave it alone
+  local alphas, scalar = self:BlobValues()
+  if self.blobSolo then                                              -- diagnostic: one layer at full strength
+    for _, l in ipairs(BLOB_LAYERS) do alphas[l] = (l == self.blobSolo) and 1 or 0 end
+  end
+  local key = string.format("%s|%.3f|%.3f|%.3f|%.3f|%s", tostring(style), alphas.Inside, alphas.Outside, alphas.Ring,
+    scalar, tostring(self.blobSolo))
+  if key == self.blobKey then return end
+  self.blobKey = key
+  self.blobTouched = true
+  local ok = 0
+  for _, kind in ipairs({ "Quest", "Task" }) do
+    if style == "brass" or style == "soft" or style == "off" then
+      -- flat brass textures: the look is ours; set once per session is enough, but cheap to repeat
+      ok = ok + (CallBlob(mm, kind, "Inside", "Texture", TEX .. "blob_fill.tga") and 1 or 0)
+      ok = ok + (CallBlob(mm, kind, "Outside", "Texture", TEX .. "blob_fill.tga") and 1 or 0)
+      ok = ok + (CallBlob(mm, kind, "Ring", "Texture", TEX .. "blob_ring.tga") and 1 or 0)
+    end
+    for _, l in ipairs(BLOB_LAYERS) do ok = ok + (CallBlob(mm, kind, l, "Alpha", alphas[l]) and 1 or 0) end
+    ok = ok + (CallBlob(mm, kind, "Ring", "Scalar", scalar) and 1 or 0)
+  end
+  self.blobCalls = ok
+  if ok == 0 and not self.blobWarned then
+    self.blobWarned = true
+    QB:Say("overlay: this client has no quest-area setters on the minimap; the areas keep their default look")
+  end
 end
 
 function mod:ApplyIconScale()
@@ -1546,6 +1624,29 @@ QB:RegisterSlash(mod, "overlay", function(rest)
     mod:ApplyBars(false)
     db.bars = arg
     mod:ApplyBars(mod.state ~= "off")
+  elseif sub == "blobs" then
+    -- /qb overlay blobs brass|soft|off|native | fill <a> | ring <a> | halo <a> | thick auto|<n> | solo inside|outside|ring|none
+    local w1, w2 = arg:match("^(%S*)%s*(%S*)$")
+    local x = tonumber(w2)
+    if w1 == "brass" or w1 == "soft" or w1 == "off" or w1 == "native" then
+      db.blobs = w1
+      if w1 == "native" then QB:Say("overlay: native look needs /reload to come back; the client's own values cannot be read") end
+    elseif w1 == "fill" and x then db.blobFill = clamp(x, 0, 1)
+    elseif w1 == "ring" and x then db.blobRing = clamp(x, 0, 1)
+    elseif w1 == "halo" and x then db.blobHalo = clamp(x, 0, 1)
+    elseif w1 == "thick" and (w2 == "auto" or x) then db.blobScalar = (w2 == "auto") and "auto" or x
+    elseif w1 == "solo" then
+      local L = { inside = "Inside", outside = "Outside", ring = "Ring" }
+      mod.blobSolo = L[w2]            -- nil for "none"
+    elseif w1 ~= "" and w1 ~= "status" then
+      QB:Say("/qb overlay blobs brass|soft|off|native | fill <0-1> | ring <0-1> | halo <0-1> | thick auto|<n> | solo inside|outside|ring|none")
+    end
+    mod.blobKey = nil
+    if mod.localOn then mod:ApplyBlobs() end
+    local al, sc = mod:BlobValues()
+    QB:Say(string.format("quest areas: %s | fill %.2f, outline %.2f, halo %.2f, thickness %s (now %.2f) | solo %s | calls accepted %s",
+      db.blobs, al.Inside, al.Ring, al.Outside, tostring(db.blobScalar), sc, tostring(mod.blobSolo), tostring(mod.blobCalls)))
+    return
   elseif sub == "icons" and n1 then
     db.iconScale = clamp(n1, 0.5, 4)
     if mod.localOn then mod:ApplyIconScale() end

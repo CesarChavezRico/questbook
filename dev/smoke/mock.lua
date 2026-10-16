@@ -326,3 +326,16 @@ C_QuestLog.GetQuestIDForQuestWatchIndex = function(i)
   table.sort(ids)
   return ids[i]
 end
+
+-- quest-area setters on the minimap: record the last value of every call (v0.9.1)
+__blob = {}
+for _, kind in ipairs({ "Quest", "Task", "Arch" }) do
+  for _, layer in ipairs({ "Inside", "Outside", "Ring" }) do
+    for _, what in ipairs({ "Alpha", "Texture", "Scalar" }) do
+      if not (what == "Scalar" and layer ~= "Ring") then
+        local name = "Set" .. kind .. "Blob" .. layer .. what
+        Minimap[name] = function(self, v) __blob[kind .. layer .. what] = v end
+      end
+    end
+  end
+end
