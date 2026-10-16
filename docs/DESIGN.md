@@ -130,6 +130,17 @@ charter was dropped on purpose.
   the game's quest markers point at it. The blue quest areas on the minimap are native; they are not
   ours to draw.
 
+### The tracker
+
+- **A compact list replaces Blizzard's objective tracker** (*written*, v0.9.0; Cesar, 2026-10-15: "a replacement of
+  the original quest list, with a toggle to open the book"). Under the corner minimap: your tracked quests
+  (`/qb tracker all` for every quest) with up to three objective lines each, the active quest marked, "ready"
+  quests in green, a "Book" link in the header, and a click on a quest opens the book on it. It is a glance
+  surface, so it uses the dark panel, not paper. Blizzard's `ObjectiveTrackerFrame` is hidden while it is on and
+  restored by `/qb disable tracker`. **Interpretation, not confirmed:** I read "the original quest list" as that
+  tracker. *Unverified*: that hiding the frame is honoured, and what else lives in it (world quest, bonus and
+  scenario objectives, achievements, auto-accept pop-ups) that is lost while it is hidden.
+
 ### The strip and drawers
 
 - **The corner minimap is retired** and its slot reused. In its place, a one-line text strip (zone,
@@ -163,8 +174,6 @@ charter was dropped on purpose.
 
 ## Open
 
-- **The objective tracker** ("All Objectives" in the right wing) is still Blizzard's. Replace it with a
-  compact list in the drawer style, or keep it? Undecided.
 - **How quest areas look on the enlarged minimap.** The area fill and outline can be tuned through
   `Minimap:SetQuestBlob*` (alpha, ring scale, textures); nobody has said what is wrong with them yet.
 - **Which extra pin kinds** a future custom map shows (flight points, vignettes, points of interest).

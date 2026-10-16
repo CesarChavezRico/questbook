@@ -10,7 +10,7 @@
 
 local ADDON, QB = ...
 QB.name = ADDON
-QB.version = "0.8.4"
+QB.version = "0.9.0"
 QB.modules = {}      -- name -> module table
 QB.order = {}        -- registration order
 QB.errors = {}       -- module name -> { msg = string, count = number }
@@ -77,7 +77,8 @@ end
 
 -- Loose coupling between modules: topics, not references.
 -- Used topics: "overlay_state" (state string "off"|"local"|"zone"),
--- "open_full" (request to open the Full map), "combat_start", "combat_end".
+-- "overlay_host" (nil | "big" | "corner": who holds the Minimap), "open_full" (request to open the
+-- Full map), "combat_start", "combat_end".
 function QB:On(topic, fn, owner)
   local list = QB.listeners[topic]
   if not list then list = {}; QB.listeners[topic] = list end

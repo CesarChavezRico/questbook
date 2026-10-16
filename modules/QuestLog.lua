@@ -115,6 +115,12 @@ local function ScanLog()
   return rows, quests
 end
 
+-- The quests in the log, headers expanded as the book needs them (used by the tracker's "all" mode).
+function mod:Scan()
+  local _, quests = ScanLog()
+  return quests
+end
+
 -- Objectives complete? Modern then classic, guarded.
 local function IsQuestDone(entry)
   if not entry then return false end

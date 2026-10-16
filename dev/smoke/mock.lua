@@ -159,6 +159,7 @@ local log = {
 }
 local westfall = { { questID = 102, title = "Harvest", level = 8 } }
 local watched, super, selected, abandonArmed = { [100] = true }, 0, 0, nil
+function __watchedSet() return watched end
 C_QuestLog = {
   GetNumQuestLogEntries = function() return #log, 3 end,
   GetInfo = function(i) local e = log[i]; if not e then return nil end
@@ -316,3 +317,12 @@ function WorldMapFrame.ScrollContainer:InstantPanAndZoom(sc2, x, y) self.__scale
 
 -- remember the backdrop fill, so a scenario can check nothing opaque sits over the pages (v0.8.4)
 function Frame:SetBackdropColor(r, g, b, a) self.__bd = { r, g, b, a } end
+
+-- Blizzard's objective tracker and the watch list by index (v0.9.0)
+ObjectiveTrackerFrame = newFrame("Frame", "ObjectiveTrackerFrame", UIParent)
+C_QuestLog.GetQuestIDForQuestWatchIndex = function(i)
+  local ids = {}
+  for id in pairs(__watchedSet and __watchedSet() or {}) do ids[#ids + 1] = id end
+  table.sort(ids)
+  return ids[i]
+end
