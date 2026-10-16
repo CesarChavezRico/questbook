@@ -6,7 +6,7 @@ World of Warcraft: Forever (it targets the Forever client's UI; retail is not te
 It is one addon built from isolated modules, so a fault in one cannot take down the others:
 `/qb modules` shows what is on, `/qb errors` what broke, `/qb disable <module>` switches one off.
 
-> **Status: v0.9.0, in active development.** Everything here was written against Blizzard's UI
+> **Status: v0.9.1, in active development.** Everything here was written against Blizzard's UI
 > source for the Forever client and has been run in the game client only in short sessions by one
 > person. Code that relies on a guess says `UNVERIFIED:` in its comment, with what to check
 > in-game. Treat a feature as working only when this file, `docs/DESIGN.md` or an issue says it was seen working.
@@ -24,7 +24,7 @@ It is one addon built from isolated modules, so a fault in one cannot take down 
 
 Also written, not yet played: a small corner minimap for glancing in combat (the same minimap widget, up whenever the big one is not in use, so it is back when combat closes the overlay).
 
-Not built yet, discussed: tuning how quest areas look on the big minimap.
+Written, not yet played: our own look for the quest areas on the enlarged minimap (flat brass fill and a thin outline instead of the default art).
 What was decided and why, what has been seen working in the game and what has not, and what is
 still open: [docs/DESIGN.md](docs/DESIGN.md).
 
@@ -49,6 +49,7 @@ reason when a module is unavailable.
   `say`, `debug`, `dock left|right`, `log replace|blizzard`, `blizzlog`.
 - Overlay: `/qb overlay cycle | off | local | zone`, `shape`, `size`, `alpha`, `rotate`, `corner on|off|size|pos|alpha|rotate|mask`,
   `ground auto|native|hybrid`, `bars actions|all|none`, `icons <n>`, `mask`, `diag`.
+- Quest areas on the minimap: `/qb overlay blobs brass|soft|off|native`, `fill|ring|halo <0-1>`, `thick auto|<n>`, `solo inside|outside|ring|none` (shows one layer at a time, to find out which is which).
 - Tracker: `/qb tracker all|tracked|width <n>|alpha <0-1>|lines <n>|max <fraction>` (no argument: status).
 - Camera: `/qb camera flip | strength <n> | zoomout <n> | zoom <n> | ease <s> | on | off`.
 - Strip and drawers: `/qb strip ...`, `/qb drawers open|close|toggle|status`.

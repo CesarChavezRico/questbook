@@ -130,6 +130,22 @@ charter was dropped on purpose.
   the game's quest markers point at it. The blue quest areas on the minimap are native; they are not
   ours to draw.
 
+### The quest areas on the enlarged minimap
+
+- **The problem** (Cesar's screenshot, 2026-10-15): at about six times the stock size the client's own quest-area art
+  becomes thick glowing blue outlines and a grey band of large squares, which fights the paper-and-brass look.
+- **What the game allows** (`MinimapFrameAPIDocumentation.lua`): setters only, no getters, no descriptions. For the
+  quest blob, the task blob (world quests) and the archaeology blob: an alpha and a texture for each of INSIDE,
+  OUTSIDE and RING, and a ring scalar. The functionality (the areas themselves, where they are) stays the
+  client's; we only restyle it.
+- **What v0.9.1 does** (*written*): replaces the textures with flat brass ones, so the look is ours: a faint fill
+  (0.14), a clear outline (0.80), no halo, and an outline thickness that follows the size (`auto` = stock width /
+  our width, so the big minimap does not get a fat band). Applied to the quest and task blobs, not archaeology.
+  `/qb overlay blobs` tunes every part live; `native` leaves the client alone (it takes a `/reload` to come back,
+  since the client's own values cannot be read).
+- **Unverified:** which layer makes which part of the ugly look, whether the scalar thins the ring, and whether a
+  flat texture is accepted as a blob texture. The `solo` command exists to answer the first from one screenshot.
+
 ### The tracker
 
 - **A compact list replaces Blizzard's objective tracker** (*written*, v0.9.0; Cesar, 2026-10-15: "a replacement of
@@ -174,8 +190,9 @@ charter was dropped on purpose.
 
 ## Open
 
-- **How quest areas look on the enlarged minimap.** The area fill and outline can be tuned through
-  `Minimap:SetQuestBlob*` (alpha, ring scale, textures); nobody has said what is wrong with them yet.
+- **Quest areas: which layer is which.** The client draws each area in three layers (inside, outside, ring) and the
+  docs describe none of them; `/qb overlay blobs solo <layer>` shows one at a time. Until someone has looked, the
+  defaults are a guess (see The quest areas, below).
 - **Which extra pin kinds** a future custom map shows (flight points, vignettes, points of interest).
 - **A new name.** The addon keeps the name `QuestBook` until its first merged release, then is renamed
   (repo name, install folder, whether `/qb` stays as an alias, whether `QuestBookDB` is kept so settings
