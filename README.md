@@ -6,7 +6,7 @@ World of Warcraft: Forever (it targets the Forever client's UI; retail is not te
 It is one addon built from isolated modules, so a fault in one cannot take down the others:
 `/qb modules` shows what is on, `/qb errors` what broke, `/qb disable <module>` switches one off.
 
-> **Status: v0.8.1, in active development.** Everything here was written against Blizzard's UI
+> **Status: v0.8.2, in active development.** Everything here was written against Blizzard's UI
 > source for the Forever client and has been run in the game client only in short sessions by one
 > person. Code that relies on a guess says `UNVERIFIED:` in its comment, with what to check
 > in-game. Treat a feature as working only when this file, `docs/DESIGN.md` or an issue says it was seen working.

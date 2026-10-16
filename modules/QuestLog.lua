@@ -544,6 +544,14 @@ local function ApplyLayout()
   if lastEntry then ShowQuest(lastEntry) end
 end
 
+-- A FontString always gets a font at birth: the client refuses SetText on one that has none
+-- ("Font not set"), and the real fonts are applied later by ApplyTheme / FitLeft.
+local function NewText(parent, size)
+  local fs = parent:CreateFontString(nil, "ARTWORK")
+  fs:SetFont(Style.FRIZ, size or 12, "")
+  return fs
+end
+
 local function MakeButton(parent, label, x, w, onClick)
   local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
   b:SetSize(w, 22); b:SetPoint("TOPLEFT", x, -6)
@@ -601,9 +609,9 @@ local function BuildBook()
   Book.btnAbandon = MakeButton(Book, "Abandon", 322, 70, function() AbandonQuest(lastEntry) end)
 
   -- right page: the list
-  Book.listHead = Book:CreateFontString(nil, "ARTWORK")
+  Book.listHead = NewText(Book, 11)
   Book.listHead:SetJustifyH("LEFT")
-  Book.legend = Book:CreateFontString(nil, "ARTWORK")
+  Book.legend = NewText(Book, 11)
   Book.legend:SetJustifyH("LEFT")
   Book.legend:SetText("> active    * tracked")
   Book.list = CreateFrame("ScrollFrame", nil, Book, "UIPanelScrollFrameTemplate")
@@ -619,7 +627,7 @@ local function BuildBook()
   Book.plateBg = Book.plate:CreateTexture(nil, "BACKGROUND", nil, -2)
   Book.plateBg:SetPoint("TOPLEFT", Book.plate, "TOPLEFT", 1, -1)
   Book.plateBg:SetPoint("BOTTOMRIGHT", Book.plate, "BOTTOMRIGHT", -1, 1)
-  Book.plateCap = Book:CreateFontString(nil, "ARTWORK")
+  Book.plateCap = NewText(Book, 11)
   Book.plateCap:SetJustifyH("CENTER")
   Book.plateCap:Hide()
 
@@ -629,12 +637,12 @@ local function BuildBook()
   Book.pageChild:SetSize(400, 10)
   Book.page:SetScrollChild(Book.pageChild)
 
-  Book.title = Book.pageChild:CreateFontString(nil, "ARTWORK")
+  Book.title = NewText(Book.pageChild, 13)
   Book.title:SetPoint("TOPLEFT", 0, 0)
   Book.title:SetJustifyH("LEFT")
-  Book.objectives = Book.pageChild:CreateFontString(nil, "ARTWORK")
+  Book.objectives = NewText(Book.pageChild, 13)
   Book.objectives:SetJustifyH("LEFT")
-  Book.body = Book.pageChild:CreateFontString(nil, "ARTWORK")
+  Book.body = NewText(Book.pageChild, 13)
   Book.body:SetJustifyH("LEFT")
 end
 
@@ -727,7 +735,7 @@ RefreshList = function(keepID, keepScroll)
     local btn = ListButtons[i]
     if not btn then
       btn = CreateFrame("Button", nil, Book.listChild)
-      btn.text = btn:CreateFontString(nil, "ARTWORK")
+      btn.text = NewText(btn, 12)
       btn.text:SetPoint("LEFT", 4, 0)
       btn.text:SetJustifyH("LEFT"); btn.text:SetWordWrap(false)
       btn.sel = btn:CreateTexture(nil, "BACKGROUND", nil, -1)

@@ -55,7 +55,11 @@ function Frame:SetFrameLevel(l) self.__level = l end
 function Frame:GetFrameLevel() return self.__level end
 function Frame:EnableMouse(b) self.__mouse = b end
 function Frame:IsMouseEnabled() return self.__mouse end
-function Frame:SetText(t) self.__text = t end
+function Frame:SetText(t)
+  -- the real client refuses this on a FontString that has no font yet (seen 2026-10-15)
+  if self.__kind == "FontString" and not self.__ffile then error("FontString:SetText(): Font not set", 2) end
+  self.__text = t
+end
 function Frame:GetText() return self.__text end
 function Frame:GetStringWidth() return #tostring(self.__text) * 7 end
 function Frame:SetFont(file, size) self.__fsize = size; self.__ffile = file; return true end
