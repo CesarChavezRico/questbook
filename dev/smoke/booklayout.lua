@@ -72,7 +72,7 @@ __setQuestText(301, "A short quest text.", "Do the thing.")
 
 -- the plate: when a plate module provides one, the map shrinks first, the text keeps its size
 local orig = QB.Call
-QB.Call = function(self, name, method, ...) if name == "plate" and method == "Show" then return true, true end return orig(self, name, method, ...) end
+QB.Call = function(self, name, method, ...) if name == "overlay" and method == "PlateShow" then return true, true end return orig(self, name, method, ...) end
 __setQuestText(301, "A short quest text.", "Do the thing.")
 Q:OpenBook(301)
 assert(G.fit.plate and G.fit.plateH > 0, "plate room reserved")

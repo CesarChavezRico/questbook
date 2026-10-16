@@ -10,6 +10,7 @@ Offline checks for when there is no game client at hand.
     node run.js ../.. overlay.lua
     node run.js ../.. isolation.lua                     # a broken module must not break the others (exits 1 by design: it lists the broken module's errors)
     node run.js ../.. questroute.lua                    # tracker clicks open the book, zoom-out, fallback
+    node run.js ../.. plate.lua                         # the map plate: hosting, quest switching, Map mode takeover, combat
     node run.js ../.. booklayout.lua                    # the open-book layout, list and text fitting, themes
     node run.js ../.. migrate.lua                          # settings saved by an older build
     node run.js ../.. bare.lua bare_pre.lua             # a client missing every Blizzard piece we use
