@@ -313,3 +313,6 @@ WorldMapFrame.__focus = nil
 function WorldMapFrame:SetFocusedQuestID(id) self.__focus = id end
 function WorldMapFrame:ClearFocusedQuestID() self.__focus = nil end
 function WorldMapFrame.ScrollContainer:InstantPanAndZoom(sc2, x, y) self.__scale2 = sc2; self.__pan = { x, y }; __zoomed = (__zoomed or 0) + 1 end
+
+-- remember the backdrop fill, so a scenario can check nothing opaque sits over the pages (v0.8.4)
+function Frame:SetBackdropColor(r, g, b, a) self.__bd = { r, g, b, a } end

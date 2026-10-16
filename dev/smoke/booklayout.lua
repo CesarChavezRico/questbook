@@ -163,3 +163,19 @@ assert(ratio(th.chrome, th.cover) >= 4.5, "brass lettering on the leather")
 print("contrast: ink", string.format("%.1f", ratio(th.ink, th.pageLeft)), "rubric", string.format("%.1f", ratio(th.rubric, th.pageLeft)),
   "faded", string.format("%.1f", ratio(th.faded, th.pageLeft)), "brass", string.format("%.1f", ratio(th.chrome, th.cover)))
 print("book design ok")
+
+-- ---- v0.8.4: nothing may cover the pages. The backdrop fill sits above plain BACKGROUND textures in the
+-- real client, so on paper it must be fully transparent and the leather a texture beneath the pages.
+local B3 = QuestBookFrame
+slash("book paper")
+assert(B3.__bd and B3.__bd[4] == 0, "paper: the backdrop fill is switched off (alpha " .. tostring(B3.__bd and B3.__bd[4]) .. ")")
+assert(B3.coverTex:IsShown(), "paper: the leather is a texture")
+local ths = QB.Style.Get("paper")
+assert(ths.pageLeft[4] == 1 and ths.pageRight[4] == 1, "pages are opaque")
+-- the pages must be lighter than the leather by a wide margin, or a covered page would go unnoticed
+local function lum2(c) return 0.2126 * c[1] + 0.7152 * c[2] + 0.0722 * c[3] end
+assert(lum2(ths.pageLeft) > 2 * lum2(ths.cover), "parchment is much lighter than the leather")
+slash("book dark")
+assert(B3.__bd[4] > 0 and not B3.coverTex:IsShown(), "dark: the backdrop fill is the panel")
+slash("book paper")
+print("pages-fix ok")
