@@ -6,7 +6,7 @@ World of Warcraft: Forever (it targets the Forever client's UI; retail is not te
 It is one addon built from isolated modules, so a fault in one cannot take down the others:
 `/qb modules` shows what is on, `/qb errors` what broke, `/qb disable <module>` switches one off.
 
-> **Status: v0.8.0, in active development.** Everything here was written against Blizzard's UI
+> **Status: v0.8.2, in active development.** Everything here was written against Blizzard's UI
 > source for the Forever client and has been run in the game client only in short sessions by one
 > person. Code that relies on a guess says `UNVERIFIED:` in its comment, with what to check
 > in-game. Treat a feature as working only when this file, `docs/DESIGN.md` or an issue says it was seen working.
@@ -15,7 +15,7 @@ It is one addon built from isolated modules, so a fault in one cannot take down 
 
 | module | what it does |
 |---|---|
-| `questlog` | A readable replacement for Blizzard's quest log, laid out as an open book: the quest text on the left page, the whole list of quests on the right (rows shrink so none scroll away), in a parchment theme (`/qb book paper|dark`). Choose the active quest, track and untrack, turn-in readiness, abandon, share, zone and campaign headers, narrated walk-and-listen. The default key, the micro menu button and the objective tracker's "open quest" clicks open this book. Blizzard's log stays reachable as a fallback. |
+| `questlog` | A readable replacement for Blizzard's quest log, laid out as an open book: a map of where the quest is (with its quest area) above the quest text on the left page, the whole list of quests on the right (rows shrink so none scroll away; the map shrinks first, then the text, so the quest text fits one page), in a parchment theme (`/qb book paper|dark`). Choose the active quest, track and untrack, turn-in readiness, abandon, share, zone and campaign headers, narrated walk-and-listen. The default key, the micro menu button and the objective tracker's "open quest" clicks open this book. Blizzard's log stays reachable as a fallback. |
 | `overlay` | The map beside your character, two separate modes on one key: **Off, Minimap, Map**. Minimap is the real minimap, blown up and always square, with a soft edge. Map is the world map, restyled, translucent, soft-edged, opened already centred on you. Action bars are hidden while either is open. While the big one is not in use, the same minimap sits small in the top-right corner for a glance (`/qb overlay corner`). |
 | `camera` | Slides the camera sideways and a little back while the overlay is open, so the character sits left of centre. Backs up your camera settings and restores them, also after a crash. |
 | `strip` | A one-line text strip where the minimap used to be: zone, coordinates, mail. Click it to open Blizzard's full map. |
@@ -44,7 +44,7 @@ Options > Keybindings > AddOns > QuestBook: **Toggle quest log**, **Map overlay:
 `/qb` toggles the book. `/qb help` lists the subcommands; `/qb modules` shows module state, with the
 reason when a module is unavailable.
 
-- Quest log: `book paper|dark` (no argument: how the page and list fit), `size <n>`, `dark`, `bg <0-1>`, `voice`, `rate <n>`, `prosody`, `voices`, `usevoice <id>`,
+- Quest log: `book paper|dark|map on|off` (no argument: how the page and list fit), `size <n>`, `dark`, `bg <0-1>`, `voice`, `rate <n>`, `prosody`, `voices`, `usevoice <id>`,
   `say`, `debug`, `dock left|right`, `log replace|blizzard`, `blizzlog`.
 - Overlay: `/qb overlay cycle | off | local | zone`, `shape`, `size`, `alpha`, `rotate`, `corner on|off|size|pos|alpha|rotate|mask`,
   `ground auto|native|hybrid`, `bars actions|all|none`, `icons <n>`, `mask`, `diag`.

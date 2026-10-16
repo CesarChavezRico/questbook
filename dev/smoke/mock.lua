@@ -55,7 +55,11 @@ function Frame:SetFrameLevel(l) self.__level = l end
 function Frame:GetFrameLevel() return self.__level end
 function Frame:EnableMouse(b) self.__mouse = b end
 function Frame:IsMouseEnabled() return self.__mouse end
-function Frame:SetText(t) self.__text = t end
+function Frame:SetText(t)
+  -- the real client refuses this on a FontString that has no font yet (seen 2026-10-15)
+  if self.__kind == "FontString" and not self.__ffile then error("FontString:SetText(): Font not set", 2) end
+  self.__text = t
+end
 function Frame:GetText() return self.__text end
 function Frame:GetStringWidth() return #tostring(self.__text) * 7 end
 function Frame:SetFont(file, size) self.__fsize = size; self.__ffile = file; return true end
@@ -298,3 +302,14 @@ function __setLog(newlog) for i = #log, 1, -1 do log[i] = nil end for i, e in ip
 local qtext = {}
 function __setQuestText(id, desc, obj) qtext[id] = { desc, obj } end
 function GetQuestLogQuestText() local sel = C_QuestLog.GetSelectedQuest(); local t = qtext[sel]; if t then return t[1], t[2] end return "Go and slay the beasts.\n\nThen return.", "Kill 5 things" end
+
+-- quest map positions for the book's plate (v0.8)
+__waypoints, __pois, __noArt = {}, {}, {}
+C_QuestLog.GetNextWaypoint = function(qid) local w = __waypoints[qid]; if w then return w[1], w[2], w[3] end end
+C_QuestLog.GetQuestsOnMap = function(map) return __pois[map] or {} end
+C_Map.GetMapInfo = function(id) return { name = "Map " .. tostring(id), mapID = id, parentMapID = (id == 37) and 13 or 0 } end
+C_Map.MapHasArt = function(id) return not __noArt[id] end
+WorldMapFrame.__focus = nil
+function WorldMapFrame:SetFocusedQuestID(id) self.__focus = id end
+function WorldMapFrame:ClearFocusedQuestID() self.__focus = nil end
+function WorldMapFrame.ScrollContainer:InstantPanAndZoom(sc2, x, y) self.__scale2 = sc2; self.__pan = { x, y }; __zoomed = (__zoomed or 0) + 1 end

@@ -34,6 +34,7 @@ local mod = QB:NewModule("questlog", {
   replaceLog = true,    -- ToggleQuestLog (default key, micro menu button) opens this book
   dock = "right",       -- docked side while walking: the freed right-wing minimap slot
   collapsed = {},       -- our own zone-header collapse state (header title -> true)
+  plate = true,         -- the map plate on the left page (/qb book map on|off)
   bgAlpha = 0.62,       -- dark theme only: the panel's opacity
   theme = "paper",      -- "paper" (two parchment pages) | "dark" (the faint dark panel)
 })
@@ -454,6 +455,7 @@ local function FitLeft()
   Book.pageChild:SetWidth(G.textW)
   Book.pageChild:SetHeight(math.max(total, availText))
   Book.page:SetVerticalScroll(0)
+  if plateOn then QB:Call("overlay", "PlateLayout") end    -- the map follows the plate's new size
 end
 
 local function ApplyLayout()
@@ -542,6 +544,14 @@ local function ApplyLayout()
   if lastEntry then ShowQuest(lastEntry) end
 end
 
+-- A FontString always gets a font at birth: the client refuses SetText on one that has none
+-- ("Font not set"), and the real fonts are applied later by ApplyTheme / FitLeft.
+local function NewText(parent, size)
+  local fs = parent:CreateFontString(nil, "ARTWORK")
+  fs:SetFont(Style.FRIZ, size or 12, "")
+  return fs
+end
+
 local function MakeButton(parent, label, x, w, onClick)
   local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
   b:SetSize(w, 22); b:SetPoint("TOPLEFT", x, -6)
@@ -561,7 +571,7 @@ local function BuildBook()
   Book:Hide()
   Book:SetScript("OnHide", function()
     StopSpeaking()
-    QB:Call("plate", "Hide")           -- gives the world map back (modules/Plate.lua, if on)
+    QB:Call("overlay", "PlateHide")    -- gives the world map back (the overlay module hosts it)
   end)
   tinsert(UISpecialFrames, "QuestBookFrame")
 
@@ -599,9 +609,9 @@ local function BuildBook()
   Book.btnAbandon = MakeButton(Book, "Abandon", 322, 70, function() AbandonQuest(lastEntry) end)
 
   -- right page: the list
-  Book.listHead = Book:CreateFontString(nil, "ARTWORK")
+  Book.listHead = NewText(Book, 11)
   Book.listHead:SetJustifyH("LEFT")
-  Book.legend = Book:CreateFontString(nil, "ARTWORK")
+  Book.legend = NewText(Book, 11)
   Book.legend:SetJustifyH("LEFT")
   Book.legend:SetText("> active    * tracked")
   Book.list = CreateFrame("ScrollFrame", nil, Book, "UIPanelScrollFrameTemplate")
@@ -617,7 +627,7 @@ local function BuildBook()
   Book.plateBg = Book.plate:CreateTexture(nil, "BACKGROUND", nil, -2)
   Book.plateBg:SetPoint("TOPLEFT", Book.plate, "TOPLEFT", 1, -1)
   Book.plateBg:SetPoint("BOTTOMRIGHT", Book.plate, "BOTTOMRIGHT", -1, 1)
-  Book.plateCap = Book:CreateFontString(nil, "ARTWORK")
+  Book.plateCap = NewText(Book, 11)
   Book.plateCap:SetJustifyH("CENTER")
   Book.plateCap:Hide()
 
@@ -627,12 +637,12 @@ local function BuildBook()
   Book.pageChild:SetSize(400, 10)
   Book.page:SetScrollChild(Book.pageChild)
 
-  Book.title = Book.pageChild:CreateFontString(nil, "ARTWORK")
+  Book.title = NewText(Book.pageChild, 13)
   Book.title:SetPoint("TOPLEFT", 0, 0)
   Book.title:SetJustifyH("LEFT")
-  Book.objectives = Book.pageChild:CreateFontString(nil, "ARTWORK")
+  Book.objectives = NewText(Book.pageChild, 13)
   Book.objectives:SetJustifyH("LEFT")
-  Book.body = Book.pageChild:CreateFontString(nil, "ARTWORK")
+  Book.body = NewText(Book.pageChild, 13)
   Book.body:SetJustifyH("LEFT")
 end
 
@@ -651,11 +661,16 @@ local function MarkSelected()
   end
 end
 
--- Ask the map module (if on) for a map plate for this quest; the text then makes room for it.
+-- Ask the overlay module (which owns the world map frame) for a map plate for this quest; the text then makes room for it.
 -- `Book.plateWanted` is only true where it really has something to show.
 local function UpdatePlate(entry)
-  local ok, shown = QB:Call("plate", "Show", Book.plate, entry, Book.plateCap)
-  Book.plateWanted = (ok and shown) and not docked and true or false
+  if docked or mod.db.plate == false then
+    QB:Call("overlay", "PlateHide")
+    Book.plateWanted = false
+    return
+  end
+  local ok, shown = QB:Call("overlay", "PlateShow", Book.plate, entry, Book.plateCap)
+  Book.plateWanted = (ok and shown) and true or false
 end
 
 ShowQuest = function(entry)
@@ -720,7 +735,7 @@ RefreshList = function(keepID, keepScroll)
     local btn = ListButtons[i]
     if not btn then
       btn = CreateFrame("Button", nil, Book.listChild)
-      btn.text = btn:CreateFontString(nil, "ARTWORK")
+      btn.text = NewText(btn, 12)
       btn.text:SetPoint("LEFT", 4, 0)
       btn.text:SetJustifyH("LEFT"); btn.text:SetWordWrap(false)
       btn.sel = btn:CreateTexture(nil, "BACKGROUND", nil, -1)
@@ -780,7 +795,7 @@ RefreshList = function(keepID, keepScroll)
   else
     lastEntry, lastDesc = nil, nil
     Book.plateWanted = false
-    QB:Call("plate", "Hide")
+    QB:Call("overlay", "PlateHide")
     Book.title:SetText("No quests in your log.")
     Book.objectives:SetText(""); Book.body:SetText("")
     FitLeft()
@@ -860,6 +875,15 @@ local function QueueRefresh()
     end
   end
 end
+
+-- the world map is the one thing the plate shares: Map mode, ESC, the M key or combat can take it
+QB:On("plate_lost", function()
+  if Book then Book.plateWanted = false; if Book:IsShown() then FitLeft() end end
+end, mod)
+-- a plate refused in combat is tried again when combat ends
+QB:On("combat_end", function()
+  if Book and Book:IsShown() and lastEntry and not Book.plateWanted then ShowQuest(lastEntry) end
+end, mod)
 
 mod.events.QUEST_LOG_UPDATE = QueueRefresh
 mod.events.QUEST_WATCH_LIST_CHANGED = QueueRefresh
@@ -990,7 +1014,10 @@ end, "bg <0-1>: opacity of the dark theme's panel")
 
 QB:RegisterSlash(mod, "book", function(rest)
   rest = (rest or ""):lower()
-  if rest == "paper" or rest == "dark" then
+  if rest == "map on" or rest == "map off" then
+    mod.db.plate = (rest == "map on")
+    if Book and Book:IsShown() and lastEntry then ShowQuest(lastEntry) end
+  elseif rest == "paper" or rest == "dark" then
     mod.db.theme = rest
     if Book then
       ApplyLayout()
@@ -998,7 +1025,7 @@ QB:RegisterSlash(mod, "book", function(rest)
     end
   end
   local f, r = G.fit, G.rows
-  Say("book theme: " .. mod.db.theme .. "  (/qb book paper|dark)")
+  Say("book theme: " .. mod.db.theme .. "  map plate: " .. (mod.db.plate and "on" or "off") .. "  (/qb book paper|dark, /qb book map on|off)")
   if f then
     Say(string.format("  left page: text %d px at font %d (set %d) in %d px, %s%s", f.total or 0, f.font or 0, f.base or 0,
       f.avail or 0, f.fits and "fits" or "SCROLLS", f.plate and (", plate " .. f.plateH .. " px") or ", no map plate"))
