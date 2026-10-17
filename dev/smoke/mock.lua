@@ -38,7 +38,12 @@ function Frame:SetHeight(h) self.__h = h end
 function Frame:GetWidth() return self.__w end
 function Frame:GetSize() return self.__w, self.__h end
 function Frame:GetHeight() return self.__h end
-function Frame:SetPoint(...) self.__points[#self.__points+1] = { ... } end
+-- like the client: a second SetPoint with the same point name REPLACES the first (it does not add an anchor)
+function Frame:SetPoint(...)
+  local a = { ... }
+  for i, p in ipairs(self.__points) do if p[1] == a[1] then self.__points[i] = a; return end end
+  self.__points[#self.__points+1] = a
+end
 function Frame:ClearAllPoints() self.__points = {} end
 function Frame:GetNumPoints() return #self.__points end
 function Frame:GetPoint(i) local p = self.__points[i or 1]; if p then return unpack(p) end end
