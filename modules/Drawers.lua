@@ -344,8 +344,13 @@ local function AnchorPanel()
     if isFallback and engaged then fallback:Show() else fallback:Hide() end
   end
   panel:ClearAllPoints()
-  panel:SetPoint("TOPRIGHT", handle, "BOTTOMRIGHT", 0, -4)
+  -- below the experience row when there is one (Cesar, 2026-10-17: "the menu overlaps with the bar"): the xp module
+  -- reports how much room it takes under the strip
+  local okX, extent = QB:Call("xp", "RowExtent")
+  panel:SetPoint("TOPRIGHT", handle, "BOTTOMRIGHT", 0, -4 - ((okX and tonumber(extent)) or 0))
 end
+
+function drawers:GetPanel() return panel end
 
 local function NotifyStrip(open)
   local s = QB.modules.strip
@@ -530,6 +535,8 @@ drawers.events.EDIT_MODE_LAYOUTS_UPDATED = function()
   Later(0.5)
 end
 
+-- the experience row appeared, changed size or went away: move the panel with it
+QB:On("xp_layout", function() if panel then AnchorPanel() end end, drawers)
 QB:On("combat_start", function()
   drawers:CloseMenu()
 end, drawers)

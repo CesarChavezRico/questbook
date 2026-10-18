@@ -115,6 +115,22 @@ local function Build()
   bar:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
 end
 
+-- How much vertical room the bar and its number take under the strip (UI units), 0 when they are not shown. The Menu
+-- drawer opens below it (modules/Drawers.lua).
+function mod:RowExtent()
+  if not (bar and bar:IsShown()) then return 0 end
+  return (bar:GetHeight() or 0) + Style.Px(tonumber(self.db.gapPx) or 3, bar)
+end
+
+-- Tell the others (the Menu drawer) when the room this takes has changed.
+function mod:AnnounceLayout()
+  local e = self:RowExtent()
+  if e ~= self.lastExtent then
+    self.lastExtent = e
+    QB:Fire("xp_layout")
+  end
+end
+
 -- Under the strip, right-aligned; the screen's top-right corner when the strip is off.
 function mod:Place()
   if not bar then return end
@@ -134,6 +150,7 @@ function mod:Refresh()
   if not self.showing then
     bar:Hide()
     self:ApplyBlizzard()
+    self:AnnounceLayout()
     return
   end
   local t = Tone()
@@ -161,7 +178,9 @@ function mod:Refresh()
   if textPx > 0 then
     bar.text:SetFont(Style.FRIZ, Px(textPx), "")
     bar.text:ClearAllPoints(); bar.text:SetPoint("BOTTOMRIGHT", bar.track, "TOPRIGHT", 0, Px(3))
-    bar.text:SetText("Lv " .. tostring(lvl) .. "  " .. math.floor(frac * 100) .. "%")
+    -- "Lv 8  44%  [14%]": the rested part, as a percent of the level, in brackets, only when there is some
+    local restedTxt = (rested and rested > 0) and ("  [" .. math.floor(rested / mx * 100) .. "%]") or ""
+    bar.text:SetText("Lv " .. tostring(lvl) .. "  " .. math.floor(frac * 100) .. "%" .. restedTxt)
     bar.text:SetTextColor(t.faded[1], t.faded[2], t.faded[3], 1)
     bar.text:Show()
   else
@@ -170,6 +189,7 @@ function mod:Refresh()
   bar:Show()
   self.last = { level = lvl, xp = xp, max = mx, rested = rested, frac = frac }
   self:ApplyBlizzard()
+  self:AnnounceLayout()
 end
 
 function mod:ShowTooltip(owner)
@@ -203,6 +223,7 @@ function mod:OnDisable()
   if bar then bar:Hide() end
   self.showing = false
   self:ApplyBlizzard()          -- gives Blizzard's bar back
+  self:AnnounceLayout()
 end
 
 local function Update() if bar and mod.active then mod:Refresh() end end

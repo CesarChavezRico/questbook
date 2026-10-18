@@ -11,7 +11,7 @@ assert(bar and bar:IsShown(), "the bar is up")
 -- whole pixels, right-aligned under the strip
 assert(math.abs(bar:GetWidth() - 360 * u) < 1e-6 and math.abs(bar.track:GetHeight() - 3 * u) < 1e-6, "360 x 3 px")
 -- the number above it, and the frame is both (one bigger thing to hover)
-assert(bar.text:IsShown() and bar.text:GetText() == "Lv 8  44%", "the number: " .. tostring(bar.text:GetText()))
+assert(bar.text:IsShown() and bar.text:GetText() == "Lv 8  44%  [14%]", "the number with the rested percent in brackets: " .. tostring(bar.text:GetText()))
 assert(bar:GetHeight() > bar.track:GetHeight() + 10 * u, "the hover area covers the number too: " .. bar:GetHeight() / u .. " px")
 local p = { bar:GetPoint(1) }
 assert(p[1] == "TOPRIGHT" and p[2] == S:GetFrame() and p[3] == "BOTTOMRIGHT", "hangs under the strip, right-aligned")
@@ -37,10 +37,26 @@ __xp.xp, __xp.rested = 2500, 900; __fire("PLAYER_XP_UPDATE")
 assert(math.abs(bar.fill:GetWidth() / bar:GetWidth() - 2500 / 2800) < 1e-6)
 assert(math.abs((bar.rest:GetWidth() + bar.fill:GetWidth()) / bar:GetWidth() - 1) < 1e-6, "rested never runs past the end: " .. (bar.rest:GetWidth() + bar.fill:GetWidth()) / bar:GetWidth())
 __xp.rested = 0; __fire("UPDATE_EXHAUSTION"); assert(not bar.rest:IsShown(), "no rested part when none")
+assert(bar.text:GetText() == "Lv 8  89%", "and no brackets when there is none: " .. tostring(bar.text:GetText()))
 __xp.xp, __xp.level, __xp.max = 10, 9, 3000; __fire("PLAYER_LEVEL_UP")
 assert(bar.text:GetText() == "Lv 9  0%", "level up updates the number: " .. tostring(bar.text:GetText()))
 assert(math.abs(bar.fill:GetWidth() / bar:GetWidth() - 10 / 3000) < 1e-6, "a new level starts over")
 __xp.xp = 0; __fire("PLAYER_XP_UPDATE"); assert(not bar.fill:IsShown(), "an empty bar shows no fill")
+
+-- the Menu drawer opens BELOW the bar and its number, not over them (Cesar, 2026-10-17: "the menu overlaps with the bar")
+local D = QB.modules.drawers
+slash("drawers open")
+local dp = D:GetPanel()
+assert(dp, "the drawer panel exists")
+local dpt = { dp:GetPoint(1) }
+local extent = X:RowExtent()
+assert(extent > 20 * u, "the xp row takes room: " .. extent / u .. " px")
+assert(math.abs(dpt[5] - (-4 - extent)) < 1e-6, "the drawer starts below it: " .. tostring(dpt[5]) .. " vs " .. (-4 - extent))
+slash("xp text off")
+dpt = { dp:GetPoint(1) }
+assert(math.abs(dpt[5] - (-4 - X:RowExtent())) < 1e-6 and X:RowExtent() < extent, "and follows the row when it shrinks")
+slash("xp text on")
+slash("drawers close")
 
 -- settings
 slash("xp width 500"); assert(math.abs(bar:GetWidth() - 500 * u) < 1e-6)
@@ -68,6 +84,7 @@ slash("overlay bars actions")
 -- at the maximum level (or with XP gain off) there is nothing to show: the bar hides, Blizzard's comes back
 __xp.level = 60; __fire("PLAYER_LEVEL_UP")
 assert(not bar:IsShown(), "no bar at the maximum level")
+assert(X:RowExtent() == 0, "no room taken at the maximum level")
 assert(StatusTrackingBarManager:GetAlpha() == 1, "Blizzard's bar (reputation, honor) is back")
 __xp.level, __xp.disabled = 20, true; __fire("DISABLE_XP_GAIN")
 assert(not bar:IsShown(), "no bar with XP gain turned off")

@@ -270,6 +270,10 @@ charter was dropped on purpose.
 - **The number** (v0.15.1; Cesar, 2026-10-17, after the first look: "we need the number so its easier to mouse over"): "Lv 8  44%" above
   the bar, right-aligned, 15 px; the frame is the bar and the number together, so the hover area is about 23 px tall instead of 3
   (`/qb xp text on|off`, `textsize <px>`). The percent is floored (never 100% before the level is done).
+- **The Menu drawer and the rested percent** (v0.15.2; Cesar, 2026-10-17, from a screenshot: "the menu overlaps with the bar, also we need the
+  rested xp in [ ] as a percent if avail"): the drawer used to open at the strip's bottom edge, over the xp row. The xp module reports the
+  room it takes (`RowExtent`, announced on the bus topic `xp_layout` when it changes) and the drawer opens below it
+  (`AnchorPanel`). The number reads "Lv 8  44%  [14%]": the rested XP as a percent of the level, only when there is some.
 - **Blizzard's bottom bar** (`StatusTrackingBarManager`) is faded out by alpha while ours is up (`/qb xp blizzard off` leaves it);
   at the maximum level or with XP gain off our bar hides and Blizzard's comes back, since it also carries reputation and honor,
   which this module does not take over. The overlay's own fading of the same frame in map modes (`bars all`) is unaffected: the
