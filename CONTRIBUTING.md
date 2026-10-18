@@ -13,9 +13,11 @@ modules/Overlay.lua    Off / Minimap / Map, masks, ground, bars, indoor handling
 modules/Camera.lua     lateral shift + zoom-out, CVar backup and restore
 modules/Tracker.lua    the compact quest list that replaces Blizzard's objective tracker
 modules/Markers.lua    our quest markers on the minimap; switches the client's quest areas off
+modules/Kit.lua        `/qb kit`, `/qb screen`: the sample page of the paper look, in whole pixels
 modules/Strip.lua      the text strip, the Addons handle
 modules/Drawers.lua    the Menu panel (micro menu + bags)
-Textures/              the soft-alpha masks (TGA, 256x256, white with an alpha gradient)
+Textures/              the soft-alpha masks and the paper kit (TGA, power-of-two sizes, 32-bit with alpha)
+dev/art/gen_kit.py     generates the paper textures (pure Python, our own art); run it, commit the TGAs
 Bindings.xml           keybinding entry points, named in Core.lua
 QuestBook.toc          load order (Core first); lists every file
 dev/                   offline tools, not shipped (see below)

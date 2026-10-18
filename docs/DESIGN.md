@@ -189,6 +189,23 @@ charter was dropped on purpose.
   starts where it was). `/qb tracker move` drags it, `pos <x> <y>` sets it, `reset` seeds it again; `/qb overlay corner
   move` drags the small minimap. Both use one drag handle (`Style.Mover`): drag, right-click to finish.
 
+### The paper look and pixels (v0.12.0)
+
+- **Direction** (Cesar, 2026-10-17: "take better advantage of our big display ... pixel perfect ... spectacular"): take
+  design *principles* from Dialogue UI (torn parchment, quiet type hierarchy, one strong colour, key-cap hints), with
+  our own art, and build the reader and then the tracker from a shared kit. See docs/STYLE.md, "Pixels and the next
+  paper look".
+- **Order** (Cesar chose A): the kit and the reader together (the reader replaces the book: one page, right click opens
+  it, the key opens it on the active quest), then the tracker restyle. v0.12.0 is only the kit's first step: the
+  textures, `Style.Px` / `Style.Paper` / `Style.Hairline`, `/qb screen` and a `/qb kit` sample page, so the look can
+  be judged in the game before the reader is built on it.
+- **Decided for the reader** (Cesar, 2026-10-17, "on point"): one page (title, objectives, text, voice controls), previous
+  and next arrows; the default key and the micro-menu button open it on the active quest; the book's right-hand list, the
+  map plate and the open-book look are removed; the tracker defaults to "all quests"; the Book link becomes "Log".
+- **Unverified (the client has to say):** that the generated page looks right at Cesar's size (3420x1435 physical), that
+  `SetRoundLayoutToNearestPixel` and the pixel arithmetic give 1 px lines, and that tiling the 256 px grain with
+  `SetTexture(file, "REPEAT", "REPEAT")` shows no visible repeat.
+
 ### The strip and drawers
 
 - **The corner minimap is retired** and its slot reused. In its place, a one-line text strip (zone,
