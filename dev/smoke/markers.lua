@@ -108,6 +108,19 @@ assert(math.abs(act:GetWidth() - 14 * 1.35) < 0.01, "active is larger: " .. act:
 assert(act.halo:IsShown(), "active has a halo")
 assert(not ready.label:IsShown(), "the others have no label")
 
+-- the label is only on the big minimap (on the small one it ran into the action bars)
+slash("overlay cycle"); __tick(8)      -- zone: no small minimap
+slash("overlay cycle"); __tick(8)      -- off: the small minimap
+C_SuperTrack.SetSuperTrackedQuestID(100); __fire("SUPER_TRACKING_CHANGED"); __tick(12)
+local anyLabel = false
+for _, f in ipairs(markers()) do if f.label:IsShown() then anyLabel = true end end
+assert(not anyLabel, "no name label on the small minimap")
+assert(#markers() >= 1, "the markers themselves are there")
+slash("overlay cycle"); __tick(12)     -- the big minimap again
+local gotLabel = false
+for _, f in ipairs(markers()) do if f.label:IsShown() then gotLabel = true end end
+assert(gotLabel, "the name label is back on the big minimap")
+
 -- far quests: culled, unless active (then stuck to the edge)
 local function find103() for _, f in ipairs(markers()) do local x = select(1, pos(f)); if x > 0.9 * (bw / 2) then return f end end end
 assert(not find103(), "a far quest is not drawn")

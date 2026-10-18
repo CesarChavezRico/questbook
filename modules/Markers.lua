@@ -10,7 +10,7 @@
 --      menu next to the minimap). The old state is remembered and put back on disable.
 --   2. One small brass marker per quest, placed over the minimap from the quest's position on the map
 --      (C_QuestLog.GetQuestsOnMap) and the player's (C_Map.GetPlayerMapPosition): all quests in the log,
---      the active (super-tracked) one larger and labelled, a quest ready to hand in marked "?". A marker
+--      the active (super-tracked) one larger and, on the big minimap only, labelled, a quest ready to hand in marked "?". A marker
 --      past the edge sticks to the edge, dimmer, so it still says which way.
 --
 -- UNVERIFIED (client only): that the tracking filter really removes the areas; that GetViewRadius() is
@@ -206,7 +206,7 @@ end
 
 -- Everything that does not change while you turn: size, colour, glyph, title, halo. Run when the quest list
 -- or the host changes, never per frame.
-local function Paint(mk, e, size)
+local function Paint(mk, e, size, label)
   local t = Tone()
   mk:SetSize(size, size)
   mk.shadow:ClearAllPoints()
@@ -230,7 +230,9 @@ local function Paint(mk, e, size)
   if e.ready then glyph = "?" elseif not e.inLog then glyph = "!" end
   mk.glyph:SetText(glyph)
   mk.glyph:SetTextColor(0.10, 0.09, 0.08, 1)
-  if e.active then
+  -- the active quest's name is written beside its marker on the BIG minimap only: on the small one it ran into the
+  -- action bars (Cesar, 2026-10-17), and the list already names the active quest with its gold bar
+  if e.active and label then
     local title
     if C_QuestLog and C_QuestLog.GetTitleForQuestID then
       local ok, name = pcall(C_QuestLog.GetTitleForQuestID, e.qid)
@@ -289,11 +291,12 @@ end
 -- One marker per entry, painted once.
 function mod:PaintAll()
   local size = (tonumber(self.db.size) or 14) * (self:Host() == "corner" and 0.75 or 1)
+  local labels = self:Host() == "big"
   local lvl = frame:GetFrameLevel()
   for i, e in ipairs(entries) do
     local mk = GetMarker(i)
     e.mk = mk
-    Paint(mk, e, e.active and size * 1.35 or size)
+    Paint(mk, e, e.active and size * 1.35 or size, labels)
     mk:SetFrameLevel(lvl + (e.active and 3 or 1))
     mk:Hide(); mk.vis = false; mk.edge = nil
   end

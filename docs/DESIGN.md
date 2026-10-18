@@ -186,6 +186,10 @@ charter was dropped on purpose.
 - **Lead, unverified:** the green disc of v0.9.1 disappeared when its setters were removed, so the blob *texture* setters
   may reach the client even though the *alpha* ones did not. A fully transparent texture on the layers could then hide the
   areas without the tracking filter. Not tried.
+- **The name label** (v0.14.4; Cesar, 2026-10-17: the active quest's name ran into the action bars on the small minimap): the
+  active marker's name is drawn beside it on the big minimap only; the small minimap shows the marker without a name, since the
+  list already names the active quest with its gold bar. (Fitting the name inside the small minimap, or a short form, were the
+  alternatives.)
 - **Unverified (the client has to say):** that the tracking filter removes the areas (and not the quest-giver "!"
   blips with them); that `GetViewRadius()` is centre-to-edge as drawn on the enlarged widget (`/qb markers scale`
   corrects it, `/qb markers map` draws quest givers so the markers can be lined up with the client's own "!" blips);
