@@ -189,6 +189,14 @@ charter was dropped on purpose.
   tracker. *Unverified*: that hiding the frame is honoured, and what else lives in it (world quest, bonus and
   scenario objectives, achievements, auto-accept pop-ups) that is lost while it is hidden.
 
+- **The list in the new look** (v0.14.0, *written, not played*; Cesar, 2026-10-17: "lets move on to the list"): the type ramp
+  of the kit in whole pixels (quest title 21, objective lines 17, header 16; `/qb tracker size <px>` scales all three), the
+  panel 400 px wide (`/qb tracker width <px>`; the older `width` in UI units is no longer used), a rule under the header that
+  tapers to nothing (the reader's art, tinted for the dark panel), the active quest as the only accent (gold title and a 3 px
+  bar at the row's left edge), "ready to turn in" in green, counted objectives (`numFulfilled / numRequired`, summed over the
+  quest) as a 4 px bar under the lines, links drawn with `Style.InkLink` (pixel text, 1 px rule) in cream on dark. The
+  "(ready)" and ">" text marks are gone. Not done: a quest-type icon (campaign, daily): the client's icon assets for it are
+  not known here.
 - **It has a position of its own** (v0.11.0, *written*; Cesar, 2026-10-17: "when I open the big overlay the quest list
   moves up", then "the list position should be independent from the map"). The list used to hang under the corner
   minimap and jumped to the screen corner whenever the big overlay hid the small minimap. Now its position is its own

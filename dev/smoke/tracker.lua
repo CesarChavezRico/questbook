@@ -3,6 +3,7 @@ __fire("ADDON_LOADED", "QuestBook"); __loggedIn = true; __fire("PLAYER_LOGIN")
 local function slash(s) SlashCmdList.QUESTBOOK(s) end
 local function flush(tag) for _, l in ipairs(__take()) do io.write(tag .. " | " .. l .. "\n") end end
 local T = QB.modules.tracker
+local Style = QB.Style
 assert(T and T.active and not T.unavailable, "tracker module is on")
 local P = QuestBookTracker
 assert(P and P:IsShown(), "the panel is up")
@@ -47,10 +48,27 @@ QuestBookReader:Hide()
 P.book:Click(); assert(QuestBookReader:IsShown()); P.book:Click(); assert(not QuestBookReader:IsShown())
 -- active quest is marked, ready quest is marked
 C_SuperTrack.SetSuperTrackedQuestID(100); __fire("SUPER_TRACKING_CHANGED"); __runTimers()
-local titles = {}
-for _, f in ipairs(__frames) do if f.__parent == P and f.questID and f:IsShown() then titles[f.questID] = f.title:GetText() end end
-assert(titles[100]:sub(1, 2) == "> ", "active quest marked: " .. titles[100])
-assert(titles[101]:find("%(ready%)"), "a quest ready to turn in says so: " .. titles[101])
+local rowOf = {}
+for _, f in ipairs(__frames) do if f.__parent == P and f.questID and f:IsShown() then rowOf[f.questID] = f end end
+assert(rowOf[100].active and rowOf[100].accent:IsShown(), "the active quest has the accent bar")
+assert(not rowOf[101].active and not rowOf[101].accent:IsShown(), "and only the active one")
+assert(rowOf[101].ready and rowOf[101].objs:GetText():find("ready to turn in", 1, true), "a quest ready to turn in says so: " .. tostring(rowOf[101].objs:GetText()))
+-- counted objectives get a thin bar (kill 6, collect 3): the stub's quest 100 counts 2 of 6
+local realObj = C_QuestLog.GetQuestObjectives
+C_QuestLog.GetQuestObjectives = function(id) return { { text = "2/6 Things", finished = false, numFulfilled = 2, numRequired = 6 } } end
+__fire("QUEST_LOG_UPDATE"); __runTimers()
+local r100
+for _, f in ipairs(__frames) do if f.__parent == P and f.questID == 100 and f:IsShown() then r100 = f end end
+local u = Style.PixelUnit(P)
+assert(r100.track:IsShown() and r100.fill:IsShown(), "a bar for counted objectives")
+local tw, fw = r100.track:GetWidth(), r100.fill:GetWidth()
+assert(math.abs(fw / tw - 2 / 6) < 0.01, "filled by the fraction done: " .. fw / tw)
+assert(math.abs(r100.track:GetHeight() - 4 * u) < 1e-6, "4 px tall")
+C_QuestLog.GetQuestObjectives = function(id) return { { text = "Talk to someone", finished = false } } end
+__fire("QUEST_LOG_UPDATE"); __runTimers()
+for _, f in ipairs(__frames) do if f.__parent == P and f.questID == 100 and f:IsShown() then r100 = f end end
+assert(not r100.track:IsShown(), "no bar when nothing is counted")
+C_QuestLog.GetQuestObjectives = realObj
 -- empty state
 for id in pairs({ [100] = 1, [101] = 1 }) do C_QuestLog.RemoveQuestWatch(id) end
 __fire("QUEST_WATCH_LIST_CHANGED"); __runTimers()
@@ -64,7 +82,9 @@ slash("tracker max 0.05"); __runTimers()
 assert(T.shown < T.total, "limited by room: shown " .. T.shown .. " of " .. T.total)
 slash("tracker max 0.42")
 -- settings
-slash("tracker width 300"); assert(P:GetWidth() == 300)
+slash("tracker width 500"); assert(math.abs(P:GetWidth() - 500 * Style.PixelUnit(P)) < 1e-6, "width is in physical pixels")
+slash("tracker size 24"); assert(T.db.size == 24)
+slash("tracker size 21")
 slash("tracker alpha 0.3"); assert(P.__bd and P.__bd[4] == 0.3)
 -- following the minimap when the corner is off
 slash("overlay corner off"); __tick(3)

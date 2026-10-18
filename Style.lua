@@ -304,10 +304,12 @@ Style.KIT = {
   title = 1.82, header = 1.18, small = 0.82,
 }
 
--- An ink link on the page: a word with a 1 px rule under it, brick when the mouse is on it, faded when disabled.
--- Sizes in physical pixels. Returns a Button with :SetText / :SetEnabled / :SetWarn / :SetPx.
-function Style.InkLink(parent, px, onClick)
+-- An ink link: a word with a 1 px rule under it, brick when the mouse is on it, faded when disabled. Sizes in
+-- physical pixels. `pal` = { normal, hot, faded, warn } colours (default: ink on paper; the tracker passes cream on dark).
+-- Returns a Button with :SetText / :SetEnabled / :SetWarn / :SetPx.
+function Style.InkLink(parent, px, onClick, pal)
   local K = Style.KIT
+  pal = pal or { normal = K.ink, hot = K.brick, faded = K.faded, warn = K.brick }      -- ink on paper by default
   local b = CreateFrame("Button", nil, parent)
   b.label = b:CreateFontString(nil, "OVERLAY")
   b.label:SetFont(Style.FRIZ, Style.Px(px, parent), "")          -- a font at birth
@@ -320,8 +322,8 @@ function Style.InkLink(parent, px, onClick)
   b.line:SetHeight(Style.Px(1, parent))
   b.enabled, b.warn, b.over = true, false, false
   function b:Paint()
-    local c = K.ink
-    if not self.enabled then c = K.faded elseif self.warn or self.over then c = K.brick end
+    local c = pal.normal
+    if not self.enabled then c = pal.faded elseif self.warn then c = pal.warn elseif self.over then c = pal.hot end
     local a = self.enabled and 1 or 0.55
     self.label:SetTextColor(c[1], c[2], c[3], a)
     self.line:SetVertexColor(c[1], c[2], c[3], self.enabled and (self.over and 0.95 or 0.5) or 0)
