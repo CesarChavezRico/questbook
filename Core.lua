@@ -10,7 +10,7 @@
 
 local ADDON, QB = ...
 QB.name = ADDON
-QB.version = "0.11.0"
+QB.version = "0.11.1"
 QB.modules = {}      -- name -> module table
 QB.order = {}        -- registration order
 QB.errors = {}       -- module name -> { msg = string, count = number }
@@ -49,6 +49,18 @@ end
 -- Help and usage text: the chat frame reads "|" + a letter as a code ("|t" ends a texture, "|h" a link, "|r"
 -- resets colour, "|n" is a newline), so "all|tracked" printed as "allracked". A literal pipe is "||".
 -- Seen in the game 2026-10-17: every help line with "a|b" options was garbled.
+-- "v0.11.0", plus the version the TOC file says when it is not the same: a half-updated folder (new Lua files, old
+-- TOC, or the reverse) is then visible at a glance. The TOC's is read by the client when it lists the addon.
+function QB:VersionLine()
+  local line = "v" .. tostring(QB.version)
+  local get = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
+  if type(get) == "function" then
+    local ok, toc = pcall(get, ADDON, "Version")
+    if ok and toc and toc ~= QB.version then line = line .. " (the .toc file says v" .. tostring(toc) .. ": mixed install?)" end
+  end
+  return line
+end
+
 function QB:Usage(msg)
   QB:Say((tostring(msg):gsub("|", "||")))
 end
@@ -247,6 +259,7 @@ function QB:Boot(loggedIn)
   if not (loggedIn or (IsLoggedIn and IsLoggedIn())) then return end
   if QB.booted then return end
   QB.booted = true
+  QB:Say(QB:VersionLine() .. " loaded  (/qb help)")
   for _, name in ipairs(QB.order) do
     local mod = QB.modules[name]
     local mdb = ModDB(name)
@@ -280,7 +293,7 @@ function QB:HandleSlash(msg)
   local sub, rest = msg:match("^(%S+)%s*(.-)$")
   sub = sub and sub:lower() or ""
   if sub == "modules" or sub == "status" then
-    QB:Say("v" .. QB.version)
+    QB:Say(QB:VersionLine())
     for _, name in ipairs(QB.order) do QB:Say("  " .. ModuleLine(name)) end
     return
   elseif sub == "enable" or sub == "disable" then
@@ -300,8 +313,12 @@ function QB:HandleSlash(msg)
     end
     if not any then QB:Say("no module errors this session") end
     return
+  elseif sub == "version" then
+    QB:Say(QB:VersionLine())
+    return
   elseif sub == "help" then
-    QB:Usage("/qb modules | enable <m> | disable <m> | errors")
+    QB:Say(QB:VersionLine())
+    QB:Usage("/qb version | modules | enable <m> | disable <m> | errors")
     for s, rec in pairs(QB.slash) do
       if rec.help then QB:Usage("/qb " .. s .. " -- " .. rec.help) end
     end
