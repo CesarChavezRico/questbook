@@ -45,6 +45,7 @@ local debugMode = false
 local isSpeaking = false
 local openFlag = false           -- "reader_state" was announced as open
 local spokeFor                   -- quest the walk-and-listen already read for this opening
+local keepSpeech = false         -- the page is closing because you walked off: the reading goes on
 local RefreshChrome              -- forward declaration (the duties call it)
 
 local function Dbg(msg) if debugMode then print("|cff7faaffQB-debug|r: " .. msg) end end
@@ -345,11 +346,14 @@ local function Speak(entry, desc, force)
   local prefix = IsReadyToTurnIn(entry) and "This quest is complete and ready to turn in. " or ""
   local ok, why = SpeakText(((entry and entry.title) or "") .. ". " .. prefix .. desc)
   if not ok and why then Say("voice problem: " .. why .. " (try /qb voices)") end
+  return ok
 end
 
 local function SetSpeaking(state)
+  local changed = (isSpeaking ~= state)
   isSpeaking = state
   if R and R.talk then R.talk:SetText(state and "Stop" or "Talk") end
+  if changed then QB:Fire("speech_state", state) end       -- the tracker's voice link follows it
 end
 
 local function StopSpeaking()
@@ -695,6 +699,7 @@ function mod:Open(questID)
     -- Order matters: announce the reader BEFORE the map closes, so the camera never lets go in between
     -- (it follows "reader_state" and "overlay_state": the shift stays while either is up).
     if not openFlag then openFlag = true; QB:Fire("reader_state", true) end
+    QB:Call("overlay", "ReaderBars", true)           -- hide the action bars, as the map does (before the map closes)
     local O = QB.modules.overlay
     if O and O.active and O.state ~= "off" then QB:Call("overlay", "SetState", "off", true) end
     self:Layout()
@@ -712,7 +717,8 @@ function mod:Toggle()
 end
 
 function mod:OnClosed()
-  StopSpeaking()
+  if not keepSpeech then StopSpeaking() end
+  QB:Call("overlay", "ReaderBars", false)            -- the bars come back (unless the map took the place)
   if openFlag then
     openFlag = false
     QB:Fire("reader_state", false)
@@ -730,12 +736,31 @@ QB:On("combat_start", function()
   end
 end, mod)
 
--- Walk-and-listen: the first step you take with the reader open reads the quest to you (once per quest).
+-- Walk-and-listen: the first step you take with the reader open reads the quest to you (once per quest) and, when the
+-- reading started, puts the page away so you can see where you walk; the reading goes on, and the tracker has a link
+-- to stop it. With voice off the page stays.
 function mod:OnStartedMoving()
   if R and R:IsShown() and lastEntry and spokeFor ~= lastEntry.questID then
     spokeFor = lastEntry.questID
-    Speak(lastEntry, lastDesc)
+    if Speak(lastEntry, lastDesc) then
+      keepSpeech = true
+      R:Hide()
+      keepSpeech = false
+    end
   end
+end
+
+-- For the tracker's voice link: what it should say and do.
+function mod:VoiceState()
+  if isSpeaking then return "speaking" end
+  return (db and db.voice) and "on" or "off"
+end
+function mod:StopSpeech() StopSpeaking() end
+function mod:ToggleVoice()
+  if not db then return end
+  db.voice = not db.voice
+  if not db.voice then StopSpeaking() end
+  QB:Fire("speech_state", isSpeaking)
 end
 
 -- ---------------------------------------------------------------- events
@@ -883,8 +908,7 @@ QB.legacySlash = function(msg)
     debugMode = not debugMode
     Say("debug " .. (debugMode and "on -- open the reader and move" or "off"))
   elseif msg == "voice" then
-    db.voice = not db.voice
-    if not db.voice then StopSpeaking() end
+    mod:ToggleVoice()
     Say("walk-and-listen " .. (db.voice and "on" or "off"))
   elseif msg == "voices" then
     if C_VoiceChat and C_VoiceChat.GetTtsVoices then

@@ -75,6 +75,24 @@ QB:Call("questlog", "Open", 100); __tick(5, 0.05)
 assert(R:IsShown() and O.state == "off", "the reader replaced the zone map too")
 assert(O.cornerPanel:IsShown(), "the small minimap is back")
 
+-- the action bars go with the reader as they go with the map (and stay hidden through a swap)
+local bar = MainActionBar
+R:Hide(); __tick(60, 0.05)
+assert(bar:GetAlpha() == 1, "bars visible with nothing open")
+QB:Call("questlog", "Open", 100); __tick(3, 0.05)
+assert(bar:GetAlpha() == 0, "bars hidden while the reader is open")
+O:Cycle(); __tick(3, 0.05)
+assert(O.state == "local" and bar:GetAlpha() == 0, "hidden through the swap to the map")
+QB:Call("questlog", "Open", 100); __tick(3, 0.05)
+assert(R:IsShown() and bar:GetAlpha() == 0, "and through the swap back")
+R:Hide(); __tick(3, 0.05)
+assert(bar:GetAlpha() == 1, "visible again when the reader closes")
+QB:Call("questlog", "Open", 100); O:Cycle(); __tick(3, 0.05)
+assert(not R:IsShown() and bar:GetAlpha() == 0, "the map keeps them hidden when it takes over")
+O:SetState("off"); __tick(3, 0.05)
+assert(bar:GetAlpha() == 1, "and gives them back")
+QB:Call("questlog", "Open", 100)
+
 -- closing releases the camera
 R:Hide(); __tick(60, 0.05)
 assert(not C.engaged and seen[#seen] == "closed", "closed: the camera is released")
@@ -92,12 +110,30 @@ __combat = true; __fire("PLAYER_REGEN_DISABLED"); __combat = false
 assert(not R:IsShown(), "combat start closes it")
 __fire("PLAYER_REGEN_ENABLED"); __runTimers(); __tick(60, 0.05)
 
--- walk-and-listen: the first step with it open reads the quest, once
-local spoken = 0
+-- walk-and-listen: the first step with it open reads the quest once AND puts the page away; the reading goes on
+local spoken, stopped = 0, 0
 C_VoiceChat.SpeakText = function() spoken = spoken + 1 end
+C_VoiceChat.StopSpeakingText = function() stopped = stopped + 1 end
 QB:Call("questlog", "Open", 100)
 __fire("PLAYER_STARTED_MOVING"); __fire("PLAYER_STARTED_MOVING")
 assert(spoken == 1, "read once, got " .. spoken)
+assert(not R:IsShown(), "the page is put away when you walk off with voice on")
+assert(stopped == 0, "and the reading was not stopped by it")
+-- the tracker's voice link: "Stop" while it reads, the switch otherwise
+local P = QuestBookTracker
+assert(P.voice and P.voice:GetText() == "Voice on", "voice link says Voice on: " .. tostring(P.voice and P.voice:GetText()))
+__fire("VOICE_CHAT_TTS_PLAYBACK_STARTED")
+assert(P.voice:GetText() == "Stop", "while reading it says Stop, got " .. tostring(P.voice:GetText()))
+click(P.voice); assert(stopped == 1 and P.voice:GetText() == "Voice on", "Stop stops the reading with the page away")
+click(P.voice); assert(Q.db and QB.db.voice == false and P.voice:GetText() == "Voice off", "the link switches walk-and-listen off")
+-- with voice off the page stays when you walk
+QB:Call("questlog", "Open", 100)
+__fire("PLAYER_STARTED_MOVING")
+assert(R:IsShown() and spoken == 1, "voice off: the page stays, nothing is read")
+R:Hide()
+click(P.voice); assert(QB.db.voice == true and P.voice:GetText() == "Voice on", "and back on")
+-- Talk reads on demand
+QB:Call("questlog", "Open", 100)
 click(R.talk); assert(spoken == 2, "Talk reads on demand")
 
 -- the log changes under the page: it follows
