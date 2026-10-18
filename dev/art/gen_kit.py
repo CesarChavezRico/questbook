@@ -64,10 +64,12 @@ class Profile:
         self.m0 = self.mid(0)
         r = random.Random(seed * 7 + 3)
         self.tears = []
-        for _ in range(max(3, int(length_px / 210))):             # about one bite per 210 px
-            self.tears.append((r.uniform(0.09, 0.91), r.uniform(26, 84) / length_px, r.uniform(6, 12), r.choice((-1, 1)), "bite"))
-        for _ in range(max(1, int(length_px / 520))):             # a few narrow V cuts
+        for _ in range(max(4, int(length_px / 155))):             # about one bite per 155 px
+            self.tears.append((r.uniform(0.09, 0.91), r.uniform(22, 80) / length_px, r.uniform(5, 12), r.choice((-1, 1)), "bite"))
+        for _ in range(max(2, int(length_px / 330))):             # a few narrow V cuts
             self.tears.append((r.uniform(0.12, 0.88), r.uniform(7, 13) / length_px, r.uniform(11, 17), r.choice((-1, 1)), "cut"))
+        for _ in range(max(3, int(length_px / 130))):              # small nicks between them
+            self.tears.append((r.uniform(0.07, 0.93), r.uniform(5, 11) / length_px, r.uniform(3.5, 7), r.choice((-1, 1)), "cut"))
 
     def tear(self, s):
         total = 0.0
@@ -149,12 +151,14 @@ GR = Grain(256, 11)
 def paper_color(x, y, shade=1.0):
     m, f, f2 = GR.value(x, y)
     k = 1.0 + m * 0.065 + f * 0.030 + f2 * 0.020
-    return tuple(clamp(c * k * shade) for c in PAPER)
+    # shading is browner as it darkens: red keeps more than green, green more than blue
+    return (clamp(PAPER[0] * k * shade), clamp(PAPER[1] * k * shade ** 1.12), clamp(PAPER[2] * k * shade ** 1.32))
 
 
 def rim(dist_px):
-    """Darker, slightly browner paper right at the torn edge, fading over ~4px."""
-    return 1.0 - 0.26 * (1 - smooth(0.0, 4.5, dist_px))
+    """The page darkens toward its torn edge: a sharp scorched line right at it (about 5 px) and a broad soft
+    shade (about 34 px), both gone before the strips fade into the fill (row 44)."""
+    return (1.0 - 0.32 * (1 - smooth(0.0, 5.0, dist_px))) * (1.0 - 0.17 * (1 - smooth(0.0, 34.0, dist_px)))
 
 
 # ---- the pieces -------------------------------------------------------------------------------------------------

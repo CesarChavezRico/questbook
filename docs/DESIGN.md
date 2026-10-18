@@ -210,6 +210,10 @@ charter was dropped on purpose.
   bites (a slow ramp, a steep drop) and narrow V cuts, tears are 1024 px long on top and bottom and 512 px at the
   sides so they are not stretched much, and each of the four sides has its own tearing, not a mirror of its opposite.
   The scroll-like curled corners of Dialogue UI's page are not attempted.
+- **Seen in the game (2026-10-17, v0.12.1):** "the kit looks great", the interior bug is gone, the 1/2/3 px lines read as
+  three distinct widths. Asked for: darker borders and a few more tears. v0.12.2: the page darkens toward its edge (a
+  scorched line in the last 5 px and a broad soft shade over about 34 px, browner as it darkens), bites about one per 155
+  px (was 210), V cuts one per 330 px, plus small nicks about one per 130 px.
 - **Unverified (the client has to say):** that the generated page looks right at Cesar's size (3440x1440 physical), that
   `SetRoundLayoutToNearestPixel` and the pixel arithmetic give 1 px lines, and that tiling the 256 px grain with
   `SetTexture(file, "REPEAT", "REPEAT")` shows no visible repeat.
