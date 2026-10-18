@@ -150,6 +150,11 @@ charter was dropped on purpose.
   markers) and the player and target frames (alpha, restored on close; `/qb reader hide minimap|frames on|off`, both on by
   default); the camera has a zoom of its own for the reader, `/qb camera readerzoom <n>` (relative like `zoomout`, negative
   zooms in, default 3 = same as the map), and the two trade zooms when the reader and the map trade places.
+- **Buffs and debuffs** (v0.15.3; Cesar, 2026-10-17, from a screenshot: "we are hiding the unit frame but not the buffs"): the player's buffs
+  and debuffs are their own frames (`BuffFrame`, `DebuffFrame`, Blizzard_BuffFrame/BuffFrame.xml), not children of the player frame, so
+  hiding the frame left them floating. They are now hidden with the same alpha tweak (`/qb reader hide auras on|off`, on by default,
+  independent of `frames`). The target's auras are children of the target frame and go with it. The big deadly-debuff warning
+  (`DeadlyDebuffFrame`) is never hidden.
 - **Duties** (unchanged, through Blizzard's own flows): active (the "super-tracked" quest the game points at), track and
   untrack, abandon (through Blizzard's confirmation), share. Walk-and-listen: the first step with the reader open reads the quest
   (once per quest); Talk / Stop reads on demand; the arrows read the quest they land on.

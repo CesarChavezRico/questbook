@@ -1028,11 +1028,14 @@ end
 -- ---------------------------------------------------------------- bars
 
 -- The action bars are hidden while a map mode is open, and while the quest reader is (it sits in the same place).
--- The reader may also hide the small corner minimap and the player and target frames (Cesar, 2026-10-17: they clutter
--- the page's row), all with the same alpha tweaks the bars use, restored when it closes.
+-- The reader may also hide the small corner minimap, the player and target frames and the player's buffs and debuffs
+-- (Cesar, 2026-10-17: they clutter the page's row; the buffs stayed behind when only the frames were hidden), all with
+-- the same alpha tweaks the bars use, restored when it closes. The target's own auras are children of its frame.
+-- DeadlyDebuffFrame (the big warning) is deliberately left alone.
 local UNIT_FRAMES = { "PlayerFrame", "TargetFrame" }
+local AURA_FRAMES = { "BuffFrame", "DebuffFrame" }    -- Blizzard_BuffFrame/BuffFrame.xml
 mod.readerOn = false
-mod.readerHide = { minimap = true, frames = true }
+mod.readerHide = { minimap = true, frames = true, auras = true }
 mod.unitTweaks = { order = {}, map = {} }
 
 function mod:BarsWanted() return self.state ~= "off" or self.readerOn end
@@ -1046,20 +1049,28 @@ end
 
 function mod:ApplyUnitFrames()
   local set = self.unitTweaks
-  if not (self.readerOn and self.readerHide.frames) then
-    if #set.order > 0 then TweakUndoAll(set) end
-    return
-  end
-  for _, name in ipairs(UNIT_FRAMES) do
-    local f = G(name)
-    if f and f.SetAlpha then TAlpha(set, "unit." .. name, f, 0) end
+  local groups = {
+    { prefix = "unit.", list = UNIT_FRAMES, want = self.readerOn and self.readerHide.frames },
+    { prefix = "aura.", list = AURA_FRAMES, want = self.readerOn and self.readerHide.auras },
+  }
+  for _, g in ipairs(groups) do
+    if g.want then
+      for _, name in ipairs(g.list) do
+        local f = G(name)
+        if f and f.SetAlpha then TAlpha(set, g.prefix .. name, f, 0) end
+      end
+    elseif #set.order > 0 then
+      TweakUndoPrefix(set, g.prefix)
+    end
   end
 end
 
--- The quest reader opened or closed. opts = { minimap = bool, frames = bool }: what it hides besides the bars.
+-- The quest reader opened or closed. opts = { minimap = bool, frames = bool, auras = bool }: what it hides besides the bars.
 function mod:ReaderOpen(on, opts)
   self.readerOn = on and true or false
-  if opts then self.readerHide = { minimap = opts.minimap and true or false, frames = opts.frames and true or false } end
+  if opts then
+    self.readerHide = { minimap = opts.minimap and true or false, frames = opts.frames and true or false, auras = opts.auras and true or false }
+  end
   self:ApplyBars(self:BarsWanted())
   self:ApplyUnitFrames()
   if self.cornerPanel then

@@ -294,6 +294,7 @@ function GameTooltip:Show() self.__shown = true end
 function GameTooltip:Hide() self.__shown = false end
 -- unit frames (hidden by alpha while the reader is open)
 newFrame("Frame", "PlayerFrame", UIParent); newFrame("Frame", "TargetFrame", UIParent)
+newFrame("Frame", "BuffFrame", UIParent); newFrame("Frame", "DebuffFrame", UIParent); newFrame("Frame", "DeadlyDebuffFrame", UIParent)
 -- real mask bookkeeping on the world map + a pooled detail layer (v0.7.2)
 do
   local wmf = WorldMapFrame
