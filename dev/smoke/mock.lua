@@ -277,6 +277,15 @@ function Minimap:SetIconScale(s) __iconScale = s end
 for _, n in ipairs({ "MainActionBar", "MultiBarBottomLeft", "MultiBarBottomRight", "MultiBarLeft", "MultiBarRight", "StanceBar", "PetActionBar", "StatusTrackingBarManager" }) do
   newFrame("Frame", n, UIParent)
 end
+-- the NPC you are talking to ("npc"), and the quest the dialog offers
+__npc = { name = "Zenn Foulhoof", sex = 2, ctype = "Humanoid", guid = "Creature-0-4379-1-30-3498-000012345A", quest = 100 }
+function UnitExists(u) return u == "npc" and __npc ~= nil end
+function UnitName(u) if u == "npc" and __npc then return __npc.name end end
+function UnitSex(u) if u == "npc" and __npc then return __npc.sex end end
+function UnitCreatureType(u) if u == "npc" and __npc then return __npc.ctype end end
+function UnitGUID(u) if u == "npc" and __npc then return __npc.guid end end
+function GetQuestID() return __npc and __npc.quest or 0 end
+function GetServerTime() return 1760000000 end
 -- experience (v0.15): a level 8 character with 1240 of 2800 XP and 400 rested
 __xp = { level = 8, xp = 1240, max = 2800, rested = 400, resting = true, disabled = false, maxLevel = 60 }
 function UnitLevel() return __xp.level end

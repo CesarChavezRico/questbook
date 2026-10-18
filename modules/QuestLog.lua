@@ -633,6 +633,8 @@ local function ShowQuest(entry, keepScroll)
   local meta = {}
   if entry.level then meta[#meta + 1] = "Level " .. entry.level end
   if entry.header then meta[#meta + 1] = entry.header end
+  local okG, rec = QB:Call("giver", "Get", entry.questID)
+  if okG and rec and rec.name then meta[#meta + 1] = "From " .. rec.name end
   if ready then meta[#meta + 1] = "|cff" .. Style.Hex(K.done) .. "Ready to turn in|r"
   elseif done then meta[#meta + 1] = "|cff" .. Style.Hex(K.done) .. "Complete|r" end
   if IsActiveQuest(entry.questID) then meta[#meta + 1] = "Active quest" end
@@ -679,6 +681,9 @@ end
 RefreshChrome = function()
   if R and R:IsShown() and lastEntry then ShowFromLog(lastEntry.questID, true) end
 end
+
+-- The quest on the page (for /qb giver and, later, the voice).
+function mod:CurrentQuestID() return lastEntry and lastEntry.questID or nil end
 
 function mod:Nav(delta)
   local n = #entries
