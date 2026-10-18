@@ -32,8 +32,8 @@ local TEX = "Interface\\AddOns\\" .. ADDON .. "\\Textures\\"
 local DISC = TEX .. "mask_circle.tga"          -- white, soft edge: tinted it is a round marker
 local QUEST_POIS = 65536                       -- Enum.MinimapTrackingFilter.QuestPOIs (MinimapConstantsDocumentation.lua)
 local ROTATE_CVAR = "rotateMinimap"
-local TICK = 0.1                               -- seconds between position updates while shown
-local COLLECT = 0.5                            -- at most this often re-read the quest list
+local LOCATE = 0.05                            -- seconds between re-reads of where you are (turning is every frame)
+local COLLECT = 0.25                           -- at most this often re-read the quest list
 local EDGE = 0.94                              -- markers past the edge stick here (fraction of the half-size)
 local CULL = 1.6                               -- a non-active marker farther than this (x the edge) is hidden
 
@@ -42,8 +42,9 @@ local frame
 local pool = {}
 local entries = {}
 local dirty = true
-local sinceTick, sinceCollect = 0, 99
-local playerPos, worldSize = {}, {}            -- per-tick caches keyed by map id
+local sinceLocate, sinceCollect = 0, 99
+local playerPos, worldSize = {}, {}            -- per-pass caches keyed by map id
+local cos, sin, abs, max = math.cos, math.sin, math.abs, math.max
 
 local function Tone() return Style.Get("dark") end
 
@@ -70,6 +71,13 @@ local function QuestPoiIndex()
   return nil
 end
 
+local function PoiName(index)
+  if not (index and C_Minimap and C_Minimap.GetTrackingInfo) then return "?" end
+  local ok, info = pcall(C_Minimap.GetTrackingInfo, index)
+  if ok and type(info) == "table" then return tostring(info.name) end
+  return "?"
+end
+
 local function PoiActive(index)
   if not (index and C_Minimap and C_Minimap.GetTrackingInfo) then return nil end
   local ok, info = pcall(C_Minimap.GetTrackingInfo, index)
@@ -79,6 +87,9 @@ end
 
 -- Switch the client's areas off (remembering that we did) or give them back. `release` = this module is
 -- going away: always give them back (QB:Disable runs OnDisable while `active` is still true).
+-- What the call did is kept in self.areasCall for the status line: in the game (2026-10-17) the areas stayed
+-- while the status read "now true" after this ran, and nothing says which of the three is at fault: the call
+-- is refused, the reading is not what we take it for, or the client switches it back on afterwards.
 function mod:ApplyAreas(release)
   local db = self.db
   local idx = QuestPoiIndex()
@@ -91,10 +102,16 @@ function mod:ApplyAreas(release)
   local active = PoiActive(idx)
   if db.areas == "hidden" and not release then
     if active then
-      if pcall(C_Minimap.SetTracking, idx, false) then db.areasBackup = true end
+      local ok, err = pcall(C_Minimap.SetTracking, idx, false)
+      self.areasCall = ok and "call ok" or ("call failed: " .. tostring(err))
+      if ok then db.areasBackup = true end
+    else
+      self.areasCall = "already off"
     end
   elseif db.areasBackup then
-    if pcall(C_Minimap.SetTracking, idx, true) then db.areasBackup = nil end
+    local ok, err = pcall(C_Minimap.SetTracking, idx, true)
+    self.areasCall = ok and "restored" or ("restore failed: " .. tostring(err))
+    if ok then db.areasBackup = nil end
   end
 end
 
@@ -187,7 +204,9 @@ local function GetMarker(i)
   return mk
 end
 
-local function Paint(mk, e, size, edge)
+-- Everything that does not change while you turn: size, colour, glyph, title, halo. Run when the quest list
+-- or the host changes, never per frame.
+local function Paint(mk, e, size)
   local t = Tone()
   mk:SetSize(size, size)
   mk.shadow:ClearAllPoints()
@@ -224,7 +243,6 @@ local function Paint(mk, e, size, edge)
     mk.label:SetText("")
     mk.label:Hide()
   end
-  mk:SetAlpha(edge and 0.6 or 1)
 end
 
 local function PlayerPos(mapID)
@@ -268,71 +286,122 @@ function mod:Host()
   return ov and ov.active and ov.host or nil
 end
 
-function mod:Place()
-  if not (frame and frame:IsShown()) then return end
+-- One marker per entry, painted once.
+function mod:PaintAll()
+  local size = (tonumber(self.db.size) or 14) * (self:Host() == "corner" and 0.75 or 1)
+  local lvl = frame:GetFrameLevel()
+  for i, e in ipairs(entries) do
+    local mk = GetMarker(i)
+    e.mk = mk
+    Paint(mk, e, e.active and size * 1.35 or size)
+    mk:SetFrameLevel(lvl + (e.active and 3 or 1))
+    mk:Hide(); mk.vis = false; mk.edge = nil
+  end
+  for i = #entries + 1, #pool do pool[i]:Hide(); pool[i].vis = false end
+  self.moved = true
+end
+
+-- How far each quest is from you in yards (east, north), and the minimap's scale. Re-read at LOCATE
+-- intervals: it costs a few API calls and a table each, so it is not done every frame. Turning does not
+-- need it: Draw rotates these cached offsets every frame.
+function mod:Locate()
   local mm = _G.Minimap
-  if not mm then return end
-  local w, h = mm:GetSize()
-  if not (w and h and w > 0 and h > 0) then return end
+  local w, h
+  if mm then w, h = mm:GetSize() end
   local radius
   if C_Minimap and C_Minimap.GetViewRadius then
     local ok, r = pcall(C_Minimap.GetViewRadius)
     if ok and type(r) == "number" and r > 0 then radius = r end
   end
   self.radius = radius
-  if not radius then
-    for i = 1, #pool do pool[i]:Hide() end
-    return
-  end
-  wipe(playerPos); wipe(worldSize)
+  if not (w and h and w > 0 and h > 0 and radius) then self.geo = nil; return end
+  local g = self.geo or {}
+  self.geo = g
   local hw, hh = w / 2, h / 2
   local ppy = math.min(hw, hh) / radius * (tonumber(self.db.scale) or 1)
-  local facing = 0
-  if Rotating() and GetPlayerFacing then
-    local ok, f = pcall(GetPlayerFacing)
-    if ok and type(f) == "number" then facing = f end
-  end
-  local c, s = math.cos(facing), math.sin(facing)
-  local size = (tonumber(self.db.size) or 14) * (self:Host() == "corner" and 0.75 or 1)
-  local used = 0
+  local rot = Rotating()
+  if g.hw ~= hw or g.hh ~= hh or g.ppy ~= ppy or g.rotating ~= rot then self.moved = true end
+  g.hw, g.hh, g.ppy, g.rotating = hw, hh, ppy, rot
+  wipe(playerPos); wipe(worldSize)
   for _, e in ipairs(entries) do
     local px, py = PlayerPos(e.map)
     local W, H = WorldSize(e.map)
+    local east, north
     if px and W then
       -- yards east / north of the player (map x grows east, map y grows south)
-      local east, north = (e.x - px) * W, -(e.y - py) * H
-      local sx = (east * c + north * s) * ppy
-      local sy = (-east * s + north * c) * ppy
-      local k = math.max(math.abs(sx) / (hw * EDGE), math.abs(sy) / (hh * EDGE))
-      local edge = k > 1
-      if edge then sx, sy = sx / k, sy / k end
-      if not edge or e.active or k <= CULL then
-        used = used + 1
-        local mk = GetMarker(used)
-        Paint(mk, e, e.active and size * 1.35 or size, edge)
-        mk:ClearAllPoints()
-        mk:SetPoint("CENTER", frame, "CENTER", sx, sy)
-        mk:SetFrameLevel(frame:GetFrameLevel() + (e.active and 3 or 1))
-        mk:Show()
+      east, north = (e.x - px) * W, -(e.y - py) * H
+    end
+    if east ~= e.east or north ~= e.north then
+      if not (east and e.east and math.abs(east - e.east) < 0.02 and math.abs(north - e.north) < 0.02) then
+        self.moved = true
+        e.east, e.north = east, north
       end
     end
   end
-  for i = used + 1, #pool do pool[i]:Hide() end
+end
+
+-- Every frame: rotate the cached offsets by the current facing and move the markers. Does nothing at all
+-- when you are neither turning nor moving.
+function mod:Draw(force)
+  local g = self.geo
+  if not (g and frame and frame:IsShown()) then return end
+  local facing = 0
+  if g.rotating and GetPlayerFacing then
+    local f = GetPlayerFacing()
+    if type(f) == "number" then facing = f end
+  end
+  if not (force or self.moved or facing ~= self.lastFacing) then return end
+  self.moved = false
+  self.lastFacing = facing
+  local c, s = cos(facing), sin(facing)
+  local hw, hh, ppy = g.hw, g.hh, g.ppy
+  local used = 0
+  for _, e in ipairs(entries) do
+    local mk = e.mk
+    local show = false
+    if mk and e.east then
+      local sx = (e.east * c + e.north * s) * ppy
+      local sy = (-e.east * s + e.north * c) * ppy
+      local k = max(abs(sx) / (hw * EDGE), abs(sy) / (hh * EDGE))
+      local edge = k > 1
+      if edge then sx, sy = sx / k, sy / k end
+      if not edge or e.active or k <= CULL then
+        show = true
+        used = used + 1
+        if mk.edge ~= edge then mk.edge = edge; mk:SetAlpha(edge and 0.6 or 1) end
+        mk:SetPoint("CENTER", frame, "CENTER", sx, sy)     -- same anchor point: replaces the old offset
+        if not mk.vis then mk:Show(); mk.vis = true end
+      end
+    end
+    if not show and mk and mk.vis then mk:Hide(); mk.vis = false end
+  end
   self.shown = used
 end
 
-local function Tick(_, dt)
+-- The whole pass: read the quests, paint, locate, draw.
+function mod:Refresh()
+  if not frame then return end
+  dirty = false
+  sinceCollect, sinceLocate = 0, 0
+  self:Collect()
+  self:PaintAll()
+  self:Locate()
+  self:Draw(true)
+end
+
+local function Tick(dt)
   if not mod.active then return end
-  sinceTick = sinceTick + (dt or 0)
-  sinceCollect = sinceCollect + (dt or 0)
-  if sinceTick < TICK then return end
-  sinceTick = 0
+  sinceCollect = sinceCollect + dt
+  sinceLocate = sinceLocate + dt
   if dirty and sinceCollect >= COLLECT then
-    dirty = false
-    sinceCollect = 0
-    mod:Collect()
+    mod:Refresh()
+    return
   end
-  mod:Place()
+  if sinceLocate >= LOCATE then
+    sinceLocate = 0
+    mod:Locate()
+  end
+  mod:Draw()
 end
 
 local function Build()
@@ -341,7 +410,11 @@ local function Build()
   frame:SetFrameStrata("MEDIUM")
   frame:EnableMouse(false)
   frame:Hide()
-  frame:SetScript("OnUpdate", function(f, dt) QB:Safe(mod, Tick, f, dt) end)
+  -- every frame, so no QB:Safe here (it builds a table per call); a fault is still reported, once
+  frame:SetScript("OnUpdate", function(_, dt)
+    local ok, err = pcall(Tick, dt or 0)
+    if not ok then QB:ReportError("markers", err) end
+  end)
   return frame
 end
 
@@ -356,9 +429,8 @@ function mod:Sync()
     frame:SetPoint("BOTTOMRIGHT", mm, "BOTTOMRIGHT", 0, 0)
     local lvl = mm.GetFrameLevel and mm:GetFrameLevel() or 1
     frame:SetFrameLevel(lvl + 5)
-    if not frame:IsShown() then dirty = true; sinceCollect = 99 end
     frame:Show()
-    self:Place()
+    self:Refresh()
   else
     frame:Hide()
   end
@@ -398,6 +470,16 @@ mod.events.QUEST_TURNED_IN = Dirty
 mod.events.ZONE_CHANGED_NEW_AREA = Dirty
 mod.events.ZONE_CHANGED = Dirty
 mod.events.PLAYER_ENTERING_WORLD = function(self) dirty = true; self:ApplyAreas(); self:Sync() end
+-- the client switching a tracking entry back on (login restore, the magnifier menu) is answered once the
+-- change has settled; our own call also fires it, and finds the entry already off
+mod.events.MINIMAP_UPDATE_TRACKING = function(self)
+  if self.db.areas ~= "hidden" or self.trackingQueued then return end
+  self.trackingTries = (self.trackingTries or 0) + 1
+  if self.trackingTries > 6 then return end        -- the client keeps winning: stop arguing with it
+  self.trackingQueued = true
+  local function again() self.trackingQueued = false; if self.active then self:ApplyAreas() end end
+  if C_Timer and C_Timer.After then C_Timer.After(0.5, again) else again() end
+end
 
 QB:On("overlay_host", function() if mod.active then mod:Sync() end end, mod)
 QB:On("overlay_state", function() if mod.active then mod:Sync() end end, mod)
@@ -408,9 +490,10 @@ local function Status()
   local db = mod.db
   local idx = mod.poiIndex
   QB:Say(string.format(
-    "markers: %s, %d of %d quests shown, size %d, scale %.2f | client areas: %s (Quest POIs entry %s, now %s%s) | view radius %s yd, host %s",
+    "markers: %s, %d of %d quests shown, size %d, scale %.2f | client areas: %s (tracking entry %s \"%s\", now %s, %s%s) | view radius %s yd, host %s",
     db.which, mod.shown or 0, mod.total or 0, db.size, db.scale, db.areas,
-    idx and tostring(idx) or "not found", tostring(PoiActive(idx)),
+    idx and tostring(idx) or "not found", PoiName(idx), tostring(PoiActive(idx)),
+    tostring(mod.areasCall),
     mod.areasNote and (", " .. mod.areasNote) or "",
     mod.radius and string.format("%.0f", mod.radius) or "?", tostring(mod:Host())))
 end
@@ -433,7 +516,7 @@ QB:RegisterSlash(mod, "markers", function(rest)
   elseif sub ~= "" and sub ~= "status" then
     QB:Say("/qb markers all|tracked|map | size <n> | scale <n> | areas native|hidden   (map = also quest givers, to line the markers up with the client's own blips; scale corrects the distance if they sit too near or too far)")
   end
-  dirty = true; sinceCollect = 99
-  mod:Collect(); mod:Sync()
+  dirty = true
+  mod:Sync()
   Status()
 end, "markers all|tracked|map|size|scale|areas: our quest markers on the minimap, in place of the client's quest areas")

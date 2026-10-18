@@ -148,6 +148,15 @@ charter was dropped on purpose.
   `C_QuestLog.GetQuestsOnMap` and `C_Map.GetPlayerMapPosition`, with the distance scale from
   `C_Minimap.GetViewRadius()`. This also gives every quest in the log a marker with the active one highlighted, which
   is what Cesar remembers from retail; the client itself draws only one area.
+- **Seen in the game (2026-10-17, v0.10.0):** the markers line up with the client's own quest-giver blips with scale 1.00
+  (`/qb markers map`), also while rotating; the look is "ok" and open to rework. Two findings: (1) the markers trailed the
+  minimap when turning, because positions were redone 10 times a second; v0.10.1 re-reads where you are 20 times a second
+  and rotates the cached offsets every frame, and repaints nothing unless the quest list changes. (2) The client's own
+  areas stayed: the status line read "Quest POIs ... now true" after our call. v0.10.1 only adds diagnostics (the status
+  shows the entry's name and what the call returned) and answers `MINIMAP_UPDATE_TRACKING`; the cause is not known.
+- **Lead, unverified:** the green disc of v0.9.1 disappeared when its setters were removed, so the blob *texture* setters
+  may reach the client even though the *alpha* ones did not. A fully transparent texture on the layers could then hide the
+  areas without the tracking filter. Not tried.
 - **Unverified (the client has to say):** that the tracking filter removes the areas (and not the quest-giver "!"
   blips with them); that `GetViewRadius()` is centre-to-edge as drawn on the enlarged widget (`/qb markers scale`
   corrects it, `/qb markers map` draws quest givers so the markers can be lined up with the client's own "!" blips);

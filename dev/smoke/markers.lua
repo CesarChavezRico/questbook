@@ -8,6 +8,8 @@ C_Minimap.SetTracking = function(i, on) tracking[i] = on end
 C_Map.GetMapWorldSize = function() return 1000, 1000 end
 local facing = 0
 function GetPlayerFacing() return facing end
+local ppos = { x = 0.42, y = 0.61 }
+C_Map.GetPlayerMapPosition = function() return { x = ppos.x, y = ppos.y, GetXY = function(s) return s.x, s.y end } end
 __pois[37] = {
   { questID = 100, x = 0.42, y = 0.51 },    -- 100 yards north of the player (0.42, 0.61), watched, in the log
   { questID = 101, x = 0.52, y = 0.61 },    -- 100 yards east, ready to hand in
@@ -70,6 +72,31 @@ sx, sy = pos(north)
 assert(math.abs(sx - 100 * ppy) < 0.01 and math.abs(sy) < 0.01, ("rotated: north to the right: got %.2f,%.2f"):format(sx, sy))
 facing = 0; __tick(3)
 
+-- DRAWING COST (Cesar, 2026-10-17: "when I rotate, the blips take time to follow"): turning is applied on
+-- the very next frame, not at the next position refresh, and nothing is repainted or re-anchored needlessly.
+local function counter(obj, name) local n = 0; local orig = obj[name]; obj[name] = function(...) n = n + 1; return orig(...) end; return function() return n end end
+local nPoints = counter(north, "SetPoint")
+local nText = counter(north.glyph, "SetText")
+for _ = 1, 20 do __tick(1, 0.016) end                       -- standing still, not turning: no work at all
+assert(nPoints() == 0, "idle frames move nothing, got " .. nPoints() .. " SetPoint calls")
+assert(nText() == 0, "idle frames repaint nothing, got " .. nText())
+facing = math.pi / 2; __tick(1, 0.016)                      -- ONE frame of 16 ms: shorter than any refresh interval
+sx, sy = pos(north)
+assert(math.abs(sx - 100 * ppy) < 0.01 and math.abs(sy) < 0.01, ("one frame after turning: got %.2f,%.2f"):format(sx, sy))
+facing = math.pi; __tick(1, 0.016)
+sx, sy = pos(north)
+assert(math.abs(sx) < 0.01 and math.abs(sy + 100 * ppy) < 0.01, ("and the next: got %.2f,%.2f"):format(sx, sy))
+for i = 1, 60 do facing = facing + 0.05; __tick(1, 0.016) end -- a long turn: positions only, never a repaint
+assert(nText() == 0, "turning repaints nothing, got " .. nText())
+assert(nPoints() == 62, "turning moves the markers once per frame, got " .. nPoints())
+facing = 0; __tick(3, 0.016)
+-- walking: the markers follow within a refresh interval (0.05 s)
+ppos.y = ppos.y - 0.05                                      -- 50 yd north
+__tick(4, 0.016)
+sx, sy = pos(north)
+assert(math.abs(sy - 50 * ppy) < 0.01, ("after walking 50 yd north the quest is 50 yd away: got %.2f"):format(sy))
+ppos.y = 0.61; __tick(4, 0.016)
+
 -- the active quest is larger, haloed and labelled; the others are not
 C_SuperTrack.SetSuperTrackedQuestID(100); __fire("SUPER_TRACKING_CHANGED"); __tick(12)
 local act
@@ -107,6 +134,13 @@ slash("markers scale 1"); __tick(12)
 -- off: the frame hides when no host has the minimap; back when it does
 slash("overlay cycle"); __tick(8)        -- zone: the corner minimap again
 assert(F:IsShown(), "still on the corner minimap in Map mode")
+
+-- the client switching the areas back on (login restore, the magnifier menu) is answered
+tracking[2] = true; __fire("MINIMAP_UPDATE_TRACKING"); __runTimers()
+assert(tracking[2] == false, "switched off again after the client turned it on")
+slash("markers")
+local said = table.concat(__take(), "\n")
+assert(said:find("call ok") or said:find("already off"), "the status says what the call did: " .. said)
 
 -- giving the client's areas back
 slash("markers areas native")
