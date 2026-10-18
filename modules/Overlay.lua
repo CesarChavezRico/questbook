@@ -1026,6 +1026,14 @@ end
 
 -- ---------------------------------------------------------------- bars
 
+-- The action bars are hidden while a map mode is open, and while the quest reader is (it sits in the same place).
+mod.readerBars = false
+function mod:BarsWanted() return self.state ~= "off" or self.readerBars end
+function mod:ReaderBars(on)
+  self.readerBars = on and true or false
+  self:ApplyBars(self:BarsWanted())
+end
+
 -- Action bars are faded to alpha 0 (not hidden): SetAlpha is not protected, so it is also
 -- safe to undo from the combat-start path, and Edit Mode keeps its own show/hide state.
 function mod:ApplyBars(on)
@@ -1114,7 +1122,7 @@ function mod:Apply(target)
   self.state = achieved
   self.mode = achieved
   self:ApplyRotation()
-  self:ApplyBars(achieved ~= "off")
+  self:ApplyBars(self:BarsWanted())
 
   self:EnsureDriver()
   panel:SetShown(self.host == "big" or self.zoneOn)
@@ -1183,7 +1191,7 @@ function mod:Tick()
       self.rotFixes = 0
     end
   end
-  if self.state ~= "off" then self:ApplyBars(true) end     -- Blizzard code may set the alpha back
+  if self:BarsWanted() then self:ApplyBars(true) end     -- Blizzard code may set the alpha back
   if self.localOn then
     if self.db.ground == "native" then self:SuppressBlizzardHybrid() end
     self:VerifyGround()
@@ -1283,6 +1291,7 @@ function mod:OnEnable()
 end
 
 function mod:OnDisable()
+  self.readerBars = false
   if self.mover then self:CornerMove(false) end
   self.noCorner = true          -- give the Minimap back to Blizzard's cluster
   self:SetState("off", true)
@@ -1440,7 +1449,7 @@ QB:RegisterSlash(mod, "overlay", function(rest)
   elseif sub == "bars" and (arg == "actions" or arg == "all" or arg == "none") then
     mod:ApplyBars(false)
     db.bars = arg
-    mod:ApplyBars(mod.state ~= "off")
+    mod:ApplyBars(mod:BarsWanted())
   elseif sub == "icons" and n1 then
     db.iconScale = clamp(n1, 0.5, 4)
     if mod.localOn then mod:ApplyIconScale() end

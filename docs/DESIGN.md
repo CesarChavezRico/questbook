@@ -130,6 +130,12 @@ charter was dropped on purpose.
   one, right click opens it here; the header link is "Log" (opens it on the active quest). The default key, the micro menu
   button and the objective tracker's "open quest" clicks open it too: `ToggleQuestLog`, `OpenQuestLog`,
   `QuestMapFrame_OpenToQuestDetails`, `QuestUtil.OpenQuestDetails` (all restored by `/qb log blizzard` or disabling the module).
+- **Walking and the bars** (v0.13.1, *written*; Cesar, 2026-10-17: "we are not dismissing the page when we start walking with
+  speak ON ... we need a way to stop the speech with the page minimized, maybe a toggle in the list", and "the quest page should
+  also hide the action bars, same as the maps"): the first step with voice on reads the quest and, when the reading started,
+  puts the page away (the reading is not stopped by that); with voice off the page stays. The tracker header's voice link says
+  "Stop" while a quest is being read (stops it), otherwise "Voice on" / "Voice off" (the walk-and-listen switch). The reader
+  hides the action bars like the map modes do (`Overlay:ReaderBars`, same `bars` setting), through the swap with the map too.
 - **Duties** (unchanged, through Blizzard's own flows): active (the "super-tracked" quest the game points at), track and
   untrack, abandon (through Blizzard's confirmation), share. Walk-and-listen: the first step with the reader open reads the quest
   (once per quest); Talk / Stop reads on demand; the arrows read the quest they land on.

@@ -120,6 +120,13 @@ local function Build(self)
   panel.book:SetText("Log")
   panel.book:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -PAD, -PAD + 3)
 
+  -- the voice link: "Stop" while a quest is being read (the page may be put away), else the walk-and-listen switch
+  panel.voice = Style.Link(panel, function()
+    local ok, state = QB:Call("questlog", "VoiceState")
+    if ok and state == "speaking" then QB:Call("questlog", "StopSpeech") else QB:Call("questlog", "ToggleVoice") end
+  end, Tone)
+  panel.voice:SetPoint("TOPRIGHT", panel.book, "TOPLEFT", -12, 0)
+
   more = Style.Link(panel, function() QB:Call("questlog", "Toggle") end, Tone)
   more:Hide()
 end
@@ -166,9 +173,19 @@ local function Place(self)
   if self.mover then self.mover:Layout() end
 end
 
+function mod:RefreshVoice()
+  if not (panel and panel.voice) then return end
+  local ok, state = QB:Call("questlog", "VoiceState")
+  if not ok then panel.voice:Hide() return end
+  panel.voice:Show()
+  panel.voice:SetText(state == "speaking" and "Stop" or (state == "on" and "Voice on" or "Voice off"))
+  panel.voice:SetWarn(state == "speaking")
+end
+
 function mod:Refresh()
   refreshQueued = false
   if not panel then return end
+  self:RefreshVoice()
   local t = Tone()
   local W = Style.Clamp(tonumber(self.db.width) or 260, 160, 520)
   local innerW = W - 2 * PAD
@@ -350,6 +367,7 @@ mod.events.UI_SCALE_CHANGED = Queue
 mod.events.EDIT_MODE_LAYOUTS_UPDATED = function(self) self:HideBlizzard(); Queue() end
 
 QB:On("combat_end", function() if panel and mod.active then Place(mod) end end, mod)
+QB:On("speech_state", function() if panel and mod.active then mod:RefreshVoice() end end, mod)
 
 -- ---------------------------------------------------------------- slash
 
