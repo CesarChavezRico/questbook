@@ -10,7 +10,7 @@
 
 local ADDON, QB = ...
 QB.name = ADDON
-QB.version = "0.10.1"
+QB.version = "0.10.2"
 QB.modules = {}      -- name -> module table
 QB.order = {}        -- registration order
 QB.errors = {}       -- module name -> { msg = string, count = number }
@@ -44,6 +44,13 @@ end
 
 function QB:Say(msg)
   print("|cffd8c88aQuestBook|r: " .. tostring(msg))
+end
+
+-- Help and usage text: the chat frame reads "|" + a letter as a code ("|t" ends a texture, "|h" a link, "|r"
+-- resets colour, "|n" is a newline), so "all|tracked" printed as "allracked". A literal pipe is "||".
+-- Seen in the game 2026-10-17: every help line with "a|b" options was garbled.
+function QB:Usage(msg)
+  QB:Say((tostring(msg):gsub("|", "||")))
 end
 
 -- ---------------------------------------------------------------- isolation
@@ -294,9 +301,9 @@ function QB:HandleSlash(msg)
     if not any then QB:Say("no module errors this session") end
     return
   elseif sub == "help" then
-    QB:Say("/qb modules | enable <m> | disable <m> | errors")
+    QB:Usage("/qb modules | enable <m> | disable <m> | errors")
     for s, rec in pairs(QB.slash) do
-      if rec.help then QB:Say("/qb " .. s .. " -- " .. rec.help) end
+      if rec.help then QB:Usage("/qb " .. s .. " -- " .. rec.help) end
     end
     return
   end
@@ -305,7 +312,8 @@ function QB:HandleSlash(msg)
     if handler.mod == nil or handler.mod.active then
       QB:Safe(handler.mod or "core", handler.fn, rest)
     else
-      QB:Say("module '" .. tostring(handler.mod and handler.mod.name) .. "' is off")
+      local n = tostring(handler.mod and handler.mod.name)
+      QB:Say("module '" .. n .. "' is off (/qb enable " .. n .. " switches it on)")
     end
     return
   end

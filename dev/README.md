@@ -10,6 +10,8 @@ Offline checks for when there is no game client at hand.
     node run.js ../.. overlay.lua
     node run.js ../.. isolation.lua                     # a broken module must not break the others (exits 1 by design: it lists the broken module's errors)
     node run.js ../.. questroute.lua                    # tracker clicks open the book, zoom-out, fallback
+    node run.js ../.. camera_dialogue.lua               # the camera shift and a quest dialogue: no fighting over the CVar
+    node run.js ../.. help.lua                          # every help / usage line survives the chat frame (no stray "|")
     node run.js ../.. markers.lua                       # quest markers: positions, rotation, edge, switching the client's areas off and back
     node run.js ../.. tracker.lua                       # the compact tracker: hides and restores Blizzard's, follows the corner minimap
     node run.js ../.. plate.lua                         # the map plate: hosting, quest switching, Map mode takeover, combat

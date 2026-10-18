@@ -50,7 +50,10 @@ Rules the design depends on:
 5. **Modules talk through the bus, not through each other's tables.** Current topics:
    `overlay_state` (`"off" | "local" | "zone"`), `overlay_host` (who holds the minimap), `open_full`,
    `strip_state`, `combat_start`, `combat_end`. Add a topic before you add a cross-module call.
-6. **Settings:** Core fills only *missing* keys, so a value an old version saved beats a changed
+6. **Chat text:** a single `|` followed by a letter is an escape code in the chat frame (`|t`, `|h`, `|r`, `|n`),
+   so `all|tracked` prints as `allracked`. Print help and usage with `QB:Usage` (it doubles the pipes), not `QB:Say`;
+   `dev/smoke/help.lua` fails on a stray one.
+7. **Settings:** Core fills only *missing* keys, so a value an old version saved beats a changed
    default. When you change what a default means, add a versioned migration (see `OnInit` in
    `Overlay.lua`, which fixed exactly this once). Keep a new version key *out* of the defaults table.
 

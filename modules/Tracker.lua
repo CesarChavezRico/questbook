@@ -322,7 +322,7 @@ QB:RegisterSlash(mod, "tracker", function(rest)
   elseif sub == "max" and n then
     mod.db.maxFrac = Style.Clamp(n > 1 and n / 100 or n, 0.05, 0.9)
   elseif sub ~= "" and sub ~= "status" then
-    QB:Say("/qb tracker all|tracked | width <n> | alpha <0-1> | lines <n> | max <fraction>   (/qb disable tracker gives Blizzard's tracker back)")
+    QB:Usage("/qb tracker all|tracked | width <n> | alpha <0-1> | lines <n> | max <fraction>   (/qb disable tracker gives Blizzard's tracker back)")
   end
   mod:Refresh()
   QB:Say(string.format("tracker: %s, %d of %d quests shown, width %d, alpha %.2f, %d objective lines | Blizzard's tracker: %s",

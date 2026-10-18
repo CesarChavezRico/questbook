@@ -514,7 +514,7 @@ QB:RegisterSlash(mod, "markers", function(rest)
     db.areas = arg
     mod:ApplyAreas()
   elseif sub ~= "" and sub ~= "status" then
-    QB:Say("/qb markers all|tracked|map | size <n> | scale <n> | areas native|hidden   (map = also quest givers, to line the markers up with the client's own blips; scale corrects the distance if they sit too near or too far)")
+    QB:Usage("/qb markers all|tracked|map | size <n> | scale <n> | areas native|hidden   (map = also quest givers, to line the markers up with the client's own blips; scale corrects the distance if they sit too near or too far)")
   end
   dirty = true
   mod:Sync()
