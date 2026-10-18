@@ -20,7 +20,7 @@ local mod = QB:NewModule("tracker", {
   mode = "all",         -- "all" (every quest in the log: the list is how you reach the reader) | "tracked" (the watch list)
   widthPx = 400,        -- the panel's width in physical pixels (v0.14; the older `width` in UI units is no longer used)
   size = 21,            -- quest title size in physical pixels; the objective lines and the header scale with it
-  maxFrac = 0.42,       -- the panel never grows past this fraction of the screen height
+  maxFrac = 0.62,       -- the panel never grows past this fraction of the screen height
   alpha = 0.55,         -- the panel's opacity
   objectives = 3,       -- objective lines shown under each quest
   -- x, y: where the list sits, the offset of its top-right corner from the screen's top-right corner (y < 0 = down).
@@ -397,6 +397,11 @@ function mod:OnInit()
   if (self.db.v or 0) < 1 then
     if self.db.mode == "tracked" then self.db.mode = "all" end
     self.db.v = 1
+  end
+  -- v0.14.1: the list may use more of the screen (0.42 showed 7 of 9 quests on a 1440 px screen); a saved default moves once
+  if (self.db.v or 0) < 2 then
+    if tonumber(self.db.maxFrac) == 0.42 then self.db.maxFrac = 0.62 end
+    self.db.v = 2
   end
 end
 

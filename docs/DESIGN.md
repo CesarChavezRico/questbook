@@ -136,6 +136,15 @@ charter was dropped on purpose.
   puts the page away (the reading is not stopped by that); with voice off the page stays. The tracker header's voice link says
   "Stop" while a quest is being read (stops it), otherwise "Voice on" / "Voice off" (the walk-and-listen switch). The reader
   hides the action bars like the map modes do (`Overlay:ReaderBars`, same `bars` setting), through the swap with the map too.
+- **Room, and what else hides** (v0.14.1, *written*; Cesar, 2026-10-17, with the list at 600 px: "space on top and bottom ... no
+  vertical scroll bar for the quest text ... show more quests in the list ... I couldn't find a way to increase the vertical
+  size ... not sure what to do with my char portrait and the corner minimap when the page is shown, I am thinking on hiding and
+  being more aggressive with the zoom"): the page has no scroll bar (the wheel still scrolls); `/qb reader height <0.3-0.95>|auto`
+  gives it its own height (same centre; auto = the map's), `/qb reader aspect`; the list may use 0.62 of the screen height
+  (`/qb tracker max`; a saved 0.42 default moves once); while the reader is open it hides the small corner minimap (and so the
+  markers) and the player and target frames (alpha, restored on close; `/qb reader hide minimap|frames on|off`, both on by
+  default); the camera has a zoom of its own for the reader, `/qb camera readerzoom <n>` (relative like `zoomout`, negative
+  zooms in, default 3 = same as the map), and the two trade zooms when the reader and the map trade places.
 - **Duties** (unchanged, through Blizzard's own flows): active (the "super-tracked" quest the game points at), track and
   untrack, abandon (through Blizzard's confirmation), share. Walk-and-listen: the first step with the reader open reads the quest
   (once per quest); Talk / Stop reads on demand; the arrows read the quest they land on.

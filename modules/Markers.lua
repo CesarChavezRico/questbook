@@ -423,7 +423,7 @@ function mod:Sync()
   if not frame then return end
   local mm = _G.Minimap
   local host = self:Host()
-  if host and mm and mm:IsShown() then
+  if host and mm and mm:IsVisible() then      -- visible: the corner minimap may be hidden while the reader is open
     frame:ClearAllPoints()
     frame:SetPoint("TOPLEFT", mm, "TOPLEFT", 0, 0)
     frame:SetPoint("BOTTOMRIGHT", mm, "BOTTOMRIGHT", 0, 0)

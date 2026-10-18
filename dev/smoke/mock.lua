@@ -25,7 +25,12 @@ end
 function Frame:Show() self.__shown = true; if self.__scripts.OnShow then self.__scripts.OnShow(self) end end
 function Frame:Hide() if self.__shown then self.__shown = false; if self.__scripts.OnHide then self.__scripts.OnHide(self) end end end
 function Frame:IsShown() return self.__shown end
-function Frame:IsVisible() return self.__shown end
+function Frame:IsVisible()
+  if not self.__shown then return false end
+  local p = self.__parent
+  if p and p ~= UIParent and p.IsVisible and p:IsVisible() == false then return false end
+  return true
+end
 function Frame:SetShown(b) if b then self:Show() else self:Hide() end end
 function Frame:SetScript(n, fn) self.__scripts[n] = fn end
 function Frame:GetScript(n) return self.__scripts[n] end
@@ -272,6 +277,8 @@ function Minimap:SetIconScale(s) __iconScale = s end
 for _, n in ipairs({ "MainActionBar", "MultiBarBottomLeft", "MultiBarBottomRight", "MultiBarLeft", "MultiBarRight", "StanceBar", "PetActionBar", "StatusTrackingBarManager" }) do
   newFrame("Frame", n, UIParent)
 end
+-- unit frames (hidden by alpha while the reader is open)
+newFrame("Frame", "PlayerFrame", UIParent); newFrame("Frame", "TargetFrame", UIParent)
 -- real mask bookkeeping on the world map + a pooled detail layer (v0.7.2)
 do
   local wmf = WorldMapFrame

@@ -6,7 +6,7 @@ World of Warcraft: Forever (it targets the Forever client's UI; retail is not te
 It is one addon built from isolated modules, so a fault in one cannot take down the others:
 `/qb modules` shows what is on, `/qb errors` what broke, `/qb disable <module>` switches one off.
 
-> **Status: v0.14.0, in active development.** Everything here was written against Blizzard's UI
+> **Status: v0.14.1, in active development.** Everything here was written against Blizzard's UI
 > source for the Forever client and has been run in the game client only in short sessions by one
 > person. Code that relies on a guess says `UNVERIFIED:` in its comment, with what to check
 > in-game. Treat a feature as working only when this file, `docs/DESIGN.md` or an issue says it was seen working.
@@ -15,7 +15,7 @@ It is one addon built from isolated modules, so a fault in one cannot take down 
 
 | module | what it does |
 |---|---|
-| `questlog` | The quest reader, a readable replacement for Blizzard's quest log: ONE torn-paper page set where the big map sits (same centre and height, same camera shift and zoom-out) with the quest's title, level and zone, description and objectives, and the duties (make it the active quest, track, share, abandon), arrows to walk through your quests, and narrated walk-and-listen (the first step you take with voice on reads the quest and puts the page away; the tracker's header has a "Stop" link while it reads, and "Voice on / off" otherwise). The action bars are hidden while it is open, as for the map. It trades places with the map: opening it closes the map overlay, the map key while it is open brings the map up and closes it. The default key, the micro menu button and the objective tracker's "open quest" clicks open it; Blizzard's log stays reachable as a fallback. |
+| `questlog` | The quest reader, a readable replacement for Blizzard's quest log: ONE torn-paper page set where the big map sits (same centre and height, same camera shift and zoom-out) with the quest's title, level and zone, description and objectives, and the duties (make it the active quest, track, share, abandon), arrows to walk through your quests, and narrated walk-and-listen (the first step you take with voice on reads the quest and puts the page away; the tracker's header has a "Stop" link while it reads, and "Voice on / off" otherwise). The action bars are hidden while it is open, as for the map, and so (settings) are the small minimap and the player and target frames. It has no scroll bar (the wheel still scrolls); its height is `/qb reader height`. It trades places with the map: opening it closes the map overlay, the map key while it is open brings the map up and closes it. The default key, the micro menu button and the objective tracker's "open quest" clicks open it; Blizzard's log stays reachable as a fallback. |
 | `overlay` | The map beside your character, two separate modes on one key: **Off, Minimap, Map**. Minimap is the real minimap, blown up and always square, with a soft edge. Map is the world map, restyled, translucent, soft-edged, opened already centred on you. Action bars are hidden while either is open. While the big one is not in use, the same minimap sits small in the top-right corner for a glance (`/qb overlay corner`). |
 | `tracker` | The quest list, in the new look, replacing Blizzard's objective tracker: every quest in your log with its objective lines, in whole-pixel type; the active quest has a gold title and a bar at its left edge (its one accent), a quest ready to hand in is green, counted objectives (kill 6, collect 3) get a thin progress bar, a tapering rule under the header, header links "Voice on / off" (or "Stop" while a quest is read) and "Log". Left click on a quest makes it the active one, right click opens it in the reader. The list has a position of its own: `/qb tracker move` drags it, `/qb overlay corner move` drags the small minimap. Blizzard's tracker is hidden while it is on and given back by `/qb disable tracker`. |
 | `markers` | Our own quest markers on the minimap, in place of the client's quest areas (which cannot be restyled on this client and look wrong blown up): one small brass marker per quest in the log, the active quest larger and labelled, a quest ready to hand in marked "?", markers past the edge stuck to it. The client's areas are switched off through the minimap's "Quest POIs" tracking filter and given back when the module is switched off. |
@@ -48,14 +48,14 @@ Options > Keybindings > AddOns > QuestBook: **Toggle quest log**, **Map overlay:
 reason when a module is unavailable. The version is printed in chat at login and by `/qb version`; if the `.toc` file
 says something else than the Lua files, it says so (a mixed or half-updated install).
 
-- Quest reader: `size <px>` (body text, 14-40, default 22), `voice`, `rate <n>`, `prosody`, `voices`, `usevoice <id>`, `say`, `debug`,
+- Quest reader: `reader height <0.3-0.95>|auto`, `reader aspect <n>`, `reader size <px>`, `reader hide minimap|frames on|off`, `size <px>` (body text, 14-40, default 22), `voice`, `rate <n>`, `prosody`, `voices`, `usevoice <id>`, `say`, `debug`,
   `log replace|blizzard`, `blizzlog`.
 - Overlay: `/qb overlay cycle | off | local | zone`, `shape`, `size`, `alpha`, `rotate`, `corner on|off|move|lock|reset|size|pos|alpha|rotate|mask`,
   `ground auto|native|hybrid`, `bars actions|all|none`, `icons <n>`, `mask`, `diag`.
 - Look: `/qb kit` (sample page), `/qb screen`.
 - Markers: `/qb markers all|tracked|map`, `size <n>`, `scale <n>`, `areas native|hidden` (no argument: status; `map` also draws quest givers, to line the markers up with the client's own "!" blips; `scale` corrects the distance).
 - Tracker: `/qb tracker all|tracked|width <px>|size <px>|alpha <0-1>|lines <n>|max <fraction>|move|lock|pos <x> <y>|reset` (no argument: status).
-- Camera: `/qb camera flip | strength <n> | zoomout <n> | zoom <n> | ease <s> | on | off`.
+- Camera: `/qb camera flip | strength <n> | zoomout <n> | readerzoom <n> | zoom <n> | ease <s> | on | off`.
 - Strip and drawers: `/qb strip ...`, `/qb drawers open|close|toggle|status`.
 
 `/qb overlay diag` prints the state of the minimap, the hybrid frame and the world map: paste it into

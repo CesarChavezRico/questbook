@@ -1027,11 +1027,41 @@ end
 -- ---------------------------------------------------------------- bars
 
 -- The action bars are hidden while a map mode is open, and while the quest reader is (it sits in the same place).
-mod.readerBars = false
-function mod:BarsWanted() return self.state ~= "off" or self.readerBars end
-function mod:ReaderBars(on)
-  self.readerBars = on and true or false
+-- The reader may also hide the small corner minimap and the player and target frames (Cesar, 2026-10-17: they clutter
+-- the page's row), all with the same alpha tweaks the bars use, restored when it closes.
+local UNIT_FRAMES = { "PlayerFrame", "TargetFrame" }
+mod.readerOn = false
+mod.readerHide = { minimap = true, frames = true }
+mod.unitTweaks = { order = {}, map = {} }
+
+function mod:BarsWanted() return self.state ~= "off" or self.readerOn end
+
+function mod:CornerShown()
+  return self.host == "corner" and not (self.readerOn and self.readerHide.minimap)
+end
+
+function mod:ApplyUnitFrames()
+  local set = self.unitTweaks
+  if not (self.readerOn and self.readerHide.frames) then
+    if #set.order > 0 then TweakUndoAll(set) end
+    return
+  end
+  for _, name in ipairs(UNIT_FRAMES) do
+    local f = G(name)
+    if f and f.SetAlpha then TAlpha(set, "unit." .. name, f, 0) end
+  end
+end
+
+-- The quest reader opened or closed. opts = { minimap = bool, frames = bool }: what it hides besides the bars.
+function mod:ReaderOpen(on, opts)
+  self.readerOn = on and true or false
+  if opts then self.readerHide = { minimap = opts.minimap and true or false, frames = opts.frames and true or false } end
   self:ApplyBars(self:BarsWanted())
+  self:ApplyUnitFrames()
+  if self.cornerPanel then
+    self.cornerPanel:SetShown(self:CornerShown())
+    QB:Fire("overlay_host", self.host)      -- the markers follow the minimap's visibility
+  end
 end
 
 -- Action bars are faded to alpha 0 (not hidden): SetAlpha is not protected, so it is also
@@ -1126,7 +1156,7 @@ function mod:Apply(target)
 
   self:EnsureDriver()
   panel:SetShown(self.host == "big" or self.zoneOn)
-  corner:SetShown(self.host == "corner")
+  corner:SetShown(self:CornerShown())
   -- tell the others where the minimap is now (the tracker sits under the corner one)
   if self.host ~= hostBefore then QB:Fire("overlay_host", self.host) end
 end
@@ -1192,6 +1222,7 @@ function mod:Tick()
     end
   end
   if self:BarsWanted() then self:ApplyBars(true) end     -- Blizzard code may set the alpha back
+  if self.readerOn then self:ApplyUnitFrames() end
   if self.localOn then
     if self.db.ground == "native" then self:SuppressBlizzardHybrid() end
     self:VerifyGround()
@@ -1291,7 +1322,8 @@ function mod:OnEnable()
 end
 
 function mod:OnDisable()
-  self.readerBars = false
+  self.readerOn = false
+  self:ApplyUnitFrames()
   if self.mover then self:CornerMove(false) end
   self.noCorner = true          -- give the Minimap back to Blizzard's cluster
   self:SetState("off", true)

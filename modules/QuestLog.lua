@@ -34,6 +34,10 @@ local K = Style.KIT
 local mod = QB:NewModule("questlog", {
   replaceLog = true,    -- ToggleQuestLog (default key, micro menu button) opens the reader
   body = 22,            -- body text size, physical pixels
+  height = 0,           -- page height as a fraction of the screen (0.3-0.95); 0 = the big map's height
+  aspect = 0.84,        -- page width / height
+  hideMinimap = true,   -- hide the small corner minimap while the reader is open
+  hideFrames = true,    -- hide the player and target frames while the reader is open
 })
 
 local db              -- QB.db: the flat legacy QuestBookDB settings
@@ -368,7 +372,6 @@ end
 -- objectives; then a row of ink links (previous, talk, next on the left; track, share, abandon on the right); then
 -- the one strong button (make active) and a quiet one (close, with the Esc key cap).
 
-local ASPECT = 0.84          -- page width / height
 local M = 68                 -- margin, px
 local objRows = {}           -- pooled objective rows
 local ObjRow
@@ -400,7 +403,11 @@ local function ScrollMax()
   return math.max(0, (R.child:GetHeight() or 0) - (R.scroll:GetHeight() or 0))
 end
 
+-- No scroll bar on the page (Cesar, 2026-10-17): a long text still scrolls with the wheel, and `/qb reader height` makes
+-- the page taller. The track and thumb are kept (hidden) in case a setting brings them back.
 local function UpdateThumb()
+  R.thumb:Hide(); R.track:Hide()
+  if true then return end
   local max = ScrollMax()
   if max <= 0 then R.thumb:Hide(); R.track:Hide(); return end
   local vh = R.scroll:GetHeight()
@@ -576,10 +583,16 @@ function mod:Layout()
   if not R then return end
   local O = QB.modules.overlay
   local w, h, cx, cy
-  if O and O.active and O.ReaderRect then w, h, cx, cy = O:ReaderRect(ASPECT) end
+  local aspect = Style.Clamp(tonumber(self.db.aspect) or 0.84, 0.5, 1.4)
+  if O and O.active and O.ReaderRect then w, h, cx, cy = O:ReaderRect(aspect) end
   if not w then
     local W, H = UIParent:GetWidth(), UIParent:GetHeight()
-    h = H * 0.62; w = h * ASPECT; cx = W * 0.17; cy = H * 0.02
+    h = H * 0.62; w = h * aspect; cx = W * 0.17; cy = H * 0.02
+  end
+  local own = tonumber(self.db.height) or 0
+  if own > 0 then                                   -- its own height: taller (or shorter) than the map, same centre
+    h = UIParent:GetHeight() * Style.Clamp(own, 0.3, 0.95)
+    w = h * aspect
   end
   w, h = Style.Snap(w, R), Style.Snap(h, R)
   R:SetSize(w, h)
@@ -699,7 +712,8 @@ function mod:Open(questID)
     -- Order matters: announce the reader BEFORE the map closes, so the camera never lets go in between
     -- (it follows "reader_state" and "overlay_state": the shift stays while either is up).
     if not openFlag then openFlag = true; QB:Fire("reader_state", true) end
-    QB:Call("overlay", "ReaderBars", true)           -- hide the action bars, as the map does (before the map closes)
+    -- hide what the map hides, and what the settings add (before the map closes, so it all stays hidden through the swap)
+    QB:Call("overlay", "ReaderOpen", true, { minimap = mod.db.hideMinimap, frames = mod.db.hideFrames })
     local O = QB.modules.overlay
     if O and O.active and O.state ~= "off" then QB:Call("overlay", "SetState", "off", true) end
     self:Layout()
@@ -718,7 +732,7 @@ end
 
 function mod:OnClosed()
   if not keepSpeech then StopSpeaking() end
-  QB:Call("overlay", "ReaderBars", false)            -- the bars come back (unless the map took the place)
+  QB:Call("overlay", "ReaderOpen", false)            -- the bars, minimap and frames come back (the bars stay hidden if the map took the place)
   if openFlag then
     openFlag = false
     QB:Fire("reader_state", false)
@@ -887,6 +901,35 @@ QB:RegisterSlash(mod, "log", function(rest)
   end
   Say("the default quest log key opens " .. (mod.db.replaceLog and "the QuestBook reader" or "Blizzard's log"))
 end, "log replace|blizzard: which quest log the default key / menu button opens")
+
+QB:RegisterSlash(mod, "reader", function(rest)
+  local sub, arg = (rest or ""):lower():match("^(%S*)%s*(.-)$")
+  local n = tonumber(arg)
+  local d = mod.db
+  if sub == "height" then
+    if arg == "auto" or arg == "map" then d.height = 0 elseif n then d.height = Style.Clamp(n, 0.3, 0.95) end
+  elseif sub == "aspect" and n then
+    d.aspect = Style.Clamp(n, 0.5, 1.4)
+  elseif sub == "size" and n then
+    d.body = Style.Clamp(n, 14, 40)
+  elseif sub == "hide" then
+    local what, val = arg:match("^(%S+)%s*(%S*)$")
+    if (what == "minimap" or what == "frames") and (val == "on" or val == "off") then
+      if what == "minimap" then d.hideMinimap = (val == "on") else d.hideFrames = (val == "on") end
+    else
+      QB:Usage("/qb reader hide minimap|frames on|off")
+    end
+  elseif sub ~= "" and sub ~= "status" then
+    QB:Usage("/qb reader height <0.3-0.95>|auto | aspect <0.5-1.4> | size <px> | hide minimap|frames on|off")
+  end
+  if R and R:IsShown() then
+    mod:Layout()
+    QB:Call("overlay", "ReaderOpen", true, { minimap = d.hideMinimap, frames = d.hideFrames })
+  end
+  Say(string.format("reader: height %s, aspect %.2f, text %d px | hides the small minimap: %s, the player and target frames: %s",
+    (tonumber(d.height) or 0) > 0 and string.format("%.2f of the screen", d.height) or "as the map", d.aspect, d.body,
+    d.hideMinimap and "yes" or "no", d.hideFrames and "yes" or "no"))
+end, "reader height|aspect|size|hide: the quest reader's size and what it hides while open")
 
 -- The legacy command set (everything that is not a registered subcommand).
 QB.legacySlash = function(msg)
