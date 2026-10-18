@@ -15,7 +15,7 @@ assert(Minimap:GetAlpha() == 0.9 and not Minimap:IsMouseEnabled(), "alpha 0.9 an
 assert(O.state == "off" and not O.panel:IsShown(), "big panel hidden")
 assert(not MinimapCluster:IsShown(), "old cluster stays hidden")
 assert(__cvar("rotateMinimap") == "1", "corner rotates with facing by default, got " .. tostring(__cvar("rotateMinimap")))
-assert(O.wantMask == "ui-hud-minimap-frame-generic-mask", "crisp stock circle in the corner, got " .. tostring(O.wantMask))
+assert(O.wantMask:find("mask_corner"), "the small minimap bleeds out into the world by default, got " .. tostring(O.wantMask))
 local pt = { O.cornerPanel:GetPoint(1) }
 assert(pt[1] == "TOPRIGHT" and pt[4] == -24 and pt[5] == -44, "top-right under the strip")
 local a1 = MainActionBar:GetAlpha(); assert(a1 == 1, "bars untouched with only the corner up")
@@ -47,7 +47,9 @@ slash("overlay corner size 0.2"); assert(math.abs(Minimap:GetSize() - 0.2 * H) <
 slash("overlay corner size 25"); assert(math.abs(Minimap:GetSize() - 0.25 * H) < 0.5, "percent form")
 slash("overlay corner pos -40 -60"); local p2 = { O.cornerPanel:GetPoint(1) }; assert(p2[4] == -40 and p2[5] == -60)
 slash("overlay corner alpha 0.5"); assert(Minimap:GetAlpha() == 0.5)
-slash("overlay corner mask soft"); assert(O.wantMask:find("mask_circle"), "soft circle on request")
+slash("overlay corner mask wide"); assert(O.wantMask:find("mask_circle"), "the big map's broad circle on request")
+slash("overlay corner mask stock"); assert(O.wantMask == "ui-hud-minimap-frame-generic-mask", "the crisp circle on request")
+slash("overlay corner mask soft"); assert(O.wantMask:find("mask_corner"), "and back to the bleed")
 slash("overlay corner rotate off"); assert(__cvar("rotateMinimap") == "0", "rotation off for the corner")
 slash("overlay corner rotate on")
 -- rotation is restored to the user's own value when the corner goes away

@@ -247,6 +247,26 @@ def make_grain():
     return img
 
 
+def make_corner_mask(inner=0.58, size=256):
+    """The small corner minimap's edge: full strength in the middle, then a bleed out to the world over the outer part
+    (alpha 1 until `inner` of the radius, a smooth fall to 0 at the edge). The big map's soft mask fades over most of its
+    radius; at this size that would leave only a small core, so this one keeps the minimap readable. White with alpha
+    (a mask only reads alpha)."""
+    img = Img(size, size)
+    c = (size - 1) / 2.0
+    for y in range(size):
+        for x in range(size):
+            cov = 0.0
+            for sy in range(2):
+                for sx in range(2):
+                    dx, dy = (x + (sx + .5) / 2 - 0.5 - c) / (size / 2.0), (y + (sy + .5) / 2 - 0.5 - c) / (size / 2.0)
+                    r = math.hypot(dx, dy)
+                    t = clamp((r - inner) / (1.0 - inner))
+                    cov += 1.0 - (t * t * (3 - 2 * t)) ** 0.9
+            img.set(x, y, (1, 1, 1, clamp(cov / 4)))
+    return img
+
+
 def make_hairline():
     """256 x 8: a brush-like rule: a 2px stroke that swells slightly in the middle and tapers to nothing at both ends.
     White with alpha, so it takes the ink colour from SetVertexColor."""
@@ -326,8 +346,9 @@ if __name__ == "__main__":
     depths = [Profile(101, 1024).max_depth(), Profile(303, 1024).max_depth(), Profile(202, 512).max_depth(), Profile(404, 512).max_depth()]
     print("deepest tear per strip (px): %s; the fill starts at %d" % (", ".join("%.1f" % d for d in depths), INSET_PX))
     assert max(depths) < INSET_PX - 2, "a tear reaches the fill: raise INSET_PX (and Style.Paper's INSET)"
+    cm = make_corner_mask()
     for name, img in (("paper_top", top), ("paper_bottom", bottom), ("paper_left", left), ("paper_right", right),
-                      ("paper_corner", co), ("paper_grain", gr), ("hairline", hl)):
+                      ("paper_corner", co), ("paper_grain", gr), ("hairline", hl), ("mask_corner", cm)):
         img.tga(os.path.join(TEX, name + ".tga"))
     pv = preview((top, bottom, left, right, co, gr))
     pv.png(os.path.join(HERE, "preview.png"), bg=(0.08, 0.07, 0.10))
@@ -338,4 +359,28 @@ if __name__ == "__main__":
         r, g, b, a = hl2.px[i]
         hl2.px[i] = (0.26, 0.19, 0.13, a)
     hl2.png(os.path.join(HERE, "preview_hairline.png"), bg=(0.83, 0.70, 0.50))
+    # the corner mask over a busy stand-in for the world (left), next to the big map's broad soft mask (right)
+    stand = Img(256, 256)
+    for y in range(256):
+        for x in range(256):
+            v = 0.5 + 0.4 * math.sin(x / 9.0) * math.sin(y / 11.0) + 0.1 * math.sin((x + y) / 5.0)
+            stand.set(x, y, (0.18 + 0.30 * v, 0.40 + 0.35 * v, 0.20 + 0.20 * v, 1.0))
+    old = Img(256, 256)
+    try:
+        raw = open(os.path.join(TEX, "mask_circle.tga"), "rb").read()
+        for y in range(256):
+            for x in range(256):
+                o = 18 + (y * 256 + x) * 4
+                old.set(x, y, (1, 1, 1, raw[o + 3] / 255.0))
+    except OSError:
+        pass
+    sheet = Img(520, 256)
+    for y in range(256):
+        for x in range(256):
+            sr, sg, sb, _ = stand.px[y * 256 + x]
+            for k, m in enumerate((cm, old)):
+                a = m.px[y * 256 + x][3]
+                bg = (0.08, 0.07, 0.10)
+                sheet.px[y * 520 + x + k * 264] = (sr * a + bg[0] * (1 - a), sg * a + bg[1] * (1 - a), sb * a + bg[2] * (1 - a), 1.0)
+    sheet.png(os.path.join(HERE, "preview_cornermask.png"))
     print("ok")

@@ -42,7 +42,7 @@ local mod = QB:NewModule("overlay", {
   cornerY = -44,       -- (y < 0 = downwards); -44 sits just under the text strip
   cornerAlpha = 0.9,
   cornerRotate = true, -- the small one rotates with facing (the CVar is shared, set per host)
-  cornerMask = "stock", -- "stock" = Blizzard's crisp circle (readable at a glance) | "soft" = our soft circle
+  cornerMask = "soft", -- "soft" = our bleed-out edge, narrower than the big map's so it stays readable small | "wide" = the big map's broad circle | "stock" = Blizzard's crisp circle
   combatGuard = true,  -- refuse to open in combat and force "off" when combat starts
 })
 
@@ -57,7 +57,7 @@ local BAR_FRAMES = {
 local TICK = 0.25                       -- seconds between verify passes while open
 
 local TEX = "Interface\\AddOns\\" .. ADDON .. "\\Textures\\"
-local MASK_PATHS = { rect = TEX .. "mask_rect.tga", circle = TEX .. "mask_circle.tga" }
+local MASK_PATHS = { rect = TEX .. "mask_rect.tga", circle = TEX .. "mask_circle.tga", corner = TEX .. "mask_corner.tga" }
 -- (Blizzard_Minimap/Camelot/Skin.lua) the stock mask Blizzard puts on the Minimap
 local STOCK_MASK = "ui-hud-minimap-frame-generic-mask"
 local SOLID_MASK = "Interface\\Buttons\\WHITE8x8"      -- debug: a fully opaque square, no gradient
@@ -411,7 +411,8 @@ function mod:ApplyMinimapMask()
   if not (mm and mm.SetMaskTexture) then return false end
   local path = MASK_PATHS[self.db.shape] or MASK_PATHS.rect
   if self.host == "corner" then
-    path = (self.db.cornerMask == "soft") and MASK_PATHS.circle or STOCK_MASK
+    local m = self.db.cornerMask
+    path = (m == "stock") and STOCK_MASK or (m == "wide") and MASK_PATHS.circle or MASK_PATHS.corner
   end
   if self.maskMode == "stock" then path = STOCK_MASK end
   if self.maskMode == "solid" then path = SOLID_MASK end
@@ -1305,6 +1306,12 @@ function mod:OnInit()
     if db.ground == "hybrid" then db.ground = "auto" end
     db.v = 2
   end
+  -- v0.14.2: the small minimap bleeds out into the world like the big one. A saved "stock" is only the old default
+  -- (Cesar did not choose it), so it moves once; `/qb overlay corner mask stock` brings the crisp circle back.
+  if (db.v or 0) < 3 then
+    if db.cornerMask == "stock" then db.cornerMask = "soft" end
+    db.v = 3
+  end
 end
 
 function mod:OnEnable()
@@ -1486,7 +1493,7 @@ QB:RegisterSlash(mod, "overlay", function(rest)
     db.iconScale = clamp(n1, 0.5, 4)
     if mod.localOn then mod:ApplyIconScale() end
   elseif sub == "corner" then
-    -- /qb overlay corner on|off | move | lock | reset | size <n> | pos <x> <y> | alpha <n> | rotate on|off | mask stock|soft
+    -- /qb overlay corner on|off | move | lock | reset | size <n> | pos <x> <y> | alpha <n> | rotate on|off | mask soft|wide|stock
     local what, v1, v2 = arg:match("^(%S*)%s*(%S*)%s*(%S*)$")
     local m1, m2 = tonumber(v1), tonumber(v2)
     if what == "on" or what == "off" then
@@ -1506,10 +1513,10 @@ QB:RegisterSlash(mod, "overlay", function(rest)
       db.cornerAlpha = clamp(m1, 0, 1)
     elseif what == "rotate" and (v1 == "on" or v1 == "off") then
       db.cornerRotate = (v1 == "on")
-    elseif what == "mask" and (v1 == "stock" or v1 == "soft") then
+    elseif what == "mask" and (v1 == "stock" or v1 == "soft" or v1 == "wide") then
       db.cornerMask = v1
     elseif what ~= "" and what ~= "status" then
-      QB:Usage("/qb overlay corner on|off | move | lock | reset | size <n> | pos <x> <y> | alpha <n> | rotate on|off | mask stock|soft   (pos: from the top-right corner, y negative = down)")
+      QB:Usage("/qb overlay corner on|off | move | lock | reset | size <n> | pos <x> <y> | alpha <n> | rotate on|off | mask soft|wide|stock   (pos: from the top-right corner, y negative = down)")
     end
     if not QB:InCombat() then mod:Layout(); mod:Apply(mod.state) else QB:Say("overlay: applied after combat"); mod.dirty = true end
   elseif sub == "mask" then
