@@ -23,6 +23,9 @@ local mod = QB:NewModule("tracker", {
   maxFrac = 0.62,       -- the panel never grows past this fraction of the screen height
   alpha = 0.55,         -- the panel's opacity
   objectives = 3,       -- objective lines shown under each quest
+  level = true,         -- the quest's level before its title (faded)
+  hidden = false,       -- the whole list is put away (the key, `/qb tracker toggle`); the module still works
+  collapsed = false,    -- only the title row is shown (click "QUESTS"); the links stay
   -- x, y: where the list sits, the offset of its top-right corner from the screen's top-right corner (y < 0 = down).
   -- Not in the defaults: first run seeds them from where the corner minimap sits, then they are the list's own.
 })
@@ -133,10 +136,13 @@ local function Build(self)
   Style.PixelPerfect(panel)
   panel:Hide()
 
-  header = Fs(panel, 16)
-  header:SetText("QUESTS")
-  -- a rule under the header that tapers to nothing at both ends (our own art, the same as the reader's)
   local t = Tone()
+  -- the title is a link: a click collapses the list to this row, and again expands it (it is always there to click)
+  header = Style.InkLink(panel, 16, function() QB:Call("tracker", "ToggleCollapsed") end,
+    { normal = t.faded, hot = t.chromeHot, faded = t.chromeOff, warn = t.chromeWarn })
+  header:SetText("QUESTS")
+  panel.head = header
+  -- a rule under the header that tapers to nothing at both ends (our own art, the same as the reader's)
   rule = Style.Hairline(panel, { t.hairline[1], t.hairline[2], t.hairline[3], 0.9 })
 
   local pal = LinkPalette()
@@ -214,9 +220,24 @@ end
 -- Lay the whole list out in physical pixels: header with its links and the tapering rule, then one block per quest
 -- (title, objective lines, a thin bar when objectives are counted), the active quest marked by a bar at the left and a gold
 -- title, a quest ready to hand in in green.
+-- Put the whole list away or bring it back (a key binding and `/qb tracker toggle`); saved across sessions.
+function mod:SetListShown(on)
+  self.db.hidden = not on
+  self:Refresh()
+end
+function mod:ToggleCollapsed()
+  self.db.collapsed = not self.db.collapsed
+  self:Refresh()
+end
+function mod:ToggleList()
+  self:SetListShown(self.db.hidden and true or false)
+  QB:Say("quest list " .. (self.db.hidden and "hidden (/qb tracker toggle or the key brings it back)" or "shown"))
+end
+
 function mod:Refresh()
   refreshQueued = false
   if not panel then return end
+  if self.db.hidden then panel:Hide(); return end
   local t = Tone()
   local u = Style.PixelUnit(panel)
   local tp, op, hp = Sizes(self)
@@ -227,11 +248,10 @@ function mod:Refresh()
   panel:SetBackdropColor(t.cover[1], t.cover[2], t.cover[3], Style.Clamp(tonumber(self.db.alpha) or 0.55, 0, 1))
 
   -- header: label left, links right, the rule under them
-  header:SetFont(FRIZ, Px(hp), "")
-  header:ClearAllPoints(); header:SetPoint("TOPLEFT", panel, "TOPLEFT", Px(PADX), -Px(PADY))
-  Style.SetInk(header, t.faded)
   local list = QuestList(self)
-  header:SetText((self.db.mode == "all" and "QUESTS" or "TRACKED") .. "  " .. #list)
+  header:SetPx(hp)
+  header:SetText((self.db.collapsed and "\226\128\186 " or "") .. (self.db.mode == "all" and "QUESTS" or "TRACKED") .. "  " .. #list)
+  header:ClearAllPoints(); header:SetPoint("TOPLEFT", panel, "TOPLEFT", Px(PADX), -Px(PADY - 3))
   panel.book:SetPx(hp); panel.voice:SetPx(hp); more:SetPx(hp)
   self:RefreshVoice()
   panel.book:ClearAllPoints(); panel.book:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -Px(PADX), -Px(PADY - 3))
@@ -242,6 +262,18 @@ function mod:Refresh()
   rule:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -Px(PADX - 8), -Px(y))
   rule:SetHeight(Px(8))
   y = y + 8 + 16
+  rule:SetShown(not self.db.collapsed)
+
+  if self.db.collapsed then
+    -- only the title row: no quests, no rule; the links stay so there is always something to click
+    for _, r in ipairs(rows) do r:Hide() end
+    more:Hide()
+    self.shown, self.total = 0, #list
+    panel:SetHeight(Px(PADY + hp + 8 + PADY - 4))
+    Place(self)
+    panel:Show()
+    return
+  end
 
   local shown = 0
   for _, r in ipairs(rows) do r:Hide() end
@@ -256,7 +288,8 @@ function mod:Refresh()
     r.title:SetFont(FRIZ, Px(tp), ""); r.objs:SetFont(FRIZ, Px(op), "")
     r.title:SetWidth(Px(innerW)); r.objs:SetWidth(Px(innerW))
     r.title:ClearAllPoints(); r.title:SetPoint("TOPLEFT", r, "TOPLEFT", Px(10), 0)
-    r.title:SetText(q.title or "?")
+    local lvl = self.db.level and tonumber(q.level) or nil
+    r.title:SetText(((lvl and lvl > 0) and ("|cff" .. Style.Hex(t.faded) .. lvl .. "|r  ") or "") .. (q.title or "?"))
     local tc = ready and t.done or (active and t.strong or t.ink)
     r.title:SetTextColor(tc[1], tc[2], tc[3], 1)
     local lines = {}
@@ -415,6 +448,7 @@ end
 function mod:Move(on)
   if on then
     if not panel then return end
+    if self.db.hidden then self:SetListShown(true) end       -- a hidden list has nothing to drag
     if not self.mover then
       self.mover = Style.Mover({
         name = "QuestBookTrackerMover",
@@ -470,6 +504,14 @@ QB:RegisterSlash(mod, "tracker", function(rest)
     mod.db.objectives = Style.Clamp(math.floor(n), 0, 8)
   elseif sub == "max" and n then
     mod.db.maxFrac = Style.Clamp(n > 1 and n / 100 or n, 0.05, 0.9)
+  elseif sub == "toggle" then
+    mod:ToggleList()
+  elseif sub == "collapse" or sub == "expand" then
+    mod.db.collapsed = (sub == "collapse")
+  elseif sub == "show" or sub == "hide" then
+    mod:SetListShown(sub == "show")
+  elseif sub == "level" and (arg == "on" or arg == "off") then
+    mod.db.level = (arg == "on")
   elseif sub == "move" then
     mod:Move(true)
   elseif sub == "lock" then
@@ -480,9 +522,10 @@ QB:RegisterSlash(mod, "tracker", function(rest)
   elseif sub == "reset" then
     mod.db.x, mod.db.y = nil, nil            -- Place seeds it again, under the corner minimap
   elseif sub ~= "" and sub ~= "status" then
-    QB:Usage("/qb tracker all|tracked | width <px> | size <px> | alpha <0-1> | lines <n> | max <fraction> | move | lock | pos <x> <y> | reset   (/qb disable tracker gives Blizzard's tracker back)")
+    QB:Usage("/qb tracker toggle|show|hide | collapse|expand (or click the title) | level on|off | all|tracked | width <px> | size <px> | alpha <0-1> | lines <n> | max <fraction> | move | lock | pos <x> <y> | reset   (/qb disable tracker gives Blizzard's tracker back)")
   end
   mod:Refresh()
-  QB:Say(string.format("tracker: %s, %d of %d quests shown, width %d px, text %d px, alpha %.2f, %d objective lines, at %d,%d | Blizzard's tracker: %s",
-    mod.db.mode, mod.shown or 0, mod.total or 0, mod.db.widthPx, mod.db.size, mod.db.alpha, mod.db.objectives, mod.db.x or 0, mod.db.y or 0, tostring(mod.blizzard)))
-end, "tracker all|tracked|width|size|alpha|lines|max|move|lock|pos|reset: the compact quest list that replaces Blizzard's tracker")
+  QB:Say(string.format("tracker: %s, %d of %d quests shown, width %d px, text %d px, alpha %.2f, %d objective lines, at %d,%d | list %s%s, levels %s | Blizzard's tracker: %s",
+    mod.db.mode, mod.shown or 0, mod.total or 0, mod.db.widthPx, mod.db.size, mod.db.alpha, mod.db.objectives, mod.db.x or 0, mod.db.y or 0,
+    mod.db.hidden and "hidden" or "shown", mod.db.collapsed and " (collapsed)" or "", mod.db.level and "on" or "off", tostring(mod.blizzard)))
+end, "tracker toggle|show|hide|collapse|expand|level|all|tracked|width|size|alpha|lines|max|move|lock|pos|reset: the compact quest list that replaces Blizzard's tracker")
