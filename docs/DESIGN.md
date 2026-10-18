@@ -265,6 +265,24 @@ charter was dropped on purpose.
   `SetRoundLayoutToNearestPixel` and the pixel arithmetic give 1 px lines, and that tiling the 256 px grain with
   `SetTexture(file, "REPEAT", "REPEAT")` shows no visible repeat.
 
+### The relay voice (v0.17.0; 4BI-38 steps 2 and 4, the QuestBook side)
+
+- **Direction** (Cesar, 2026-10-18): a much better voice than the game's text-to-speech. The audio plays OUTSIDE the game: with
+  `/qb voice engine relay` the reader sends the words to the WoW AI bridge on the rig over the pixel strip (`WoWAI.SendTts`, in the
+  wow-relay addon; the bridge's `bridge/tts.js` makes the audio with ElevenLabs, caches it by hash and plays it). The default engine is
+  still the game's own voice; a missing or disconnected relay falls back to it (and says why, at most once a minute).
+- **What goes out:** `play` with the title and the description (no "ready to turn in" prefix, so the text does not change between the
+  prefetch and the reading and the bridge's cache holds); `stop`; `prefetch` when a quest is accepted (after the giver is recorded; off with
+  `/qb voice prefetch off`). The slot goes in the record's name field; the reference is `q<questID>`.
+- **Voice slots by giver:** narrator (no giver recorded), male or female by the giver's gender, creature for a beast, dragonkin, demon,
+  elemental, giant, mechanical, aberration or critter (an undead person is still a man or a woman). The bridge maps slots to ElevenLabs
+  voices (`tts.voices` in its config). Per-NPC overrides and the reader's quick-pick are not built yet.
+- **Talk / Stop is an estimate:** the strip only goes one way, so the game is not told when the reading ends. The state lasts about
+  14 characters a second (at least 3 seconds), or until Stop or the next reading. Stop and the tracker's Stop link send a `stop`.
+- **Commands:** `/qb voice engine game|relay`, `/qb voice prefetch on|off`, `/qb voice test` (the bridge speaks a test line),
+  `/qb voice slot` (what the quest on the page would use).
+- **Unverified (needs the rig):** all of it end to end; the ElevenLabs call and the playback live in wow-relay (pull request 12 there).
+
 ### The quest giver (v0.16.0; 4BI-38 step 1)
 
 - **Why:** the voiceover will pick a voice by who gave the quest (creature type and gender, a per-NPC override, a quick-pick in the

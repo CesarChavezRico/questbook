@@ -40,6 +40,8 @@ local mod = QB:NewModule("questlog", {
   hideFrames = true,    -- hide the player and target frames while the reader is open
   hideAuras = true,     -- hide the player's buffs and debuffs while the reader is open
   scrollbar = false,    -- a thin scroll track beside the text (off: the wheel still scrolls)
+  engine = "game",      -- the voice: "game" (the game's own text-to-speech) | "relay" (the WoW AI bridge on the rig, 4BI-38)
+  prefetch = true,      -- relay engine: ask for the audio when a quest is accepted, so it is ready when you press Talk
 })
 
 local db              -- QB.db: the flat legacy QuestBookDB settings
@@ -343,11 +345,72 @@ local function SpeakText(text)
   return true, nil
 end
 
+-- ---------------------------------------------------------------- the relay voice (4BI-38)
+--
+-- With engine "relay" the words are not spoken by the game: they go to the WoW AI bridge on the rig over the pixel strip
+-- (WoWAI.SendTts in the wow-relay addon), which makes the audio with ElevenLabs, caches it and plays it through the rig's
+-- speakers. The voice comes from a SLOT, chosen by the quest giver (modules/Giver.lua): a man or a woman by gender, a
+-- creature for a non-humanoid, the narrator when the giver is unknown. The bridge maps slots to voices.
+
+local SLOT_CREATURE_TYPES = { Beast = true, Dragonkin = true, Demon = true, Elemental = true, Giant = true, Mechanical = true,
+  Undead = false, Aberration = true, Critter = true, ["Wild Pet"] = true }
+
+-- The slot for a quest: narrator | male | female | creature.
+local function VoiceSlot(questID)
+  local ok, rec = QB:Call("giver", "Get", questID)
+  if not (ok and rec) then return "narrator" end
+  local t = rec.type
+  if t and t ~= "Humanoid" and SLOT_CREATURE_TYPES[t] then return "creature" end
+  if rec.sex == 2 then return "male" elseif rec.sex == 3 then return "female" end
+  return "narrator"
+end
+mod.VoiceSlot = function(_, questID) return VoiceSlot(questID) end
+
+local function RelayReady()
+  if not (_G.WoWAI and type(_G.WoWAI.SendTts) == "function") then return false, "the WoW AI relay addon is not loaded" end
+  if type(_G.WoWAI.IsConnected) == "function" and not _G.WoWAI.IsConnected() then return false, "the relay bridge is not connected" end
+  return true
+end
+
+-- What is read: the title, then the description. (No "ready to turn in" prefix: the text then never changes between the
+-- prefetch at accept and the reading later, so the bridge's cache holds.)
+local function SpokenText(entry, desc)
+  return ((entry and entry.title) or "") .. ". " .. desc
+end
+
+local relayToken = 0      -- the latest relay reading; a timer from an older one does nothing
+local relaySpeaking = false
+
+-- Ask the bridge to read it. true when the request went out, false (and why) otherwise.
+local function RelaySpeak(entry, desc)
+  local ready, why = RelayReady()
+  if not ready then return false, why end
+  local text = SpokenText(entry, desc)
+  local ok, err = _G.WoWAI.SendTts("play", VoiceSlot(entry.questID), "q" .. tostring(entry.questID), text)
+  if not ok then return false, tostring(err) end
+  relaySpeaking = true
+  relayToken = relayToken + 1
+  return true, nil, text
+end
+
 local function Speak(entry, desc, force)
   if not db then Dbg("no db -- core never booted?") return end
   if not force and not db.voice then Dbg("voice is OFF (/qb voice)") return end
   if not desc then Dbg("no description cached") return end
   if desc == UNAVAILABLE then Dbg("description unavailable") return end
+  if mod.db.engine == "relay" and entry then
+    local ok, why, text = RelaySpeak(entry, desc)
+    if ok then
+      mod.relayText = text
+      mod:RelayStarted(#text)
+      return true
+    end
+    -- the relay is not there: say so once in a while and use the game's voice, so Talk never does nothing
+    if not mod.relayWarned or (GetTime and GetTime() - mod.relayWarned > 60) then
+      mod.relayWarned = (GetTime and GetTime()) or 1
+      Say("voice: " .. tostring(why) .. "; using the game's voice instead")
+    end
+  end
   Dbg("calling SpeakText...")
   local prefix = IsReadyToTurnIn(entry) and "This quest is complete and ready to turn in. " or ""
   local ok, why = SpeakText(((entry and entry.title) or "") .. ". " .. prefix .. desc)
@@ -364,7 +427,42 @@ end
 
 local function StopSpeaking()
   if C_VoiceChat and C_VoiceChat.StopSpeakingText then pcall(C_VoiceChat.StopSpeakingText) end
+  if relaySpeaking then
+    relaySpeaking = false
+    relayToken = relayToken + 1
+    if _G.WoWAI and type(_G.WoWAI.SendTts) == "function" then pcall(_G.WoWAI.SendTts, "stop", "", "", "") end
+  end
   SetSpeaking(false)   -- a killed speech fires no FINISHED event; reset locally
+end
+
+-- The bridge cannot tell the game when the reading is over (the strip only goes one way), so the Talk / Stop state is an
+-- estimate: about 14 characters a second, never less than 3 seconds. Stop (or the next reading) ends it sooner.
+function mod:RelayStarted(chars)
+  SetSpeaking(true)
+  local mine = relayToken
+  local secs = math.max(3, (chars or 0) / 14)
+  if C_Timer and C_Timer.After then
+    C_Timer.After(secs, function()
+      if mine == relayToken and relaySpeaking then relaySpeaking = false; SetSpeaking(false) end
+    end)
+  end
+end
+
+-- When a quest is accepted, have the bridge make its audio now (the giver is recorded a moment later, so wait for it).
+function mod:Prefetch(questID)
+  if self.db.engine ~= "relay" or not self.db.prefetch or not questID then return end
+  local ready = RelayReady()
+  if not ready then return end
+  local _, quests = ScanLog()
+  for _, e in ipairs(quests) do
+    if e.questID == questID then
+      local desc = GetQuestText(e)
+      if desc and desc ~= UNAVAILABLE then
+        pcall(_G.WoWAI.SendTts, "prefetch", VoiceSlot(questID), "q" .. tostring(questID), SpokenText(e, desc))
+      end
+      return
+    end
+  end
 end
 
 -- ---------------------------------------------------------------- the page
@@ -807,6 +905,12 @@ mod.events.QUEST_LOG_UPDATE = QueueRefresh
 mod.events.QUEST_WATCH_LIST_CHANGED = QueueRefresh
 mod.events.SUPER_TRACKING_CHANGED = QueueRefresh
 mod.events.QUEST_REMOVED = QueueRefresh
+-- a quest was accepted: with the relay voice, have its audio made now (after the giver has been recorded)
+mod.events.QUEST_ACCEPTED = function(self, _, questID)
+  if self.db.engine ~= "relay" then return end
+  local qid = questID
+  if C_Timer and C_Timer.After then C_Timer.After(1.5, Guard(function() mod:Prefetch(qid) end)) else self:Prefetch(qid) end
+end
 mod.events.PLAYER_STARTED_MOVING = function(self) self:OnStartedMoving() end
 mod.events.VOICE_CHAT_TTS_PLAYBACK_STARTED = function() SetSpeaking(true) end
 mod.events.VOICE_CHAT_TTS_PLAYBACK_FINISHED = function() SetSpeaking(false) end
@@ -960,7 +1064,34 @@ QB.legacySlash = function(msg)
     Say("debug " .. (debugMode and "on -- open the reader and move" or "off"))
   elseif msg == "voice" then
     mod:ToggleVoice()
-    Say("walk-and-listen " .. (db.voice and "on" or "off"))
+    Say("walk-and-listen " .. (db.voice and "on" or "off") .. " | voice engine: " .. mod.db.engine .. " (/qb voice engine game||relay)")
+  elseif msg:match("^voice%s+%S") then
+    local sub, arg = msg:match("^voice%s+(%S+)%s*(.-)$")
+    if sub == "engine" and (arg == "game" or arg == "relay") then
+      mod.db.engine = arg
+      Say("voice engine: " .. arg .. (arg == "relay" and " (the bridge on the rig speaks; if it is not connected the game's voice is used)" or " (the game's own text-to-speech)"))
+    elseif sub == "prefetch" and (arg == "on" or arg == "off") then
+      mod.db.prefetch = (arg == "on")
+      Say("relay prefetch " .. arg)
+    elseif sub == "test" then
+      local ok, why = RelayReady()
+      if not ok then
+        Say("relay voice test: " .. tostring(why))
+      else
+        local sent, err = _G.WoWAI.SendTts("play", "narrator", "test", "QuestBook voice test. If you hear this, the relay voice works.")
+        Say(sent and "relay voice test sent: the bridge should speak it in a moment" or ("relay voice test failed: " .. tostring(err)))
+      end
+    elseif sub == "slot" then
+      local id = mod:CurrentQuestID()
+      if id then
+        local okG, rec = QB:Call("giver", "Get", id)
+        Say("voice slot for the quest on the page: " .. VoiceSlot(id) .. (okG and rec and (" (giver " .. tostring(rec.name) .. ")") or " (no giver recorded)"))
+      else
+        Say("open a quest in the reader first")
+      end
+    else
+      QB:Usage("/qb voice | voice engine game|relay | voice prefetch on|off | voice test | voice slot")
+    end
   elseif msg == "voices" then
     if C_VoiceChat and C_VoiceChat.GetTtsVoices then
       local ok, voices = pcall(C_VoiceChat.GetTtsVoices)
