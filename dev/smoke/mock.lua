@@ -54,6 +54,7 @@ function Frame:GetAlpha() return self.__alpha end
 function Frame:SetScale(s) self.__scale = s end
 function Frame:GetScale() return self.__scale end
 function Frame:GetEffectiveScale() return 1 end
+function GetPhysicalScreenSize() return 3420, 1435 end
 function Frame:SetFrameStrata(s) self.__strata = s end
 function Frame:GetFrameStrata() return self.__strata end
 function Frame:SetFrameLevel(l) self.__level = l end

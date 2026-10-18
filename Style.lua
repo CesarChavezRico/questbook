@@ -12,7 +12,7 @@
 -- read well on a dark panel vanish on parchment, so every ink here is re-inked darker.
 -- (Ideas credited to a study of the Social Diary addon's design brief, MIT; no code copied.)
 
-local _, QB = ...
+local ADDON, QB = ...
 
 local Style = {}
 QB.Style = Style
@@ -193,6 +193,101 @@ function Style.Link(parent, onClick, getTone)
   link:SetScript("OnClick", function(self, ...) if self.enabled then onClick(self, ...) end end)
   link:Paint()
   return link
+end
+
+-- ---------------------------------------------------------------- pixels
+--
+-- The client lays out in UI units; one physical pixel is 768 / (physical screen height) of a unit at UIParent's
+-- scale, and a region with its own scale sees it divided by its effective scale (Blizzard_SharedXML/PixelUtil.lua:
+-- GetPixelToUIUnitFactor, GetNearestPixelSize). Borders, rules and padding written in whole pixels through these
+-- come out crisp and the same weight everywhere; written in units they land between pixels and shimmer.
+
+function Style.PixelUnit(region)
+  local factor = 1
+  if type(GetPhysicalScreenSize) == "function" then
+    local ok, _, h = pcall(GetPhysicalScreenSize)
+    if ok and type(h) == "number" and h > 0 then factor = 768 / h end
+  end
+  local scale = region and region.GetEffectiveScale and region:GetEffectiveScale()
+  if type(scale) ~= "number" or scale <= 0 then scale = 1 end
+  return factor / scale
+end
+
+-- n physical pixels, in the region's units
+function Style.Px(n, region) return n * Style.PixelUnit(region) end
+
+-- a size in units, rounded to a whole number of physical pixels
+function Style.Snap(units, region)
+  local u = Style.PixelUnit(region)
+  return math.floor(units / u + 0.5) * u
+end
+
+-- Ask the client to round a frame's layout to whole pixels (Blizzard calls this on frames and regions alike).
+function Style.PixelPerfect(frame)
+  if frame and frame.SetRoundLayoutToNearestPixel then pcall(frame.SetRoundLayoutToNearestPixel, frame, true) end
+end
+
+-- ---------------------------------------------------------------- paper
+--
+-- A page of torn parchment as a nine-patch, drawn from our own generated textures (dev/art/gen_kit.py): a tiling
+-- grain for the fill, four corners and four stretched strips whose torn profile meets at the same depth at both
+-- ends, so stretching along the page never opens a seam. Every size is in whole physical pixels. The page owns
+-- no frame: it draws into `parent`'s BACKGROUND layer and re-lays itself out when `parent` changes size.
+
+local PAPER_TEX = "Interface\\AddOns\\" .. ADDON .. "\\Textures\\"
+local EDGE, INSET, GRAIN = 64, 24, 256      -- px: strip depth, where the fill starts, grain tile
+
+function Style.Paper(parent)
+  local P = {}
+  local function tex(file, sub, tile)
+    local t = parent:CreateTexture(nil, "BACKGROUND", nil, sub)
+    if tile then t:SetTexture(PAPER_TEX .. file, "REPEAT", "REPEAT") else t:SetTexture(PAPER_TEX .. file) end
+    return t
+  end
+  P.fill = tex("paper_grain.tga", -8, true)
+  P.top, P.bottom = tex("paper_edge_h.tga", -7), tex("paper_edge_h.tga", -7)
+  P.left, P.right = tex("paper_edge_v.tga", -7), tex("paper_edge_v.tga", -7)
+  P.tl, P.tr = tex("paper_corner.tga", -6), tex("paper_corner.tga", -6)
+  P.bl, P.br = tex("paper_corner.tga", -6), tex("paper_corner.tga", -6)
+  P.top:SetTexCoord(0, 1, 0, 1);    P.bottom:SetTexCoord(0, 1, 1, 0)
+  P.left:SetTexCoord(0, 1, 0, 1);   P.right:SetTexCoord(1, 0, 0, 1)
+  P.tl:SetTexCoord(0, 1, 0, 1);     P.tr:SetTexCoord(1, 0, 0, 1)
+  P.bl:SetTexCoord(0, 1, 1, 0);     P.br:SetTexCoord(1, 0, 1, 0)
+  P.parts = { P.fill, P.top, P.bottom, P.left, P.right, P.tl, P.tr, P.bl, P.br }
+
+  function P:Layout()
+    local u = Style.PixelUnit(parent)
+    local e, i = EDGE * u, INSET * u
+    local w, h = parent:GetSize()
+    P.fill:ClearAllPoints()
+    P.fill:SetPoint("TOPLEFT", parent, "TOPLEFT", i, -i)
+    P.fill:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -i, i)
+    if w and h then P.fill:SetTexCoord(0, (w - 2 * i) / (GRAIN * u), 0, (h - 2 * i) / (GRAIN * u)) end
+    P.top:ClearAllPoints();    P.top:SetPoint("TOPLEFT", parent, "TOPLEFT", e, 0);         P.top:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -e, 0);         P.top:SetHeight(e)
+    P.bottom:ClearAllPoints(); P.bottom:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", e, 0); P.bottom:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -e, 0); P.bottom:SetHeight(e)
+    P.left:ClearAllPoints();   P.left:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -e);        P.left:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 0, e);     P.left:SetWidth(e)
+    P.right:ClearAllPoints();  P.right:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, -e);    P.right:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", 0, e);  P.right:SetWidth(e)
+    for key, pt in pairs({ tl = "TOPLEFT", tr = "TOPRIGHT", bl = "BOTTOMLEFT", br = "BOTTOMRIGHT" }) do
+      P[key]:ClearAllPoints(); P[key]:SetPoint(pt, parent, pt, 0, 0); P[key]:SetSize(e, e)
+    end
+  end
+
+  function P:SetShown(on) for _, t in ipairs(P.parts) do t:SetShown(on) end end
+
+  Style.PixelPerfect(parent)
+  if parent.HookScript then parent:HookScript("OnSizeChanged", function() P:Layout() end) end
+  P:Layout()
+  return P
+end
+
+-- A brush-like rule that tapers to nothing at both ends (our own art): the line under a title. `color` = { r, g, b, a }.
+function Style.Hairline(parent, color)
+  local t = parent:CreateTexture(nil, "ARTWORK")
+  t:SetTexture(PAPER_TEX .. "hairline.tga")
+  local c = color or { 0.19, 0.17, 0.13, 0.9 }
+  t:SetVertexColor(c[1], c[2], c[3], c[4] or 1)
+  t:SetHeight(Style.Px(8, parent))
+  return t
 end
 
 -- A drag handle for placing a piece of our UI (the corner minimap, the quest list): a translucent brass-edged

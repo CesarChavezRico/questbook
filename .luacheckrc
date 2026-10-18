@@ -24,7 +24,7 @@ read_globals = {
   "GetNumQuestLeaderBoards", "GetQuestLogLeaderBoard", "IsQuestComplete", "ExpandQuestHeader",
   "QuestLogPushQuest", "QuestUtils_GetQuestName", "StaticPopup_Show", "StaticPopup_Hide",
   -- map, camera, strip, drawers
-  "GetCVar", "SetCVar", "GetPlayerFacing", "GetAddOnMetadata", "C_AddOns", "GetCameraZoom", "CameraZoomIn", "CameraZoomOut",
+  "GetCVar", "SetCVar", "GetPlayerFacing", "GetAddOnMetadata", "C_AddOns", "GetPhysicalScreenSize", "GetCameraZoom", "CameraZoomIn", "CameraZoomOut",
   "GetZoneText", "GetSubZoneText", "HasNewMail", "CursorHasItem", "GetMouseFoci", "GetMouseFocus",
   "ShowUIPanel", "HideUIPanel", "ToggleWorldMap", "PlayerMovementFrameFader",
   "HybridMinimap_LoadUI", "IsIndoors",

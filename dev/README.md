@@ -11,6 +11,7 @@ Offline checks for when there is no game client at hand.
     node run.js ../.. isolation.lua                     # a broken module must not break the others (exits 1 by design: it lists the broken module's errors)
     node run.js ../.. questroute.lua                    # tracker clicks open the book, zoom-out, fallback
     node run.js ../.. camera_dialogue.lua               # the camera shift and a quest dialogue: no fighting over the CVar
+    node run.js ../.. kit.lua                           # /qb screen, /qb kit, pixel arithmetic, the nine-patch page
     node run.js ../.. version.lua                       # the version line at login
     node run.js ../.. help.lua                          # every help / usage line survives the chat frame (no stray "|")
     node run.js ../.. markers.lua                       # quest markers: positions, rotation, edge, switching the client's areas off and back
@@ -23,3 +24,10 @@ Offline checks for when there is no game client at hand.
 The stub (`smoke/mock.lua`) makes unknown widget methods no-ops, so it finds logic, nil and typo
 errors in our own code. It cannot tell whether a real Blizzard frame has a method; only the game
 client can. Every `UNVERIFIED:` comment in the modules is something the client has to confirm.
+
+## Art
+
+`python3 dev/art/gen_kit.py` regenerates the paper textures in `Textures/` (torn edges, corners, grain, the tapering
+rule) and writes `dev/art/preview*.png` so the result can be looked at without the game. It is pure Python with no
+dependencies. The art is generated from nothing: no texture, atlas or code from another addon or from Blizzard is
+used or traced. Change the generator, rerun it, commit the TGAs and look at the previews.
