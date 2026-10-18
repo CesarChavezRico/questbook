@@ -10,7 +10,7 @@
 
 local ADDON, QB = ...
 QB.name = ADDON
-QB.version = "0.15.1"
+QB.version = "0.15.2"
 QB.modules = {}      -- name -> module table
 QB.order = {}        -- registration order
 QB.errors = {}       -- module name -> { msg = string, count = number }
@@ -97,7 +97,7 @@ end
 -- Loose coupling between modules: topics, not references.
 -- Used topics: "overlay_state" (state string "off"|"local"|"zone"),
 -- "overlay_host" (nil | "big" | "corner": who holds the Minimap), "reader_state" (true | false: the quest reader is
--- up or gone; it sits where the map sits), "speech_state" (true | false: a quest is being read aloud), "open_full" (request to open the Full map), "combat_start", "combat_end".
+-- up or gone; it sits where the map sits), "speech_state" (true | false: a quest is being read aloud), "xp_layout" (the experience row appeared, changed size or went away), "open_full" (request to open the Full map), "combat_start", "combat_end".
 function QB:On(topic, fn, owner)
   local list = QB.listeners[topic]
   if not list then list = {}; QB.listeners[topic] = list end
