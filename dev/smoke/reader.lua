@@ -73,7 +73,7 @@ O:Cycle(); O:Cycle(); __tick(20, 0.05)
 assert(O.state == "zone", "map mode")
 QB:Call("questlog", "Open", 100); __tick(5, 0.05)
 assert(R:IsShown() and O.state == "off", "the reader replaced the zone map too")
-assert(O.cornerPanel:IsShown(), "the small minimap is back")
+assert(not O.cornerPanel:IsShown(), "the small minimap is out of the way while the reader is open (it hides it by default)")
 
 -- the action bars go with the reader as they go with the map (and stay hidden through a swap)
 local bar = MainActionBar
@@ -92,6 +92,52 @@ assert(not R:IsShown() and bar:GetAlpha() == 0, "the map keeps them hidden when 
 O:SetState("off"); __tick(3, 0.05)
 assert(bar:GetAlpha() == 1, "and gives them back")
 QB:Call("questlog", "Open", 100)
+
+-- what else it hides: the small minimap (and so the markers), the player and target frames; all back when it closes
+R:Hide(); __tick(60, 0.05)
+assert(O.cornerPanel:IsShown() and PlayerFrame:GetAlpha() ~= 0 and TargetFrame:GetAlpha() ~= 0, "everything visible with nothing open")
+assert(QuestBookMarkers and QuestBookMarkers:IsShown(), "the markers are on the small minimap")
+QB:Call("questlog", "Open", 100); __tick(3, 0.05)
+assert(not O.cornerPanel:IsShown(), "the small minimap is hidden")
+assert(not QuestBookMarkers:IsShown(), "and the markers with it")
+assert(PlayerFrame:GetAlpha() == 0 and TargetFrame:GetAlpha() == 0, "the player and target frames are hidden")
+R:Hide(); __tick(3, 0.05)
+assert(O.cornerPanel:IsShown() and QuestBookMarkers:IsShown(), "minimap and markers are back")
+assert(PlayerFrame:GetAlpha() ~= 0 and TargetFrame:GetAlpha() ~= 0, "frames are back")
+slash("reader hide minimap off"); slash("reader hide frames off")
+QB:Call("questlog", "Open", 100); __tick(3, 0.05)
+assert(O.cornerPanel:IsShown() and PlayerFrame:GetAlpha() ~= 0, "both left alone when the settings say so")
+slash("reader hide minimap on")                    -- takes effect at once, with the page open
+assert(not O.cornerPanel:IsShown(), "the setting applies live")
+slash("reader hide frames on"); assert(PlayerFrame:GetAlpha() == 0)
+R:Hide(); __tick(3, 0.05)
+
+-- no scroll bar on the page; its own height
+QB:Call("questlog", "Open", 100); __tick(3, 0.05)
+assert(not R.thumb:IsShown() and not R.track:IsShown(), "no scroll bar")
+slash("reader scrollbar on"); slash("reader scrollbar off")      -- (the setting exists; nothing overflows in the stub)
+local mapH = R:GetHeight()
+slash("reader height 0.8")
+local want = Style.Snap(UIParent:GetHeight() * 0.8, R)
+assert(math.abs(R:GetHeight() - want) <= u, "its own height: " .. R:GetHeight() .. " vs " .. want)
+local p2 = { R:GetPoint(1) }
+assert(math.abs(p2[4] - ocx) <= u and math.abs(p2[5] - ocy) <= u, "same centre")
+slash("reader height auto")
+assert(math.abs(R:GetHeight() - mapH) <= u, "auto = the map's height again")
+R:Hide(); __tick(60, 0.05)
+
+-- the reader's own zoom (negative zooms in), and the map's again after a swap
+QB:Call("questlog", "Open", 100); __tick(40, 0.05)
+local b2 = C.oldZoom
+assert(math.abs(GetCameraZoom() - (b2 + 3)) < 0.01, "reader zoom 3 by default")
+slash("camera readerzoom -2"); __tick(5, 0.05)
+assert(math.abs(GetCameraZoom() - (b2 - 2)) < 0.01, "readerzoom -2 zooms in: " .. GetCameraZoom() .. " from " .. b2)
+O:Cycle(); __tick(40, 0.05)
+assert(O.state == "local" and math.abs(GetCameraZoom() - (b2 + 3)) < 0.01, "the map's own zoom after the swap: " .. GetCameraZoom())
+QB:Call("questlog", "Open", 100); __tick(40, 0.05)
+assert(math.abs(GetCameraZoom() - (b2 - 2)) < 0.01, "and the reader's again")
+slash("camera readerzoom 3")
+R:Hide(); __tick(60, 0.05)
 
 -- closing releases the camera
 R:Hide(); __tick(60, 0.05)
