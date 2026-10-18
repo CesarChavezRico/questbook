@@ -267,6 +267,9 @@ charter was dropped on purpose.
   the strip (3 px by default, whole pixels, 360 px wide, right-aligned with the strip): XP in gold on a faint track, the rested
   part as a lighter blue extension (the one cool hue, because it means something different). No numbers on it; hover for level,
   XP / max (percent), to go, rested. It hangs on the strip's frame (`strip:GetFrame`), or in the screen corner if the strip is off.
+- **The number** (v0.15.1; Cesar, 2026-10-17, after the first look: "we need the number so its easier to mouse over"): "Lv 8  44%" above
+  the bar, right-aligned, 15 px; the frame is the bar and the number together, so the hover area is about 23 px tall instead of 3
+  (`/qb xp text on|off`, `textsize <px>`). The percent is floored (never 100% before the level is done).
 - **Blizzard's bottom bar** (`StatusTrackingBarManager`) is faded out by alpha while ours is up (`/qb xp blizzard off` leaves it);
   at the maximum level or with XP gain off our bar hides and Blizzard's comes back, since it also carries reputation and honor,
   which this module does not take over. The overlay's own fading of the same frame in map modes (`bars all`) is unaffected: the
