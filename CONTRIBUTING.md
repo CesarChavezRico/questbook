@@ -13,6 +13,7 @@ modules/Overlay.lua    Off / Minimap / Map, masks, ground, bars, indoor handling
 modules/Camera.lua     lateral shift + zoom-out, CVar backup and restore
 modules/Tracker.lua    the compact quest list that replaces Blizzard's objective tracker
 modules/Markers.lua    our quest markers on the minimap; switches the client's quest areas off
+modules/Xp.lua         the experience bar under the strip; fades Blizzard's bottom bar while it is up
 modules/Kit.lua        `/qb kit`, `/qb screen`: the sample page of the paper look, in whole pixels
 modules/Strip.lua      the text strip, the Addons handle
 modules/Drawers.lua    the Menu panel (micro menu + bags)
