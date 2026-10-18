@@ -34,6 +34,15 @@ assert(P.fill ~= nil, "re-laid out on resize")
 local rule = Style.Hairline(host)
 assert(math.abs(rule:GetHeight() - 8 * u) < 1e-6, "the rule is 8 px tall")
 
+-- draw order within the BACKGROUND layer: darkening < fill < strips < corners (the fill once shared the darkening's
+-- sublevel and the darkening drew over it: Cesar saw a dark interior in a bright rim, 2026-10-17)
+slash("kit"); slash("kit")
+assert(QuestBookKit.shade.__sub < QuestBookKit.paper.fill.__sub, "the fill draws above the screen darkening")
+assert(QuestBookKit.paper.fill.__sub < QuestBookKit.paper.top.__sub, "strips above the fill")
+assert(QuestBookKit.paper.top.__sub < QuestBookKit.paper.tl.__sub, "corners above the strips")
+for _, k in ipairs({ "fill", "top", "bottom", "left", "right", "tl", "tr", "bl", "br" }) do
+  assert(QuestBookKit.paper[k].__layer == "BACKGROUND", k .. " in the background layer")
+end
 -- the sample page builds and toggles
 slash("kit")
 assert(QuestBookKit and QuestBookKit:IsShown(), "the sample page is up")

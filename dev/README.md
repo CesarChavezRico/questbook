@@ -28,6 +28,6 @@ client can. Every `UNVERIFIED:` comment in the modules is something the client h
 ## Art
 
 `python3 dev/art/gen_kit.py` regenerates the paper textures in `Textures/` (torn edges, corners, grain, the tapering
-rule) and writes `dev/art/preview*.png` so the result can be looked at without the game. It is pure Python with no
+rule) and writes `dev/art/preview*.png` (git-ignored) so the result can be looked at without the game. It is pure Python with no
 dependencies. The art is generated from nothing: no texture, atlas or code from another addon or from Blizzard is
 used or traced. Change the generator, rerun it, commit the TGAs and look at the previews.

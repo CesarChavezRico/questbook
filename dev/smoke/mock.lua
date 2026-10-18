@@ -84,7 +84,7 @@ function Frame:SetEnabled(b) self.__enabled = b end
 function Frame:IsEnabled() return self.__enabled end
 function Frame:GetName() return self.__name end
 function Frame:CreateFontString(n, ...) return newFrame("FontString", n, self) end
-function Frame:CreateTexture(n, ...) return newFrame("Texture", n, self) end
+function Frame:CreateTexture(n, layer, tmpl, sub) local t = newFrame("Texture", n, self); t.__layer, t.__sub = layer, sub; return t end
 function Frame:CreateMaskTexture(n, ...) return newFrame("MaskTexture", n, self) end
 function Frame:GetLeft() return 0 end
 function Frame:GetRight() return self.__w end

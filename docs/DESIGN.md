@@ -202,7 +202,15 @@ charter was dropped on purpose.
 - **Decided for the reader** (Cesar, 2026-10-17, "on point"): one page (title, objectives, text, voice controls), previous
   and next arrows; the default key and the micro-menu button open it on the active quest; the book's right-hand list, the
   map plate and the open-book look are removed; the tracker defaults to "all quests"; the Book link becomes "Log".
-- **Unverified (the client has to say):** that the generated page looks right at Cesar's size (3420x1435 physical), that
+- **Seen in the game (2026-10-17, v0.12.0 `/qb kit`):** screen 3440x1440 px, UI 2867x1200 units, effective scale 0.640,
+  so 1 px = 0.8333 units. Text "looks good". Two findings: (1) the page interior was darker than its rim, a layering bug
+  of mine: the full-screen darkening shared a sublevel with the paper fill and drew over it, so only the strips and
+  corners showed true colour (fill is now one sublevel above the darkening, strips and corners above the fill);
+  (2) the torn edge wanted "bigger tears", as in Dialogue UI's page (notches several tens of pixels long): v0.12.1 adds
+  bites (a slow ramp, a steep drop) and narrow V cuts, tears are 1024 px long on top and bottom and 512 px at the
+  sides so they are not stretched much, and each of the four sides has its own tearing, not a mirror of its opposite.
+  The scroll-like curled corners of Dialogue UI's page are not attempted.
+- **Unverified (the client has to say):** that the generated page looks right at Cesar's size (3440x1440 physical), that
   `SetRoundLayoutToNearestPixel` and the pixel arithmetic give 1 px lines, and that tiling the 256 px grain with
   `SetTexture(file, "REPEAT", "REPEAT")` shows no visible repeat.
 

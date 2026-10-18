@@ -3,7 +3,7 @@
 Dialogue UI, Social Diary or Blizzard is used or traced (Dialogue UI's repo carries no licence, so it is
 treated as all rights reserved: principles only). Pure Python, no dependencies.
 
-    python3 dev/art/gen_kit.py            # writes Textures/paper_*.tga, hairline.tga and dev/art/preview.png
+    python3 dev/art/gen_kit.py            # writes Textures/paper_*.tga, hairline.tga and dev/art/preview*.png (not committed)
 
 Textures are 32-bit uncompressed TGA with alpha, origin top-left (the same header as mask_rect.tga), sizes are
 powers of two. The page is a nine-patch: four corners (64x64), top/bottom strips (256x64, stretched along the
@@ -16,7 +16,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 TEX = os.path.join(HERE, "..", "..", "Textures")
 
 PAPER = (0.83, 0.70, 0.50)          # the same parchment as Style.THEMES.paper.pageLeft
-C0 = 11.0                           # torn depth (px) at every joint
+C0 = 9.0                           # torn depth (px) at every joint
+INSET_PX = 40                      # where the fill starts; must exceed the deepest tear
 SS = 4                              # supersampling per axis for the alpha
 
 
@@ -50,21 +51,44 @@ def hashf(*xs):
 
 
 class Profile:
-    """Depth of the torn edge (px) at position s in [0,1], equal to C0 at both ends."""
+    """Depth of the torn edge (px) at position s in [0,1], equal to C0 at both ends.
+    Three scales: a slow wave, a medium wobble, and a few bigger TEARS (a bite with a slow ramp on one side and a
+    steep drop on the other, and narrow V cuts), like the notches in a ripped page. Tears are kept away from the
+    ends (the corners and the neighbouring strip must meet at C0)."""
     def __init__(self, seed, length_px):
-        self.low = Periodic(seed, 7, 0.78)
-        self.mid = Periodic(seed + 1, 18, 0.88)
+        self.low = Periodic(seed, 6, 0.74)
+        self.mid = Periodic(seed + 1, 16, 0.86)
         self.n = length_px
         self.seed = seed
         self.l0 = self.low(0)
         self.m0 = self.mid(0)
+        r = random.Random(seed * 7 + 3)
+        self.tears = []
+        for _ in range(max(3, int(length_px / 210))):             # about one bite per 210 px
+            self.tears.append((r.uniform(0.09, 0.91), r.uniform(26, 84) / length_px, r.uniform(6, 12), r.choice((-1, 1)), "bite"))
+        for _ in range(max(1, int(length_px / 520))):             # a few narrow V cuts
+            self.tears.append((r.uniform(0.12, 0.88), r.uniform(7, 13) / length_px, r.uniform(11, 17), r.choice((-1, 1)), "cut"))
+
+    def tear(self, s):
+        total = 0.0
+        for u0, w, d, a, kind in self.tears:
+            x = (s - u0) / w * a
+            if kind == "bite":
+                v = (1 + x) ** 1.5 if -1 <= x < 0 else (1 - x / 0.28 if 0 <= x < 0.28 else 0.0)
+            else:
+                v = 1 - abs(x) if -1 < x < 1 else 0.0
+            total += d * v
+        return min(total, 18.0)
 
     def depth(self, s):
-        w = (self.low(s) - self.l0) * 6.5 + (self.mid(s) - self.m0) * 2.6
-        # pixel-scale fibres: a hashed jitter per 1/3 px, windowed to vanish at the ends
+        w = (self.low(s) - self.l0) * 4.6 + (self.mid(s) - self.m0) * 1.7
         col = int(s * self.n * 3)
-        j = (hashf(self.seed, col) - 0.5) * 1.1 * smooth(0.0, 0.03, s) * smooth(0.0, 0.03, 1 - s)
-        return max(2.0, C0 + w + j)
+        j = (hashf(self.seed, col) - 0.5) * 1.0
+        win = smooth(0.0, 0.05, s) * smooth(0.0, 0.05, 1 - s)
+        return max(2.0, C0 + (w + j) * win + self.tear(s) * win)
+
+    def max_depth(self):
+        return max(self.depth(i / (self.n * 2.0)) for i in range(int(self.n * 2) + 1))
 
 
 class Img:
@@ -135,9 +159,9 @@ def rim(dist_px):
 
 # ---- the pieces -------------------------------------------------------------------------------------------------
 
-def make_edge_h(seed=101):
-    """Top strip, 256 x 64: torn along the top, paper below it, fading to transparent from row 28 to 56."""
-    W, H = 256, 64
+def make_edge_h(seed=101, W=1024):
+    """Top strip, W x 64: torn along the top, paper below it, fading to transparent from row 40 to 62."""
+    H = 64
     prof = Profile(seed, W)
     img = Img(W, H)
     for y in range(H):
@@ -153,7 +177,7 @@ def make_edge_h(seed=101):
                     dsum += py - d
             cov /= SS * SS
             dist = dsum / (SS * SS)
-            fade = 1.0 - smooth(32, 60, y)
+            fade = 1.0 - smooth(44, 63, y)
             r, g, b = paper_color(x, y, rim(max(0.0, dist)))
             img.set(x, y, (r, g, b, cov * fade))
     return img
@@ -170,7 +194,7 @@ def transpose(img):
 def make_corner(seed_h=101, seed_v=202):
     """Top-left corner, 64 x 64: a rounded, torn corner that joins the top strip at x=64 and the left strip at y=64."""
     S = 64
-    ph, pv = Profile(seed_h, 256), Profile(seed_v, 256)
+    ph, pv = Profile(seed_h, 1024), Profile(seed_v, 512)
     R = 34.0
     img = Img(S, S)
     for y in range(S):
@@ -180,8 +204,8 @@ def make_corner(seed_h=101, seed_v=202):
                 for sx in range(SS):
                     px, py = x + (sx + .5) / SS, y + (sy + .5) / SS
                     # the straight parts follow the strips' own profile (continuing it past the joint)
-                    top = ph.depth(0.0) + (ph.depth((px - S) / 256 % 1.0) - C0) * smooth(R, S, px) if px > R else None
-                    left = pv.depth(0.0) + (pv.depth((py - S) / 256 % 1.0) - C0) * smooth(R, S, py) if py > R else None
+                    top = ph.depth(0.0) + (ph.depth((px - S) / 1024 % 1.0) - C0) * smooth(R, S, px) if px > R else None
+                    left = pv.depth(0.0) + (pv.depth((py - S) / 512 % 1.0) - C0) * smooth(R, S, py) if py > R else None
                     if px >= R and py >= R:
                         inside = py >= top and px >= left
                         d = min(py - top, px - left)
@@ -195,7 +219,7 @@ def make_corner(seed_h=101, seed_v=202):
                         inside = px >= left
                         d = px - left
                     else:
-                        reff = R - C0 + (pv.depth(py / 256 * 0.5) - C0) * 0.5
+                        reff = R - C0 + (pv.depth(py / 512 * 0.5) - C0) * 0.5
                         dist = math.hypot(R - px, R - py)
                         inside = dist <= reff
                         d = reff - dist
@@ -205,7 +229,8 @@ def make_corner(seed_h=101, seed_v=202):
             cov /= SS * SS
             dist = dsum / (SS * SS)
             r, g, b = paper_color(x, y, rim(max(0.0, dist)))
-            img.set(x, y, (r, g, b, cov))
+            fade = 1.0 - smooth(44, 63, min(x, y))      # like the strips: only the rim is drawn, the fill shows through
+            img.set(x, y, (r, g, b, cov * fade))
     return img
 
 
@@ -265,40 +290,48 @@ def stretch(src, w, h, flipx=False, flipy=False):
     return out
 
 
-def preview(pieces, W=640, H=420):
-    eh, ev, co, gr = pieces
+def preview(pieces, W=1040, H=720):
+    top, bottom, left, right, co, gr = pieces
     page = Img(W, H)
-    inset = 24
+    inset = INSET_PX
     for y in range(inset, H - inset):
         for x in range(inset, W - inset):
             r, g, b = paper_color(x, y)
             page.set(x, y, (r, g, b, 1.0))
-    blit(page, stretch(eh, W - 128, 64), 64, 0)
-    blit(page, stretch(eh, W - 128, 64, flipy=True), 64, H - 64)
-    blit(page, stretch(ev, 64, H - 128), 0, 64)
-    blit(page, stretch(ev, 64, H - 128, flipx=True), W - 64, 64)
+    blit(page, stretch(top, W - 128, 64), 64, 0)
+    blit(page, stretch(bottom, W - 128, 64, flipy=True), 64, H - 64)
+    blit(page, stretch(left, 64, H - 128), 0, 64)
+    blit(page, stretch(right, 64, H - 128, flipx=True), W - 64, 64)
     blit(page, co, 0, 0); blit(page, co, W - 64, 0, flipx=True)
     blit(page, co, 0, H - 64, flipy=True); blit(page, co, W - 64, H - 64, flipx=True, flipy=True)
     return page
 
 
+def crop(img, x0, y0, w, h, k):
+    c = Img(w, h)
+    for y in range(h):
+        for x in range(w):
+            c.px[y * w + x] = img.px[(y0 + y) * img.w + (x0 + x)]
+    return stretch(c, w * k, h * k)
+
+
 if __name__ == "__main__":
-    eh = make_edge_h(); ev = transpose(make_edge_h(202)); co = make_corner(); gr = make_grain(); hl = make_hairline()
-    eh.tga(os.path.join(TEX, "paper_edge_h.tga")); ev.tga(os.path.join(TEX, "paper_edge_v.tga"))
-    co.tga(os.path.join(TEX, "paper_corner.tga")); gr.tga(os.path.join(TEX, "paper_grain.tga")); hl.tga(os.path.join(TEX, "hairline.tga"))
-    pv = preview((eh, ev, co, gr))
+    top = make_edge_h(101, 1024); bottom = make_edge_h(303, 1024)
+    left = transpose(make_edge_h(202, 512)); right = transpose(make_edge_h(404, 512))
+    co = make_corner(); gr = make_grain(); hl = make_hairline()
+    depths = [Profile(101, 1024).max_depth(), Profile(303, 1024).max_depth(), Profile(202, 512).max_depth(), Profile(404, 512).max_depth()]
+    print("deepest tear per strip (px): %s; the fill starts at %d" % (", ".join("%.1f" % d for d in depths), INSET_PX))
+    assert max(depths) < INSET_PX - 2, "a tear reaches the fill: raise INSET_PX (and Style.Paper's INSET)"
+    for name, img in (("paper_top", top), ("paper_bottom", bottom), ("paper_left", left), ("paper_right", right),
+                      ("paper_corner", co), ("paper_grain", gr), ("hairline", hl)):
+        img.tga(os.path.join(TEX, name + ".tga"))
+    pv = preview((top, bottom, left, right, co, gr))
     pv.png(os.path.join(HERE, "preview.png"), bg=(0.08, 0.07, 0.10))
-    # a 3x crop of the top-left corner to judge the edge at pixel scale
-    crop = Img(150, 100)
-    for y in range(100):
-        for x in range(150):
-            crop.px[y * 150 + x] = pv.px[y * pv.w + x]
-    big = stretch(crop, 150 * 4, 100 * 4)
-    big.png(os.path.join(HERE, "preview_corner.png"), bg=(0.08, 0.07, 0.10))
+    crop(pv, 0, 0, 300, 160, 3).png(os.path.join(HERE, "preview_corner.png"), bg=(0.08, 0.07, 0.10))
     hl2 = Img(256, 40)
     blit(hl2, hl, 0, 16)
     for i in range(len(hl2.px)):
         r, g, b, a = hl2.px[i]
-        hl2.px[i] = (0.26 * 1, 0.19 * 1, 0.13, a)
+        hl2.px[i] = (0.26, 0.19, 0.13, a)
     hl2.png(os.path.join(HERE, "preview_hairline.png"), bg=(0.83, 0.70, 0.50))
     print("ok")

@@ -230,12 +230,12 @@ end
 -- ---------------------------------------------------------------- paper
 --
 -- A page of torn parchment as a nine-patch, drawn from our own generated textures (dev/art/gen_kit.py): a tiling
--- grain for the fill, four corners and four stretched strips whose torn profile meets at the same depth at both
+-- grain for the fill, four corners and four stretched strips (each its own tearing; their profile meets at the same depth at both
 -- ends, so stretching along the page never opens a seam. Every size is in whole physical pixels. The page owns
 -- no frame: it draws into `parent`'s BACKGROUND layer and re-lays itself out when `parent` changes size.
 
 local PAPER_TEX = "Interface\\AddOns\\" .. ADDON .. "\\Textures\\"
-local EDGE, INSET, GRAIN = 64, 24, 256      -- px: strip depth, where the fill starts, grain tile
+local EDGE, INSET, GRAIN = 64, 40, 256      -- px: strip depth, where the fill starts, grain tile
 
 function Style.Paper(parent)
   local P = {}
@@ -244,11 +244,11 @@ function Style.Paper(parent)
     if tile then t:SetTexture(PAPER_TEX .. file, "REPEAT", "REPEAT") else t:SetTexture(PAPER_TEX .. file) end
     return t
   end
-  P.fill = tex("paper_grain.tga", -8, true)
-  P.top, P.bottom = tex("paper_edge_h.tga", -7), tex("paper_edge_h.tga", -7)
-  P.left, P.right = tex("paper_edge_v.tga", -7), tex("paper_edge_v.tga", -7)
-  P.tl, P.tr = tex("paper_corner.tga", -6), tex("paper_corner.tga", -6)
-  P.bl, P.br = tex("paper_corner.tga", -6), tex("paper_corner.tga", -6)
+  P.fill = tex("paper_grain.tga", -7, true)
+  P.top, P.bottom = tex("paper_top.tga", -6), tex("paper_bottom.tga", -6)
+  P.left, P.right = tex("paper_left.tga", -6), tex("paper_right.tga", -6)
+  P.tl, P.tr = tex("paper_corner.tga", -5), tex("paper_corner.tga", -5)
+  P.bl, P.br = tex("paper_corner.tga", -5), tex("paper_corner.tga", -5)
   P.top:SetTexCoord(0, 1, 0, 1);    P.bottom:SetTexCoord(0, 1, 1, 0)
   P.left:SetTexCoord(0, 1, 0, 1);   P.right:SetTexCoord(1, 0, 0, 1)
   P.tl:SetTexCoord(0, 1, 0, 1);     P.tr:SetTexCoord(1, 0, 0, 1)
