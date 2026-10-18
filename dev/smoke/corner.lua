@@ -27,11 +27,14 @@ assert(Minimap:GetParent() == O.panel and not O.cornerPanel:IsShown() and O.pane
 local bw, bh = Minimap:GetSize(); assert(bw == bh and bw > 0.5 * H, "big and square")
 assert(MainActionBar:GetAlpha() == 0, "bars hidden in local mode")
 slash("overlay cycle"); __tick(5)
-assert(O.state == "zone" and O.host == "corner", "zone mode: the small one is back")
+assert(O.state == "zone" and O.host == "corner", "zone mode: the widget stays in its corner panel")
+assert(not O.cornerPanel:IsShown(), "but the small minimap is not shown with the overland map (nor with the big minimap)")
 assert(Minimap:GetParent() == O.cornerPanel and WorldMapFrame:IsShown())
+assert(not QuestBookMarkers:IsShown(), "the markers go with the hidden minimap")
 local w2 = Minimap:GetSize(); assert(math.abs(w2 - 0.16 * H) < 0.5, "small again")
 slash("overlay cycle"); __tick(5)
 assert(O.state == "off" and O.host == "corner" and MainActionBar:GetAlpha() == 1)
+assert(O.cornerPanel:IsShown() and QuestBookMarkers:IsShown(), "with no map open the small minimap (and its markers) is back")
 
 -- combat: the overlay closes, the small one is simply there; no spam when it was already off
 slash("overlay local"); __tick(5)

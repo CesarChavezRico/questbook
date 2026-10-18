@@ -9,8 +9,8 @@
 --
 -- The native Minimap widget has two possible HOSTS: the big panel (state "local") and a small
 -- "corner" panel in the right wing, where the retired corner minimap used to be. The corner one is
--- the glance-in-combat minimap: it is up whenever the big panel is not using the widget (state off,
--- state zone, and after the overlay closes itself at combat start). There is ONE widget, so a second
+-- the glance-in-combat minimap: it is shown when no map mode is open (state off, and after the overlay
+-- closes itself at combat start); in "zone" the widget stays in its corner panel but the panel is hidden. There is ONE widget, so a second
 -- live copy is impossible; it moves between hosts.
 -- Public API: Cycle(), SetState(state), GetState(), OpenFull().
 -- Bus: fires "overlay_state" (state) after every change; listens "combat_start"
@@ -1037,8 +1037,11 @@ mod.unitTweaks = { order = {}, map = {} }
 
 function mod:BarsWanted() return self.state ~= "off" or self.readerOn end
 
+-- The small minimap is for the times no map is open: not with the big minimap (it IS the minimap then) and not with the
+-- overland map either (Cesar, 2026-10-17: "I think we want to remove the minimap in both the big mini and overland").
+-- It also gives way to the quest reader (setting).
 function mod:CornerShown()
-  return self.host == "corner" and not (self.readerOn and self.readerHide.minimap)
+  return self.host == "corner" and self.state == "off" and not (self.readerOn and self.readerHide.minimap)
 end
 
 function mod:ApplyUnitFrames()

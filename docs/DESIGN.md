@@ -80,8 +80,9 @@ charter was dropped on purpose.
 - **A small corner minimap, for glancing in combat** (*written*, v0.7.5). There is one native `Minimap`
   widget, so there cannot be a second live copy: it has two hosts, the big panel (Minimap mode) and a
   small square panel in the top-right corner, where the retired minimap used to be. The corner one is up
-  whenever the big one is not in use: overlay Off, Map mode, and after the overlay closes itself at combat
-  start, which is exactly when it is wanted. Defaults, all tunable live with `/qb overlay corner`: 16%
+  whenever the big one is not in use: overlay Off, Map mode (until v0.14.3), and after the overlay closes itself at combat
+  start, which is exactly when it is wanted (v0.14.3: not in Map mode either; Cesar, 2026-10-17: "remove the minimap in both the
+  big mini and overland"; the widget stays in its corner panel, which is hidden). Defaults, all tunable live with `/qb overlay corner`: 16%
   of screen height, just under the text strip, 0.9 opacity, rotating with facing, click-through so it never eats a combat click. Chosen as
   defaults to be tuned in the client, not decided by anyone; moving the widget between hosts in combat
   rests on it not being a protected frame (*unverified*). **Its edge** (v0.14.2, *written*; Cesar, 2026-10-17: "lets add the bleed
