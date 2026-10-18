@@ -6,7 +6,7 @@ World of Warcraft: Forever (it targets the Forever client's UI; retail is not te
 It is one addon built from isolated modules, so a fault in one cannot take down the others:
 `/qb modules` shows what is on, `/qb errors` what broke, `/qb disable <module>` switches one off.
 
-> **Status: v0.11.0, in active development.** Everything here was written against Blizzard's UI
+> **Status: v0.11.1, in active development.** Everything here was written against Blizzard's UI
 > source for the Forever client and has been run in the game client only in short sessions by one
 > person. Code that relies on a guess says `UNVERIFIED:` in its comment, with what to check
 > in-game. Treat a feature as working only when this file, `docs/DESIGN.md` or an issue says it was seen working.
@@ -44,7 +44,8 @@ Options > Keybindings > AddOns > QuestBook: **Toggle quest log**, **Map overlay:
 ## Commands
 
 `/qb` toggles the book. `/qb help` lists the subcommands; `/qb modules` shows module state, with the
-reason when a module is unavailable.
+reason when a module is unavailable. The version is printed in chat at login and by `/qb version`; if the `.toc` file
+says something else than the Lua files, it says so (a mixed or half-updated install).
 
 - Quest log: `book paper|dark|map on|off` (no argument: how the page and list fit), `size <n>`, `dark`, `bg <0-1>`, `voice`, `rate <n>`, `prosody`, `voices`, `usevoice <id>`,
   `say`, `debug`, `dock left|right`, `log replace|blizzard`, `blizzlog`.

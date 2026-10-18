@@ -25,3 +25,16 @@ assert(#bad == 0, "unescaped pipes:\n" .. table.concat(bad, "\n"))
 -- the helper itself
 QB:Usage("x all|tracked y"); local out = __take()[1]
 assert(out:find("all||tracked", 1, true), "QB:Usage doubles pipes: " .. tostring(out))
+
+-- the version is shown: at login, in /qb version, /qb modules and /qb help (Cesar, 2026-10-18: "still see the old
+-- version, make sure we display it"); a TOC that disagrees with the Lua files says so
+local function lines() local o = {} for _, l in ipairs(__take()) do o[#o + 1] = l end return table.concat(o, "\n") end
+slash("version"); local v1 = lines()
+assert(v1:find("v" .. QB.version, 1, true), "/qb version shows the version: " .. v1)
+slash("modules"); assert(lines():find("v" .. QB.version, 1, true), "/qb modules shows it")
+slash("help"); assert(lines():find("v" .. QB.version, 1, true), "/qb help shows it")
+C_AddOns = { GetAddOnMetadata = function() return "0.0.1" end }
+slash("version"); assert(lines():find("mixed install", 1, true), "a TOC that disagrees is called out")
+C_AddOns = { GetAddOnMetadata = function() return QB.version end }
+slash("version"); assert(not lines():find("mixed install", 1, true), "and agreement stays quiet")
+C_AddOns = nil
