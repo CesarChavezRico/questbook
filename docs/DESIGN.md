@@ -101,6 +101,14 @@ charter was dropped on purpose.
   offset).
 - **Every CVar is backed up in saved variables before the first change and restored from there**, also
   at the next login if the game was closed with the overlay open (*unverified*: nobody has crashed it).
+- **Dialogue UI at the same time** (Cesar, 2026-10-17, v0.10.1: "the camera wobbles going in and out" when talking to a
+  quest NPC with the minimap open). Cause from reading Dialogue UI's public source (`Code/Camera.lua`), not observed in
+  the game: it also writes `test_cameraOverShoulder` every 0.03 s towards its own target and moves the zoom, and our
+  zoom poll answered each zoom step with a second ease towards ours. Two writers, one CVar. v0.10.2 pauses the camera
+  module while a gossip or quest dialogue is open (`GOSSIP_SHOW`, `QUEST_GREETING`, `QUEST_DETAIL`, `QUEST_PROGRESS`,
+  `QUEST_COMPLETE`) and takes the CVar up again 0.8 s after it closes (`GOSSIP_CLOSED`, `QUEST_FINISHED`), easing to
+  the shift from wherever the dialogue left it; a safety timeout of 120 s covers a close event that never comes.
+  *Written, not played.* Unverified: which of those events this client sends.
 
 ### The quest log
 

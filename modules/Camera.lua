@@ -38,10 +38,14 @@ local STEP = 0.03          -- seconds between CVar writes while easing (Dialogue
 local POLL = 0.10          -- seconds between zoom / mount polls while shifted
 local RETARGET_EASE = 0.15 -- ease time when zoom or mount changes while shifted
 local RETARGET_EPS = 0.02  -- minimum offset change that triggers a retarget
+local YIELD_RESUME = 0.8   -- seconds to wait after a dialogue closes: its camera moves back first
+local YIELD_MAX = 120      -- a dialogue that never reports closing does not hold the camera forever
 
 mod.engaged = false        -- CVars are currently overridden (backup exists)
 mod.releasing = false      -- easing back to the original, restore at the end
 mod.easing = false
+mod.yielding = false       -- a quest / gossip dialogue is open: another camera owns the CVars for now
+mod.yieldToken = 0
 mod.cur = 0                -- last offset written
 mod.overlayState = "off"
 mod.acc = 0
@@ -171,6 +175,14 @@ function mod:StartEase(to, dur)
 end
 
 function mod:Step(elapsed)
+  if self.yielding then
+    -- Dialogue UI (and any addon like it) writes test_cameraOverShoulder every 0.03 s towards its own target
+    -- and moves the zoom; our zoom poll would answer with a second ease towards ours, and the two fight
+    -- ("the camera wobbles going in and out", Cesar 2026-10-17). So write nothing while a dialogue is open.
+    self.yieldT = (self.yieldT or 0) + elapsed
+    if self.yieldT > YIELD_MAX then self:Resume(self.yieldToken, 0) end
+    return
+  end
   self.acc = self.acc + elapsed
   if self.easing then
     self.t = self.t + elapsed
@@ -201,6 +213,35 @@ end
 
 local function DriverOnUpdate(_, elapsed)
   QB:Safe(mod, mod.Step, mod, elapsed)
+end
+
+-- ---------------------------------------------------------------- dialogues
+
+function mod:Yield()
+  self.yielding = true
+  self.yieldT = 0
+  self.yieldToken = self.yieldToken + 1
+  self.easing = false                    -- drop a half-done ease: the dialogue's camera starts from where it is
+end
+
+-- After the dialogue has closed (and its camera has moved back): take the CVar up again from wherever it
+-- was left, and ease to what it should be now (the shift, or the original if the overlay closed meanwhile).
+function mod:Resume(token, delay)
+  if token ~= self.yieldToken or not self.yielding then return end
+  local function go()
+    if token ~= self.yieldToken or not self.yielding then return end
+    self.yielding = false
+    self.acc = 0
+    if not self.engaged then return end
+    self.cur = tonumber(GetCV(CVAR_SHOULDER)) or self.cur
+    if self.releasing then
+      self:StartEase(self:Original(), self.db.ease)
+    else
+      self:StartEase(self:Target(), RETARGET_EASE)
+    end
+  end
+  if delay and delay > 0 and C_Timer and C_Timer.After then C_Timer.After(delay, function() QB:Safe(mod, go) end)
+  else go() end
 end
 
 -- ---------------------------------------------------------------- engage / release
@@ -323,6 +364,15 @@ mod.events.PLAYER_MOUNT_DISPLAY_CHANGED = function(self)
   end
 end
 
+-- A quest-giver / gossip dialogue opens: hold off; it closes: take over again once it has settled. These are the
+-- client's own interaction events (UNVERIFIED which of them this client sends; an unknown one is just never fired).
+for _, e in ipairs({ "GOSSIP_SHOW", "QUEST_GREETING", "QUEST_DETAIL", "QUEST_PROGRESS", "QUEST_COMPLETE" }) do
+  mod.events[e] = function(self) self:Yield() end
+end
+for _, e in ipairs({ "GOSSIP_CLOSED", "QUEST_FINISHED" }) do
+  mod.events[e] = function(self) if self.yielding then self:Resume(self.yieldToken, YIELD_RESUME) end end
+end
+
 mod.events.PLAYER_REGEN_ENABLED = function(self)
   if self.pendingRestore then self:RestoreAll() end
 end
@@ -334,11 +384,12 @@ QB:On("overlay_state", function(state) mod:OnOverlayState(state) end, mod)
 local function Status()
   local db = mod.db
   return string.format(
-    "camera: shift=%s strength=%.2f side=%+d zoomOut=%s zoomGoal=%s ease=%.2fs mountMult=%.2f | overlay=%s engaged=%s offset=%.3f",
+    "camera: shift=%s strength=%.2f side=%+d zoomOut=%s zoomGoal=%s ease=%.2fs mountMult=%.2f | overlay=%s engaged=%s offset=%.3f%s",
     db.shift and "on" or "off", db.strength, db.side,
     (db.zoomOut and db.zoomOut > 0) and tostring(db.zoomOut) or "off",
     (db.zoomGoal and db.zoomGoal > 0) and tostring(db.zoomGoal) or "off",
-    db.ease, db.mountMult, mod.overlayState, tostring(mod.engaged), mod.cur or 0)
+    db.ease, db.mountMult, mod.overlayState, tostring(mod.engaged), mod.cur or 0,
+    mod.yielding and " (paused: a dialogue is open)" or "")
 end
 
 QB:RegisterSlash(mod, "camera", function(rest)
@@ -371,7 +422,7 @@ QB:RegisterSlash(mod, "camera", function(rest)
     db.shift = true
     mod:Sync()
   elseif sub ~= "" and sub ~= "status" then
-    QB:Say("/qb camera flip | strength <n> | zoomout <n> | zoom <n|0> | ease <s> | mount <n> | on | off")
+    QB:Usage("/qb camera flip | strength <n> | zoomout <n> | zoom <n|0> | ease <s> | mount <n> | on | off")
   end
   QB:Say(Status())
 end, "camera shift tied to the map overlay (flip | strength <n> | zoomout <n> | zoom <n> | on | off)")

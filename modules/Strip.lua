@@ -520,13 +520,13 @@ local function OnSlash(rest)
     Status()
   elseif a == "coords" then
     local v = OnOff(b)
-    if v == nil then QB:Say("usage: /qb strip coords on|off") return end
+    if v == nil then QB:Usage("usage: /qb strip coords on|off") return end
     db.showCoords = v
     ApplyCoordsVisibility()
     Status()
   elseif a == "mail" then
     local v = OnOff(b)
-    if v == nil then QB:Say("usage: /qb strip mail on|off") return end
+    if v == nil then QB:Usage("usage: /qb strip mail on|off") return end
     db.showMail = v
     last.mail = nil
     UpdateMail()
@@ -545,12 +545,12 @@ local function OnSlash(rest)
     Status()
   elseif a == "anchor" then
     local p = b:upper()
-    if not ANCHORS[p] then QB:Say("usage: /qb strip anchor TOPRIGHT|TOPLEFT|TOP|BOTTOMRIGHT|BOTTOMLEFT|BOTTOM|LEFT|RIGHT|CENTER") return end
+    if not ANCHORS[p] then QB:Usage("usage: /qb strip anchor TOPRIGHT|TOPLEFT|TOP|BOTTOMRIGHT|BOTTOMLEFT|BOTTOM|LEFT|RIGHT|CENTER") return end
     db.anchor = p
     ApplySettings()
     Status()
   else
-    QB:Say("usage: /qb strip [status] | coords on|off | mail on|off | scale <n> | pos <x> <y> | anchor <POINT>")
+    QB:Usage("usage: /qb strip [status] | coords on|off | mail on|off | scale <n> | pos <x> <y> | anchor <POINT>")
   end
 end
 

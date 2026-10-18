@@ -577,6 +577,6 @@ QB:RegisterSlash(drawers, "drawers", function(rest)
   elseif a == "status" or a == "" then
     Status()
   else
-    QB:Say("usage: /qb drawers open | close | toggle | status")
+    QB:Usage("usage: /qb drawers open | close | toggle | status")
   end
 end, "Menu drawer (micro menu + bags): open | close | toggle | status")

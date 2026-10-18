@@ -1567,7 +1567,7 @@ QB:RegisterSlash(mod, "overlay", function(rest)
     elseif what == "mask" and (v1 == "stock" or v1 == "soft") then
       db.cornerMask = v1
     elseif what ~= "" and what ~= "status" then
-      QB:Say("/qb overlay corner on|off | size <n> | pos <x> <y> | alpha <n> | rotate on|off | mask stock|soft   (pos: from the top-right corner, y negative = down)")
+      QB:Usage("/qb overlay corner on|off | size <n> | pos <x> <y> | alpha <n> | rotate on|off | mask stock|soft   (pos: from the top-right corner, y negative = down)")
     end
     if not QB:InCombat() then mod:Layout(); mod:Apply(mod.state) else QB:Say("overlay: applied after combat"); mod.dirty = true end
   elseif sub == "mask" then
@@ -1582,7 +1582,7 @@ QB:RegisterSlash(mod, "overlay", function(rest)
     Diag()
     return
   elseif sub ~= "" and sub ~= "status" then
-    QB:Say("/qb overlay corner ... (the small minimap) | cycle | off | local | zone | shape rect|circle | size <n> | aspect <n> | pos <x> <y> | alpha <local> [zone] | zoom <n> | rotate on|off | ground hybrid|native|auto | bars actions|all|none | icons <n> | mask | diag")
+    QB:Usage("/qb overlay corner ... (the small minimap) | cycle | off | local | zone | shape rect|circle | size <n> | aspect <n> | pos <x> <y> | alpha <local> [zone] | zoom <n> | rotate on|off | ground hybrid|native|auto | bars actions|all|none | icons <n> | mask | diag")
   end
   QB:Say(Status())
 end, "map overlay (cycle | off | local | zone | shape | size | alpha | rotate | ground | bars | icons | mask | diag)")
