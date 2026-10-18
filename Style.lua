@@ -290,6 +290,116 @@ function Style.Hairline(parent, color)
   return t
 end
 
+-- The reader's palette and type ramp (physical pixels): warm dark-brown ink on the torn page, one strong colour.
+-- Colour values follow the principle studied in Dialogue UI (ink, not black; one saturated accent); they are ours.
+Style.KIT = {
+  ink = { 0.19, 0.17, 0.13 },
+  faded = { 0.50, 0.36, 0.24 },
+  brick = { 0.416, 0.18, 0.165 },          -- the one strong colour
+  done = { 0.20, 0.36, 0.18 },             -- "ready to turn in", readable on the page
+  onBrick = { 0.96, 0.92, 0.84 },
+  capFill = { 0.10, 0.08, 0.07, 0.85 },
+  capInk = { 0.93, 0.90, 0.82 },
+  -- sizes as multiples of the body size
+  title = 1.82, header = 1.18, small = 0.82,
+}
+
+-- An ink link on the page: a word with a 1 px rule under it, brick when the mouse is on it, faded when disabled.
+-- Sizes in physical pixels. Returns a Button with :SetText / :SetEnabled / :SetWarn / :SetPx.
+function Style.InkLink(parent, px, onClick)
+  local K = Style.KIT
+  local b = CreateFrame("Button", nil, parent)
+  b.label = b:CreateFontString(nil, "OVERLAY")
+  b.label:SetFont(Style.FRIZ, Style.Px(px, parent), "")          -- a font at birth
+  b.label:SetPoint("LEFT")
+  b.label:SetJustifyH("LEFT")
+  b.line = b:CreateTexture(nil, "ARTWORK")
+  b.line:SetTexture("Interface\\Buttons\\WHITE8x8")
+  b.line:SetPoint("TOPLEFT", b.label, "BOTTOMLEFT", 0, -Style.Px(2, parent))
+  b.line:SetPoint("TOPRIGHT", b.label, "BOTTOMRIGHT", 0, -Style.Px(2, parent))
+  b.line:SetHeight(Style.Px(1, parent))
+  b.enabled, b.warn, b.over = true, false, false
+  function b:Paint()
+    local c = K.ink
+    if not self.enabled then c = K.faded elseif self.warn or self.over then c = K.brick end
+    local a = self.enabled and 1 or 0.55
+    self.label:SetTextColor(c[1], c[2], c[3], a)
+    self.line:SetVertexColor(c[1], c[2], c[3], self.enabled and (self.over and 0.95 or 0.5) or 0)
+  end
+  function b:SetPx(n)
+    px = n
+    self.label:SetFont(Style.FRIZ, Style.Px(n, parent), "")
+    self:SetHeight(Style.Px(n + 8, parent))
+    self:SetWidth(math.max(self.label:GetStringWidth(), 8) + 2)
+  end
+  function b:SetText(t)
+    self.label:SetText(t)
+    self:SetWidth(math.max(self.label:GetStringWidth(), 8) + 2)
+    if self.onResize then self.onResize() end
+  end
+  function b:GetText() return self.label:GetText() end
+  function b:SetEnabled(on) self.enabled = on and true or false; if not self.enabled then self.over = false end; self:Paint() end
+  function b:SetWarn(on) self.warn = on and true or false; self:Paint() end
+  b:SetHeight(Style.Px(px + 8, parent))
+  b:SetScript("OnEnter", function(self) self.over = true; self:Paint() end)
+  b:SetScript("OnLeave", function(self) self.over = false; self:Paint() end)
+  b:SetScript("OnClick", function(self, ...) if self.enabled then onClick(self, ...) end end)
+  b:Paint()
+  return b
+end
+
+-- A flat button on the page: `primary` is the one strong colour (brick), otherwise a quiet grey; an optional key
+-- cap (a dark square with the key's name) says which key does it. Sizes in physical pixels.
+function Style.PaperButton(parent, wpx, hpx, label, primary, cap, onClick)
+  local K = Style.KIT
+  local b = CreateFrame("Button", nil, parent)
+  b:SetSize(Style.Px(wpx, parent), Style.Px(hpx, parent))
+  b.bg = b:CreateTexture(nil, "BACKGROUND")
+  b.bg:SetAllPoints(b)
+  b.bg:SetTexture("Interface\\Buttons\\WHITE8x8")
+  if primary then
+    b.foot = b:CreateTexture(nil, "BORDER")
+    b.foot:SetTexture("Interface\\Buttons\\WHITE8x8")
+    b.foot:SetVertexColor(0, 0, 0, 0.22)
+    b.foot:SetPoint("BOTTOMLEFT"); b.foot:SetPoint("BOTTOMRIGHT"); b.foot:SetHeight(Style.Px(4, parent))
+  end
+  local textX = 28
+  if cap then
+    b.cap = b:CreateTexture(nil, "ARTWORK")
+    b.cap:SetTexture("Interface\\Buttons\\WHITE8x8")
+    b.cap:SetVertexColor(K.capFill[1], K.capFill[2], K.capFill[3], K.capFill[4])
+    local cs = Style.Px(hpx - 24, parent)
+    b.cap:SetSize(cs, cs)
+    b.cap:SetPoint("LEFT", b, "LEFT", Style.Px(14, parent), 0)
+    b.capText = b:CreateFontString(nil, "OVERLAY")
+    b.capText:SetFont(Style.FRIZ, Style.Px(16, parent), "")
+    b.capText:SetPoint("CENTER", b.cap, "CENTER", 0, 0)
+    b.capText:SetTextColor(K.capInk[1], K.capInk[2], K.capInk[3], 1)
+    b.capText:SetText(cap)
+    textX = 14 + (hpx - 24) + 18
+  end
+  b.label = b:CreateFontString(nil, "OVERLAY")
+  b.label:SetFont(Style.FRIZ, Style.Px(24, parent), "")
+  b.label:SetPoint("LEFT", b, "LEFT", Style.Px(textX, parent), Style.Px(primary and 1 or 0, parent))
+  b.label:SetJustifyH("LEFT")
+  b.label:SetText(label)
+  b.primary, b.enabled, b.over = primary and true or false, true, false
+  function b:Paint()
+    local c, a
+    if self.primary then c = K.brick; a = self.over and 1 or 0.92 else c = { 0.42, 0.40, 0.37 }; a = self.over and 0.72 or 0.55 end
+    if not self.enabled then a = a * 0.45 end
+    self.bg:SetVertexColor(c[1], c[2], c[3], a)
+    self.label:SetTextColor(K.onBrick[1], K.onBrick[2], K.onBrick[3], self.enabled and 1 or 0.6)
+  end
+  function b:SetLabel(t) self.label:SetText(t) end
+  function b:SetEnabled(on) self.enabled = on and true or false; self:Paint() end
+  b:SetScript("OnEnter", function(self) self.over = true; self:Paint() end)
+  b:SetScript("OnLeave", function(self) self.over = false; self:Paint() end)
+  b:SetScript("OnClick", function(self, ...) if self.enabled and onClick then onClick(self, ...) end end)
+  b:Paint()
+  return b
+end
+
 -- A drag handle for placing a piece of our UI (the corner minimap, the quest list): a translucent brass-edged
 -- rectangle that sits on the thing, is dragged with the left button and finished with a right click. Positions
 -- are offsets of the TOP-RIGHT corner from the screen's, the way `pos <x> <y>` always was.

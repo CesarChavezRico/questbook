@@ -9,15 +9,14 @@ Offline checks for when there is no game client at hand.
     node run.js ../.. quest_strip_drawers_camera.lua    # load the addon on a stubbed API, drive it
     node run.js ../.. overlay.lua
     node run.js ../.. isolation.lua                     # a broken module must not break the others (exits 1 by design: it lists the broken module's errors)
-    node run.js ../.. questroute.lua                    # tracker clicks open the book, zoom-out, fallback
+    node run.js ../.. questroute.lua                    # tracker clicks open the reader, zoom-out, fallback
     node run.js ../.. camera_dialogue.lua               # the camera shift and a quest dialogue: no fighting over the CVar
     node run.js ../.. kit.lua                           # /qb screen, /qb kit, pixel arithmetic, the nine-patch page
     node run.js ../.. version.lua                       # the version line at login
     node run.js ../.. help.lua                          # every help / usage line survives the chat frame (no stray "|")
     node run.js ../.. markers.lua                       # quest markers: positions, rotation, edge, switching the client's areas off and back
     node run.js ../.. tracker.lua                       # the compact tracker: hides and restores Blizzard's, follows the corner minimap
-    node run.js ../.. plate.lua                         # the map plate: hosting, quest switching, Map mode takeover, combat
-    node run.js ../.. booklayout.lua                    # the open-book layout, list and text fitting, themes
+    node run.js ../.. reader.lua                        # the reader: sits where the map sits, trades places with it, camera, duties, voice
     node run.js ../.. migrate.lua                          # settings saved by an older build
     node run.js ../.. bare.lua bare_pre.lua             # a client missing every Blizzard piece we use
 

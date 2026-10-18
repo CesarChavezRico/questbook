@@ -112,31 +112,32 @@ charter was dropped on purpose.
 
 ### The quest log
 
-- **It is an open book** (v0.8.0 and v0.8.1, *written*): left page the quest text, right page the list. The whole
-  list fits its page (rows shrink to a 16 px minimum); the text fits its page (map plate shrinks first, then
-  the font down to 11, then it scrolls). Parchment theme by default, `/qb book dark` for the faint dark
-  panel. Chosen by Cesar from a mock-up on 2026-10-13: option A (map and text stacked on the left page)
-  over option B (ribbon tabs); a three-panel variant with a thinner list is **open**. Style rules:
-  [STYLE.md](STYLE.md).
-- **The map plate** (*written*, v0.8.1): above the quest text on the left page, the quest's map with Blizzard's own
-  quest area and pins. It is the same world map frame the overlay's Map mode restyles, hosted inside the plate
-  (crisp edge, opaque, above the book) by the overlay module, which owns that frame; the position comes from
-  the game's next-waypoint for the quest, else the quest's marker on the player's map or its parents. There is one
-  world map frame, so Map mode and the plate exclude each other (opening one closes the other, and the book
-  re-fits). No plate in combat (retried when it ends), in the docked walking panel, or for a quest with no map
-  position; `/qb book map off` turns it off. *Unverified*: that the frame can be hosted this way in the client.
-- **It replaces Blizzard's.** Duties: choose the active quest (the "super-tracked" one the game points
-  at), track and untrack, turn-in readiness, abandon (through Blizzard's own confirmation), share,
-  zone and campaign headers. The reader and the narrated walk-and-listen mode *were seen working* in
-  earlier versions; the duties and everything below are *written*.
-- **Several Blizzard entry points open it**, because the default key is only one of them:
-  `ToggleQuestLog` (key, micro menu button), `OpenQuestLog`, `QuestMapFrame_OpenToQuestDetails`
-  (objective tracker click) and `QuestUtil.OpenQuestDetails`. A first build replaced only the first and
-  Blizzard's list kept appearing. All are restored by `/qb log blizzard` or disabling the module.
-- **Look:** the faint dark panel with a hairline edge that the Menu drawer uses (`/qb bg`).
-- **Active quest and the map:** the intended link is that choosing the active quest in the book makes
-  the game's quest markers point at it. The blue quest areas on the minimap are native; they are not
-  ours to draw.
+- **It is a one-page reader** (v0.13.0, *written, not played*; Cesar, 2026-10-17: "I am not fully convinced on the book anymore,
+  let's just keep a simple quest reader with the voice options ... right click on the quest opens the detail view, left click
+  selects it as active", then: "the position of the dialog should be the same as the big map and there should be the same zoom
+  as with the map. If the map is open and a quest is clicked this dialog should replace the map, if the map keybind is clicked
+  when this dialog is open the map should come up and this moved off"). It replaces the open book of v0.8.x (two pages, a map
+  plate, a right-hand list, a leather cover, a paper/dark theme, a docked walking panel), which is removed; git history keeps it.
+- **Where and how:** one torn-paper page (`Style.Paper`, laid out in physical pixels) at the big map's centre and height
+  (`Overlay:ReaderRect`), width 0.84 of the height. Title in the book font, the tapering rule, a meta line (level, zone, ready,
+  active), a scrolling area with the description and the objectives as rows with check boxes, a row of ink links (previous,
+  talk, next on the left; track, share, abandon on the right), the one strong button (make active / clear active quest) and a
+  quiet Close with the Esc key cap. Text size: `/qb size <px>` (default 22).
+- **It trades places with the map.** Opening it announces `reader_state` true, then closes the map overlay; the camera follows
+  both topics, so the shift and the zoom-out never let go in between. The map key while it is open brings the map up
+  (`overlay_state` anything but "off") and the reader hides itself. It closes for combat and does not open in combat, like the map.
+- **The list is the tracker** (default mode "all", moved once from a saved "tracked"): left click on a quest makes it the active
+  one, right click opens it here; the header link is "Log" (opens it on the active quest). The default key, the micro menu
+  button and the objective tracker's "open quest" clicks open it too: `ToggleQuestLog`, `OpenQuestLog`,
+  `QuestMapFrame_OpenToQuestDetails`, `QuestUtil.OpenQuestDetails` (all restored by `/qb log blizzard` or disabling the module).
+- **Duties** (unchanged, through Blizzard's own flows): active (the "super-tracked" quest the game points at), track and
+  untrack, abandon (through Blizzard's confirmation), share. Walk-and-listen: the first step with the reader open reads the quest
+  (once per quest); Talk / Stop reads on demand; the arrows read the quest they land on.
+- **Removed with the book:** the map plate and Overlay's "plate" host of the world map frame, `/qb book`, `/qb bg`, `/qb dock`,
+  the dark theme of the reader, and the idea of a three-panel layout. The quest-area art stays the client's; the markers module
+  draws our own markers on the minimap.
+- **Unverified (the client has to say):** how the page looks and fits (text size, scrolling, the link row at the real width), that
+  Esc closes it, that the swap with the map looks and feels right, that the camera really holds across the swap.
 
 ### The quest areas on the enlarged minimap
 
@@ -196,7 +197,8 @@ charter was dropped on purpose.
   our own art, and build the reader and then the tracker from a shared kit. See docs/STYLE.md, "Pixels and the next
   paper look".
 - **Order** (Cesar chose A): the kit and the reader together (the reader replaces the book: one page, right click opens
-  it, the key opens it on the active quest), then the tracker restyle. v0.12.0 is only the kit's first step: the
+  it, the key opens it on the active quest), then the tracker restyle. v0.12.x was the kit's first step (v0.13.0 builds the
+  reader on it, see The quest log); the tracker restyle is next. v0.12.0 itself was only: the
   textures, `Style.Px` / `Style.Paper` / `Style.Hairline`, `/qb screen` and a `/qb kit` sample page, so the look can
   be judged in the game before the reader is built on it.
 - **Decided for the reader** (Cesar, 2026-10-17, "on point"): one page (title, objectives, text, voice controls), previous

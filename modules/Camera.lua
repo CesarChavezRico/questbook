@@ -48,6 +48,7 @@ mod.yielding = false       -- a quest / gossip dialogue is open: another camera 
 mod.yieldToken = 0
 mod.cur = 0                -- last offset written
 mod.overlayState = "off"
+mod.readerOpen = false     -- the quest reader is up: it sits where the map sits, so it gets the same shift and zoom
 mod.acc = 0
 
 -- ---------------------------------------------------------------- helpers
@@ -287,7 +288,7 @@ function mod:Release(immediate)
 end
 
 function mod:Sync()
-  local want = self.db.shift and self.overlayState ~= "off"
+  local want = self.db.shift and (self.overlayState ~= "off" or self.readerOpen)
   if want then
     self:Engage()
   elseif self.engaged then
@@ -378,6 +379,13 @@ mod.events.PLAYER_REGEN_ENABLED = function(self)
 end
 
 QB:On("overlay_state", function(state) mod:OnOverlayState(state) end, mod)
+
+-- The quest reader trades places with the map (modules/QuestLog.lua): it announces itself BEFORE it closes the map
+-- and the map announces itself when it takes the place back, so the shift is never let go in between.
+QB:On("reader_state", function(open)
+  mod.readerOpen = open and true or false
+  mod:Sync()
+end, mod)
 
 -- ---------------------------------------------------------------- slash
 

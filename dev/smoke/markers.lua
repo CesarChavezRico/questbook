@@ -20,6 +20,8 @@ __pois[37] = {
 local baseIdx = C_QuestLog.GetLogIndexForQuestID
 C_QuestLog.GetLogIndexForQuestID = function(id) if id == 103 then return 7 end return baseIdx(id) end
 
+-- the tracker's default "all" mode scans the log, which expands collapsed zones and would put quest 102 in it
+QuestBookDB = { mod = { tracker = { mode = "tracked", v = 1 } } }
 __fire("ADDON_LOADED", "QuestBook"); __loggedIn = true; __fire("PLAYER_LOGIN")
 local function slash(s) SlashCmdList.QUESTBOOK(s) end
 local function flush(tag) for _, l in ipairs(__take()) do io.write(tag .. " | " .. l .. "\n") end end

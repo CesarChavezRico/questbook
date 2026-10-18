@@ -1,13 +1,13 @@
 -- QuestBook Tracker -- a compact quest list that REPLACES Blizzard's objective tracker.
 --
 -- Cesar, 2026-10-15: "the quest list should be a replacement of the original quest list, with a
--- toggle to open the book". Blizzard's tracker ("All Objectives", ObjectiveTrackerFrame) is hidden
+-- toggle to open the book" (v0.13: the "book" is now the quest reader). Blizzard's tracker ("All Objectives", ObjectiveTrackerFrame) is hidden
 -- while this module is on and given back when it is switched off. In its place, under the corner
--- minimap: your tracked quests, their objectives, the active quest marked, and a "Book" link that
--- opens the quest book. Clicking a quest opens the book on it.
+-- minimap: your quests, their objectives, the active quest marked, and a "Log" link that
+-- opens the quest reader. Left click on a quest makes it the active one; right click opens it in the reader.
 --
 -- It is a GLANCE surface, so it follows the glance language of docs/STYLE.md: the faint dark panel
--- and cream text, no paper. Data comes from the same calls the book uses.
+-- and cream text, no paper. Data comes from the same calls the reader uses.
 --
 -- What is lost with Blizzard's tracker while it is hidden (UNVERIFIED which of these really live in
 -- that frame): world quest and bonus objective blocks, scenario / dungeon objectives, achievement and
@@ -17,7 +17,7 @@ local _, QB = ...
 local Style = QB.Style
 
 local mod = QB:NewModule("tracker", {
-  mode = "tracked",     -- "tracked" (the watch list, like Blizzard's) | "all" (every quest in the log)
+  mode = "all",         -- "all" (every quest in the log: the list is how you reach the reader) | "tracked" (the watch list)
   width = 260,
   maxFrac = 0.42,       -- the panel never grows past this fraction of the screen height
   alpha = 0.55,         -- the panel's opacity
@@ -49,7 +49,7 @@ local function QuestList(self)
   local list = {}
   if not (C_QuestLog and C_QuestLog.GetInfo) then return list end
   if self.db.mode == "all" then
-    -- the book's own scan, which also finds quests under zones Blizzard's log has collapsed
+    -- the reader's own scan, which also finds quests under zones Blizzard's log has collapsed
     local ok, quests = QB:Call("questlog", "Scan")
     if ok and type(quests) == "table" then return quests end
     return list
@@ -115,9 +115,9 @@ local function Build(self)
   header:SetPoint("TOPLEFT", PAD, -PAD)
   header:SetText("QUESTS")
 
-  -- "Book" in the header: opens the quest book
+  -- "Log" in the header: opens the quest reader (on the active quest)
   panel.book = Style.Link(panel, function() QB:Call("questlog", "Toggle") end, Tone)
-  panel.book:SetText("Book")
+  panel.book:SetText("Log")
   panel.book:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -PAD, -PAD + 3)
 
   more = Style.Link(panel, function() QB:Call("questlog", "Toggle") end, Tone)
@@ -209,7 +209,7 @@ function mod:Refresh()
     -- left click: make it the active quest (the one the markers and the game point at); right click: open it
     r:SetScript("OnClick", function(_, button)
       QB:Safe(mod, function()
-        if button == "RightButton" then QB:Call("questlog", "OpenBook", r.questID)
+        if button == "RightButton" then QB:Call("questlog", "Open", r.questID)
         else QB:Call("questlog", "SetActive", r.questID) end
       end)
     end)
@@ -218,7 +218,7 @@ function mod:Refresh()
     shown = i
   end
   if #list == 0 then
-    -- an empty list still says so, and points to the book
+    -- an empty list still says so, and points to the log
     local r = Row(1)
     r.questID = nil
     r:SetWidth(innerW); r.title:SetWidth(innerW)
@@ -234,7 +234,7 @@ function mod:Refresh()
   end
   local hidden = #list - shown
   if hidden > 0 then
-    more:SetText("+ " .. hidden .. " more in the book")
+    more:SetText("+ " .. hidden .. " more in the log")
     more:ClearAllPoints()
     more:SetPoint("TOPLEFT", panel, "TOPLEFT", PAD, -y)
     more:Show()
@@ -296,6 +296,12 @@ end
 
 function mod:OnInit()
   if type(CreateFrame) ~= "function" or not UIParent then self.unavailable = "no UI" end
+  -- v0.13: the default mode is "all" (the list is how you reach the reader), but a saved "tracked" beats a changed
+  -- default, so it is moved once. (`v` is not in the defaults: Core fills those before OnInit.)
+  if (self.db.v or 0) < 1 then
+    if self.db.mode == "tracked" then self.db.mode = "all" end
+    self.db.v = 1
+  end
 end
 
 function mod:OnEnable()
