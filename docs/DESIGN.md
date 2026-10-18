@@ -265,6 +265,19 @@ charter was dropped on purpose.
   `SetRoundLayoutToNearestPixel` and the pixel arithmetic give 1 px lines, and that tiling the 256 px grain with
   `SetTexture(file, "REPEAT", "REPEAT")` shows no visible repeat.
 
+### The quest giver (v0.16.0; 4BI-38 step 1)
+
+- **Why:** the voiceover will pick a voice by who gave the quest (creature type and gender, a per-NPC override, a quick-pick in the
+  reader), and the reader shows "From <name>". The NPC is only there while its dialog is up, so the `giver` module records it when
+  you accept a quest: the accept dialog (`QUEST_DETAIL`) remembers who is offering which quest, `QUEST_ACCEPTED` commits it (retail
+  gives `(index, questID)`, older clients only the index, which is looked up in the log). Kept per quest in the saved variables:
+  name, gender (the game's 1 / 2 / 3), creature type, NPC number (from the unit's GUID, `Creature-0-server-instance-zone-NPC-spawn`),
+  zone. Capped at 500 quests, oldest dropped.
+- **Not recorded:** a quest started from an item (nobody to talk to); the NPC's race (the game gives none); the turn-in NPC (it is
+  only known at hand-in, when the quest has left the log). A quest shared by a party member is a player: name kept, no NPC number.
+- **UNVERIFIED (the client has to say):** that `UnitName("npc")`, `UnitSex`, `UnitCreatureType` and `UnitGUID` answer for the quest
+  giver on this client and what they return; `/qb giver` prints the last thing seen, so one accepted quest settles it.
+
 ### The experience bar (v0.15.0)
 
 - **Direction** (Cesar, 2026-10-17: "I want to fold the experience info into the menu on top right", then, offered a bar, text in
