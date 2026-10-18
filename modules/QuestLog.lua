@@ -38,6 +38,7 @@ local mod = QB:NewModule("questlog", {
   aspect = 0.84,        -- page width / height
   hideMinimap = true,   -- hide the small corner minimap while the reader is open
   hideFrames = true,    -- hide the player and target frames while the reader is open
+  hideAuras = true,     -- hide the player's buffs and debuffs while the reader is open
   scrollbar = false,    -- a thin scroll track beside the text (off: the wheel still scrolls)
 })
 
@@ -713,7 +714,7 @@ function mod:Open(questID)
     -- (it follows "reader_state" and "overlay_state": the shift stays while either is up).
     if not openFlag then openFlag = true; QB:Fire("reader_state", true) end
     -- hide what the map hides, and what the settings add (before the map closes, so it all stays hidden through the swap)
-    QB:Call("overlay", "ReaderOpen", true, { minimap = mod.db.hideMinimap, frames = mod.db.hideFrames })
+    QB:Call("overlay", "ReaderOpen", true, { minimap = mod.db.hideMinimap, frames = mod.db.hideFrames, auras = mod.db.hideAuras })
     local O = QB.modules.overlay
     if O and O.active and O.state ~= "off" then QB:Call("overlay", "SetState", "off", true) end
     self:Layout()
@@ -916,22 +917,22 @@ QB:RegisterSlash(mod, "reader", function(rest)
     d.body = Style.Clamp(n, 14, 40)
   elseif sub == "hide" then
     local what, val = arg:match("^(%S+)%s*(%S*)$")
-    if (what == "minimap" or what == "frames") and (val == "on" or val == "off") then
-      if what == "minimap" then d.hideMinimap = (val == "on") else d.hideFrames = (val == "on") end
+    if (what == "minimap" or what == "frames" or what == "auras") and (val == "on" or val == "off") then
+      if what == "minimap" then d.hideMinimap = (val == "on") elseif what == "frames" then d.hideFrames = (val == "on") else d.hideAuras = (val == "on") end
     else
-      QB:Usage("/qb reader hide minimap|frames on|off")
+      QB:Usage("/qb reader hide minimap|frames|auras on|off")
     end
   elseif sub ~= "" and sub ~= "status" then
-    QB:Usage("/qb reader height <0.3-0.95>|auto | aspect <0.5-1.4> | size <px> | scrollbar on|off | hide minimap|frames on|off")
+    QB:Usage("/qb reader height <0.3-0.95>|auto | aspect <0.5-1.4> | size <px> | scrollbar on|off | hide minimap|frames|auras on|off")
   end
   if R and R:IsShown() then
     mod:Layout()
-    QB:Call("overlay", "ReaderOpen", true, { minimap = d.hideMinimap, frames = d.hideFrames })
+    QB:Call("overlay", "ReaderOpen", true, { minimap = d.hideMinimap, frames = d.hideFrames, auras = d.hideAuras })
   end
-  Say(string.format("reader: height %s, aspect %.2f, text %d px | hides the small minimap: %s, the player and target frames: %s",
+  Say(string.format("reader: height %s, aspect %.2f, text %d px | hides the small minimap: %s, the player and target frames: %s, the buffs and debuffs: %s",
     (tonumber(d.height) or 0) > 0 and string.format("%.2f of the screen", d.height) or "as the map", d.aspect, d.body,
-    d.hideMinimap and "yes" or "no", d.hideFrames and "yes" or "no"))
-end, "reader height|aspect|size|hide: the quest reader's size and what it hides while open")
+    d.hideMinimap and "yes" or "no", d.hideFrames and "yes" or "no", d.hideAuras and "yes" or "no"))
+end, "reader height|aspect|size|scrollbar|hide: the quest reader's size and what it hides while open")
 
 -- The legacy command set (everything that is not a registered subcommand).
 QB.legacySlash = function(msg)
