@@ -18,7 +18,8 @@ local Style = QB.Style
 
 local mod = QB:NewModule("tracker", {
   mode = "all",         -- "all" (every quest in the log: the list is how you reach the reader) | "tracked" (the watch list)
-  width = 260,
+  widthPx = 400,        -- the panel's width in physical pixels (v0.14; the older `width` in UI units is no longer used)
+  size = 21,            -- quest title size in physical pixels; the objective lines and the header scale with it
   maxFrac = 0.42,       -- the panel never grows past this fraction of the screen height
   alpha = 0.55,         -- the panel's opacity
   objectives = 3,       -- objective lines shown under each quest
@@ -27,18 +28,31 @@ local mod = QB:NewModule("tracker", {
 })
 
 local FRIZ = Style.FRIZ
-local PAD, GAP = 8, 8
+local PADX, PADY, ROWGAP = 24, 20, 20      -- physical pixels
 local rows = {}                  -- pooled row buttons
-local panel, header, more
+local panel, header, rule, more
 local refreshQueued = false
 
 local function Tone() return Style.Get("dark") end
+local function Px(n) return Style.Px(n, panel) end
 
-local function NewText(parent, size)
+-- type ramp, from the title size: title, objective lines, header
+local function Sizes(self)
+  local t = Style.Clamp(tonumber(self.db.size) or 21, 14, 34)
+  return t, math.floor(t * 0.81 + 0.5), math.floor(t * 0.76 + 0.5)
+end
+
+-- cream ink on the dark panel, for the header links
+local function LinkPalette()
+  local t = Tone()
+  return { normal = t.chrome, hot = t.chromeHot, faded = t.chromeOff, warn = t.chromeWarn }
+end
+
+local function Fs(parent, px)
   local fs = parent:CreateFontString(nil, "OVERLAY")
-  fs:SetFont(FRIZ, size, "")             -- a font at birth: SetText on a fontless string is an error
+  fs:SetFont(FRIZ, Px(px), "")           -- a font at birth: SetText on a fontless string is an error
   fs:SetJustifyH("LEFT")
-  fs:SetShadowOffset(1, -1)
+  fs:SetShadowOffset(Px(1), -Px(1))
   fs:SetShadowColor(0, 0, 0, 0.85)
   return fs
 end
@@ -70,20 +84,27 @@ local function QuestList(self)
   return list
 end
 
+-- The first `maxLines` objectives as { text, done }, whether all of them are done, and the overall progress of the
+-- counted ones (kill 6, collect 3: numFulfilled / numRequired) as a fraction, or nil when nothing is counted.
 local function Objectives(qid, maxLines)
   local out = {}
-  if not (C_QuestLog and C_QuestLog.GetQuestObjectives) then return out, false end
+  if not (C_QuestLog and C_QuestLog.GetQuestObjectives) then return out, false, nil end
   local ok, objs = pcall(C_QuestLog.GetQuestObjectives, qid)
   local allDone = true
+  local have, need = 0, 0
   if ok and type(objs) == "table" then
     for _, o in ipairs(objs) do
       if o.text and o.text ~= "" then
         if #out < maxLines then out[#out + 1] = { text = o.text, done = o.finished and true or false } end
         if not o.finished then allDone = false end
+        if type(o.numRequired) == "number" and o.numRequired > 0 then
+          need = need + o.numRequired
+          have = have + math.min(tonumber(o.numFulfilled) or 0, o.numRequired)
+        end
       end
     end
   end
-  return out, allDone and #out > 0
+  return out, allDone and #out > 0, (need > 1) and (have / need) or nil
 end
 
 local function IsActive(qid)
@@ -109,25 +130,26 @@ local function Build(self)
   panel:SetFrameStrata("LOW")
   panel:EnableMouse(false)             -- only the rows catch the mouse
   panel:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
+  Style.PixelPerfect(panel)
   panel:Hide()
 
-  header = NewText(panel, 11)
-  header:SetPoint("TOPLEFT", PAD, -PAD)
+  header = Fs(panel, 16)
   header:SetText("QUESTS")
+  -- a rule under the header that tapers to nothing at both ends (our own art, the same as the reader's)
+  local t = Tone()
+  rule = Style.Hairline(panel, { t.hairline[1], t.hairline[2], t.hairline[3], 0.9 })
 
+  local pal = LinkPalette()
   -- "Log" in the header: opens the quest reader (on the active quest)
-  panel.book = Style.Link(panel, function() QB:Call("questlog", "Toggle") end, Tone)
+  panel.book = Style.InkLink(panel, 16, function() QB:Call("questlog", "Toggle") end, pal)
   panel.book:SetText("Log")
-  panel.book:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -PAD, -PAD + 3)
-
   -- the voice link: "Stop" while a quest is being read (the page may be put away), else the walk-and-listen switch
-  panel.voice = Style.Link(panel, function()
+  panel.voice = Style.InkLink(panel, 16, function()
     local ok, state = QB:Call("questlog", "VoiceState")
     if ok and state == "speaking" then QB:Call("questlog", "StopSpeech") else QB:Call("questlog", "ToggleVoice") end
-  end, Tone)
-  panel.voice:SetPoint("TOPRIGHT", panel.book, "TOPLEFT", -12, 0)
+  end, pal)
 
-  more = Style.Link(panel, function() QB:Call("questlog", "Toggle") end, Tone)
+  more = Style.InkLink(panel, 16, function() QB:Call("questlog", "Toggle") end, pal)
   more:Hide()
 end
 
@@ -136,13 +158,20 @@ local function Row(i)
   if r then return r end
   r = CreateFrame("Button", nil, panel)
   r:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-  r.title = NewText(r, 12)
-  r.title:SetPoint("TOPLEFT", 0, 0)
-  r.objs = NewText(r, 11)
-  r.objs:SetPoint("TOPLEFT", r.title, "BOTTOMLEFT", 0, -2)
   r.hover = r:CreateTexture(nil, "BACKGROUND")
   r.hover:SetAllPoints(r)
+  r.hover:SetTexture("Interface\\Buttons\\WHITE8x8")
   r.hover:Hide()
+  r.accent = r:CreateTexture(nil, "ARTWORK")       -- the active quest's mark: a thin bar at the left edge
+  r.accent:SetTexture("Interface\\Buttons\\WHITE8x8")
+  r.accent:Hide()
+  r.title = Fs(r, 21)
+  r.objs = Fs(r, 17)
+  r.objs:SetSpacing(Px(3))
+  r.track = r:CreateTexture(nil, "ARTWORK")        -- progress of the counted objectives, a thin bar
+  r.track:SetTexture("Interface\\Buttons\\WHITE8x8")
+  r.fill = r:CreateTexture(nil, "OVERLAY")
+  r.fill:SetTexture("Interface\\Buttons\\WHITE8x8")
   r:SetScript("OnEnter", function(self) self.hover:Show() end)
   r:SetScript("OnLeave", function(self) self.hover:Hide() end)
   rows[i] = r
@@ -182,47 +211,94 @@ function mod:RefreshVoice()
   panel.voice:SetWarn(state == "speaking")
 end
 
+-- Lay the whole list out in physical pixels: header with its links and the tapering rule, then one block per quest
+-- (title, objective lines, a thin bar when objectives are counted), the active quest marked by a bar at the left and a gold
+-- title, a quest ready to hand in in green.
 function mod:Refresh()
   refreshQueued = false
   if not panel then return end
-  self:RefreshVoice()
   local t = Tone()
-  local W = Style.Clamp(tonumber(self.db.width) or 260, 160, 520)
-  local innerW = W - 2 * PAD
-  local maxH = UIParent:GetHeight() * Style.Clamp(tonumber(self.db.maxFrac) or 0.42, 0.05, 0.9)
-  panel:SetWidth(W)
+  local u = Style.PixelUnit(panel)
+  local tp, op, hp = Sizes(self)
+  local Wpx = Style.Clamp(tonumber(self.db.widthPx) or 400, 240, 700)
+  local innerW = Wpx - 2 * PADX
+  local maxHpx = UIParent:GetHeight() * Style.Clamp(tonumber(self.db.maxFrac) or 0.42, 0.05, 0.9) / u
+  panel:SetWidth(Px(Wpx))
   panel:SetBackdropColor(t.cover[1], t.cover[2], t.cover[3], Style.Clamp(tonumber(self.db.alpha) or 0.55, 0, 1))
-  Style.SetInk(header, t.faded)
-  header:SetText(self.db.mode == "all" and "ALL QUESTS" or "TRACKED QUESTS")
 
+  -- header: label left, links right, the rule under them
+  header:SetFont(FRIZ, Px(hp), "")
+  header:ClearAllPoints(); header:SetPoint("TOPLEFT", panel, "TOPLEFT", Px(PADX), -Px(PADY))
+  Style.SetInk(header, t.faded)
   local list = QuestList(self)
-  local y = PAD + 20
+  header:SetText((self.db.mode == "all" and "QUESTS" or "TRACKED") .. "  " .. #list)
+  panel.book:SetPx(hp); panel.voice:SetPx(hp); more:SetPx(hp)
+  self:RefreshVoice()
+  panel.book:ClearAllPoints(); panel.book:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -Px(PADX), -Px(PADY - 3))
+  panel.voice:ClearAllPoints(); panel.voice:SetPoint("TOPRIGHT", panel.book, "TOPLEFT", -Px(18), 0)
+  local y = PADY + hp + 16
+  rule:ClearAllPoints()
+  rule:SetPoint("TOPLEFT", panel, "TOPLEFT", Px(PADX - 8), -Px(y))
+  rule:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -Px(PADX - 8), -Px(y))
+  rule:SetHeight(Px(8))
+  y = y + 8 + 16
+
   local shown = 0
   for _, r in ipairs(rows) do r:Hide() end
   for i, q in ipairs(list) do
     local r = Row(i)
-    local objs, allDone = Objectives(q.questID, tonumber(self.db.objectives) or 3)
+    local objs, allDone, frac = Objectives(q.questID, tonumber(self.db.objectives) or 3)
     local ready = IsReady(q.questID) or allDone
     local active = IsActive(q.questID)
-    r.questID = q.questID
-    r:SetWidth(innerW)
-    r.title:SetWidth(innerW)
-    r.objs:SetWidth(innerW - 10)
-    r.objs:ClearAllPoints()
-    r.objs:SetPoint("TOPLEFT", r.title, "BOTTOMLEFT", 10, -2)
-    r.title:SetText((active and "> " or "") .. (q.title or "?") .. (ready and "  (ready)" or ""))
-    Style.SetInk(r.title, ready and t.done or (active and t.chromeHot or t.ink))
+    r.questID, r.active, r.ready = q.questID, active and true or false, ready and true or false
+    local rowW = innerW + 20
+    r:SetWidth(Px(rowW))
+    r.title:SetFont(FRIZ, Px(tp), ""); r.objs:SetFont(FRIZ, Px(op), "")
+    r.title:SetWidth(Px(innerW)); r.objs:SetWidth(Px(innerW))
+    r.title:ClearAllPoints(); r.title:SetPoint("TOPLEFT", r, "TOPLEFT", Px(10), 0)
+    r.title:SetText(q.title or "?")
+    local tc = ready and t.done or (active and t.strong or t.ink)
+    r.title:SetTextColor(tc[1], tc[2], tc[3], 1)
     local lines = {}
-    for _, o in ipairs(objs) do
-      lines[#lines + 1] = "|cff" .. Style.Hex(o.done and t.done or t.faded) .. "- " .. o.text .. "|r"
+    if ready then
+      lines[1] = "|cff" .. Style.Hex(t.done) .. "ready to turn in|r"
+    else
+      for _, o in ipairs(objs) do
+        lines[#lines + 1] = "|cff" .. Style.Hex(o.done and t.done or t.faded) .. o.text .. "|r"
+      end
     end
     r.objs:SetText(table.concat(lines, "\n"))
-    local h = r.title:GetStringHeight() + (#lines > 0 and (r.objs:GetStringHeight() + 2) or 0)
-    if y + h + GAP > maxH - 16 and i > 1 then break end     -- out of room: the rest is "more"
-    r:SetHeight(h)
+    local th = (r.title:GetStringHeight() or 0) / u
+    local h = th
+    if #lines > 0 then
+      r.objs:ClearAllPoints(); r.objs:SetPoint("TOPLEFT", r, "TOPLEFT", Px(10), -Px(th + 4))
+      h = th + 4 + (r.objs:GetStringHeight() or 0) / u
+      r.objs:Show()
+    else
+      r.objs:Hide()
+    end
+    if frac then
+      local by = h + 8
+      r.track:ClearAllPoints(); r.track:SetPoint("TOPLEFT", r, "TOPLEFT", Px(10), -Px(by)); r.track:SetSize(Px(innerW), Px(4))
+      r.track:SetVertexColor(t.hairline[1], t.hairline[2], t.hairline[3], 0.30)
+      local fc = ready and t.done or (active and t.strong or t.faded)
+      r.fill:ClearAllPoints(); r.fill:SetPoint("TOPLEFT", r.track, "TOPLEFT", 0, 0)
+      r.fill:SetSize(math.max(Px(1), Px(innerW) * Style.Clamp(frac, 0, 1)), Px(4))
+      r.fill:SetVertexColor(fc[1], fc[2], fc[3], active and 0.95 or 0.75)
+      r.track:Show(); r.fill:Show()
+      h = by + 4
+    else
+      r.track:Hide(); r.fill:Hide()
+    end
+    if y + h + ROWGAP > maxHpx - 24 and i > 1 then break end     -- out of room: the rest is "more"
+    r:SetHeight(Px(h))
     r:ClearAllPoints()
-    r:SetPoint("TOPLEFT", panel, "TOPLEFT", PAD, -y)
-    r.hover:SetColorTexture(t.hover[1], t.hover[2], t.hover[3], t.hover[4])
+    r:SetPoint("TOPLEFT", panel, "TOPLEFT", Px(PADX - 10), -Px(y))
+    r.hover:SetVertexColor(t.hover[1], t.hover[2], t.hover[3], t.hover[4])
+    r.accent:ClearAllPoints(); r.accent:SetPoint("TOPLEFT", r, "TOPLEFT", 0, 0); r.accent:SetPoint("BOTTOMLEFT", r, "BOTTOMLEFT", 0, 0)
+    r.accent:SetWidth(Px(3))
+    r.accent:SetVertexColor(t.strong[1], t.strong[2], t.strong[3], 0.95)
+    r.accent:SetShown(active and true or false)
     -- left click: make it the active quest (the one the markers and the game point at); right click: open it
     r:SetScript("OnClick", function(_, button)
       QB:Safe(mod, function()
@@ -231,35 +307,38 @@ function mod:Refresh()
       end)
     end)
     r:Show()
-    y = y + h + GAP
+    y = y + h + ROWGAP
     shown = i
   end
   if #list == 0 then
     -- an empty list still says so, and points to the log
     local r = Row(1)
-    r.questID = nil
-    r:SetWidth(innerW); r.title:SetWidth(innerW)
-    r.title:SetText("No tracked quests.")
-    Style.SetInk(r.title, t.faded)
-    r.objs:SetText("")
-    r:SetHeight(r.title:GetStringHeight())
+    r.questID, r.active, r.ready = nil, false, false
+    r:SetWidth(Px(innerW + 20))
+    r.title:SetFont(FRIZ, Px(op), "")
+    r.title:SetWidth(Px(innerW)); r.title:ClearAllPoints(); r.title:SetPoint("TOPLEFT", r, "TOPLEFT", Px(10), 0)
+    r.title:SetText(self.db.mode == "all" and "No quests in your log." or "No tracked quests.")
+    r.title:SetTextColor(t.faded[1], t.faded[2], t.faded[3], 1)
+    r.objs:Hide(); r.track:Hide(); r.fill:Hide(); r.accent:Hide()
+    local h = (r.title:GetStringHeight() or 0) / u
+    r:SetHeight(Px(h))
     r:ClearAllPoints()
-    r:SetPoint("TOPLEFT", panel, "TOPLEFT", PAD, -y)
+    r:SetPoint("TOPLEFT", panel, "TOPLEFT", Px(PADX - 10), -Px(y))
     r:SetScript("OnClick", nil)
     r:Show()
-    y = y + r:GetHeight() + GAP
+    y = y + h + ROWGAP
   end
   local hidden = #list - shown
   if hidden > 0 then
     more:SetText("+ " .. hidden .. " more in the log")
     more:ClearAllPoints()
-    more:SetPoint("TOPLEFT", panel, "TOPLEFT", PAD, -y)
+    more:SetPoint("TOPLEFT", panel, "TOPLEFT", Px(PADX), -Px(y - 6))
     more:Show()
-    y = y + 20
+    y = y + hp + 14
   else
     more:Hide()
   end
-  panel:SetHeight(y + PAD - GAP)
+  panel:SetHeight(Px(y - ROWGAP + PADY))
   self.shown, self.total = shown, #list
   Place(self)
   panel:Show()
@@ -377,7 +456,9 @@ QB:RegisterSlash(mod, "tracker", function(rest)
   if sub == "all" or sub == "tracked" then
     mod.db.mode = sub
   elseif sub == "width" and n then
-    mod.db.width = Style.Clamp(n, 160, 520)
+    mod.db.widthPx = Style.Clamp(n, 240, 700)
+  elseif sub == "size" and n then
+    mod.db.size = Style.Clamp(n, 14, 34)
   elseif sub == "alpha" and n then
     mod.db.alpha = Style.Clamp(n, 0, 1)
   elseif sub == "lines" and n then
@@ -394,9 +475,9 @@ QB:RegisterSlash(mod, "tracker", function(rest)
   elseif sub == "reset" then
     mod.db.x, mod.db.y = nil, nil            -- Place seeds it again, under the corner minimap
   elseif sub ~= "" and sub ~= "status" then
-    QB:Usage("/qb tracker all|tracked | width <n> | alpha <0-1> | lines <n> | max <fraction> | move | lock | pos <x> <y> | reset   (/qb disable tracker gives Blizzard's tracker back)")
+    QB:Usage("/qb tracker all|tracked | width <px> | size <px> | alpha <0-1> | lines <n> | max <fraction> | move | lock | pos <x> <y> | reset   (/qb disable tracker gives Blizzard's tracker back)")
   end
   mod:Refresh()
-  QB:Say(string.format("tracker: %s, %d of %d quests shown, width %d, alpha %.2f, %d objective lines, at %d,%d | Blizzard's tracker: %s",
-    mod.db.mode, mod.shown or 0, mod.total or 0, mod.db.width, mod.db.alpha, mod.db.objectives, mod.db.x or 0, mod.db.y or 0, tostring(mod.blizzard)))
-end, "tracker all|tracked|width|alpha|lines|max|move|lock|pos|reset: the compact quest list that replaces Blizzard's tracker")
+  QB:Say(string.format("tracker: %s, %d of %d quests shown, width %d px, text %d px, alpha %.2f, %d objective lines, at %d,%d | Blizzard's tracker: %s",
+    mod.db.mode, mod.shown or 0, mod.total or 0, mod.db.widthPx, mod.db.size, mod.db.alpha, mod.db.objectives, mod.db.x or 0, mod.db.y or 0, tostring(mod.blizzard)))
+end, "tracker all|tracked|width|size|alpha|lines|max|move|lock|pos|reset: the compact quest list that replaces Blizzard's tracker")
