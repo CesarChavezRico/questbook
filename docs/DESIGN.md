@@ -260,6 +260,22 @@ charter was dropped on purpose.
   `SetRoundLayoutToNearestPixel` and the pixel arithmetic give 1 px lines, and that tiling the 256 px grain with
   `SetTexture(file, "REPEAT", "REPEAT")` shows no visible repeat.
 
+### The experience bar (v0.15.0)
+
+- **Direction** (Cesar, 2026-10-17: "I want to fold the experience info into the menu on top right", then, offered a bar, text in
+  the strip, or a header in the Menu drawer: "let's see how the bar looks, go for it"): the `xp` module draws a thin bar under
+  the strip (3 px by default, whole pixels, 360 px wide, right-aligned with the strip): XP in gold on a faint track, the rested
+  part as a lighter blue extension (the one cool hue, because it means something different). No numbers on it; hover for level,
+  XP / max (percent), to go, rested. It hangs on the strip's frame (`strip:GetFrame`), or in the screen corner if the strip is off.
+- **Blizzard's bottom bar** (`StatusTrackingBarManager`) is faded out by alpha while ours is up (`/qb xp blizzard off` leaves it);
+  at the maximum level or with XP gain off our bar hides and Blizzard's comes back, since it also carries reputation and honor,
+  which this module does not take over. The overlay's own fading of the same frame in map modes (`bars all`) is unaffected: the
+  alpha this module records as "original" is never 0.
+- **Not built yet, offered:** "Lv 8" in the strip text; the watched reputation (or honor) in the bar after the maximum level;
+  numbers in the Menu drawer. The reputation functions on this client are unchecked.
+- **Unverified (the client has to say):** how it looks; `UnitXP`, `UnitXPMax`, `GetXPExhaustion` and the XP events here; that
+  hanging under the strip works with the Menu drawer opening over the same place.
+
 ### The strip and drawers
 
 - **The corner minimap is retired** and its slot reused. In its place, a one-line text strip (zone,

@@ -277,6 +277,21 @@ function Minimap:SetIconScale(s) __iconScale = s end
 for _, n in ipairs({ "MainActionBar", "MultiBarBottomLeft", "MultiBarBottomRight", "MultiBarLeft", "MultiBarRight", "StanceBar", "PetActionBar", "StatusTrackingBarManager" }) do
   newFrame("Frame", n, UIParent)
 end
+-- experience (v0.15): a level 8 character with 1240 of 2800 XP and 400 rested
+__xp = { level = 8, xp = 1240, max = 2800, rested = 400, resting = true, disabled = false, maxLevel = 60 }
+function UnitLevel() return __xp.level end
+function UnitXP() return __xp.xp end
+function UnitXPMax() return __xp.max end
+function GetXPExhaustion() if __xp.rested > 0 then return __xp.rested end end
+function IsResting() return __xp.resting end
+function IsXPUserDisabled() return __xp.disabled end
+function GetMaxPlayerLevel() return __xp.maxLevel end
+GameTooltip = { __lines = {} }
+function GameTooltip:SetOwner(o) self.__owner = o; self.__lines = {} end
+function GameTooltip:SetText(t) self.__lines[#self.__lines + 1] = t end
+function GameTooltip:AddLine(t) self.__lines[#self.__lines + 1] = t end
+function GameTooltip:Show() self.__shown = true end
+function GameTooltip:Hide() self.__shown = false end
 -- unit frames (hidden by alpha while the reader is open)
 newFrame("Frame", "PlayerFrame", UIParent); newFrame("Frame", "TargetFrame", UIParent)
 -- real mask bookkeeping on the world map + a pooled detail layer (v0.7.2)

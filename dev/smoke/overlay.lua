@@ -19,6 +19,7 @@ assert(O.groundNow == "native", "the REAL minimap ground is the default outdoors
 assert(not HybridMinimap:IsShown(), "no painted hybrid art outdoors")
 assert(C_Minimap.GetUiMapID() == nil, "no map id override outdoors")
 assert(O.maskMode == "ours", "our soft mask by default")
+slash("xp blizzard off")         -- (the xp module fades Blizzard's xp bar by default; this scenario is about the overlay)
 local a1, a2, a3 = barsAlpha(); assert(a1 == 0 and a2 == 0, "action bars hidden in local mode")
 assert(a3 == 1, "xp/rep bars untouched by default")
 assert((__zoomSets or 0) >= 2, "zoom nudged after the resize")

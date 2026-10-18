@@ -11,6 +11,7 @@ Offline checks for when there is no game client at hand.
     node run.js ../.. isolation.lua                     # a broken module must not break the others (exits 1 by design: it lists the broken module's errors)
     node run.js ../.. questroute.lua                    # tracker clicks open the reader, zoom-out, fallback
     node run.js ../.. camera_dialogue.lua               # the camera shift and a quest dialogue: no fighting over the CVar
+    node run.js ../.. xp.lua                            # the experience bar: fill, rested, tooltip, max level, Blizzard's bar, no strip
     node run.js ../.. kit.lua                           # /qb screen, /qb kit, pixel arithmetic, the nine-patch page
     node run.js ../.. version.lua                       # the version line at login
     node run.js ../.. help.lua                          # every help / usage line survives the chat frame (no stray "|")
