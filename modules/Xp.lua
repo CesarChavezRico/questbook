@@ -2,8 +2,8 @@
 --
 -- Cesar, 2026-10-17: "I want to fold the experience info into the menu on top right"; first look: "let's see how the bar
 -- looks". A thin bar (3 px by default, whole pixels) hangs under the text strip (modules/Strip.lua), right-aligned with it:
--- the XP you have, in gold, on a faint track, with the rested part as a lighter blue extension. It says no numbers; hover it
--- for them (level, XP / max, to go, rested). While it is on, Blizzard's own bottom bar is faded out (setting `blizzard`).
+-- the XP you have, in gold, on a faint track, with the rested part as a lighter blue extension. Above it, "Lv 8  44%" (a
+-- bigger thing to hover than 3 px); hover for the rest (XP / max, to go, rested). While it is on, Blizzard's own bottom bar is faded out (setting `blizzard`).
 -- At the maximum level (or with XP gain turned off) there is nothing to show: the bar hides and Blizzard's comes back, since
 -- it also carries reputation and honor, which this module does not (yet) take over.
 --
@@ -20,6 +20,8 @@ local mod = QB:NewModule("xp", {
   heightPx = 3,         -- its height in physical pixels
   gapPx = 3,            -- the gap between the strip and the bar
   rested = true,        -- show the rested part
+  text = true,          -- the number above the bar: "Lv 8  44%" (a bigger thing to hover than 3 px)
+  textPx = 15,          -- its size in physical pixels
   blizzard = true,      -- fade out Blizzard's own bottom bar while this one is up
 })
 
@@ -98,6 +100,11 @@ local function Build()
   bar:EnableMouse(true)                       -- the tooltip
   bar:Hide()
   Style.PixelPerfect(bar)
+  bar.text = bar:CreateFontString(nil, "OVERLAY")
+  bar.text:SetFont(Style.FRIZ, Style.Px(15, bar), "")           -- a font at birth: SetText on a fontless string errors
+  bar.text:SetJustifyH("RIGHT")
+  bar.text:SetShadowOffset(Style.Px(1, bar), -Style.Px(1, bar))
+  bar.text:SetShadowColor(0, 0, 0, 0.85)
   bar.track = bar:CreateTexture(nil, "BACKGROUND")
   bar.track:SetTexture("Interface\\Buttons\\WHITE8x8")
   bar.rest = bar:CreateTexture(nil, "ARTWORK")
@@ -131,20 +138,35 @@ function mod:Refresh()
   end
   local t = Tone()
   local w, h = Px(Style.Clamp(tonumber(self.db.widthPx) or 360, 120, 900)), Px(Style.Clamp(tonumber(self.db.heightPx) or 3, 1, 12))
-  bar:SetSize(w, h)
+  -- the frame is the bar AND the number above it: one bigger thing to hover (Cesar, 2026-10-17: "we need the number so
+  -- it's easier to mouse over")
+  local textPx = self.db.text and Style.Clamp(tonumber(self.db.textPx) or 15, 10, 30) or 0
+  local textH = textPx > 0 and Px(textPx + 5) or 0
+  bar:SetSize(w, h + textH)
   self:Place()
-  bar.track:SetAllPoints(bar)
+  bar.track:ClearAllPoints()
+  bar.track:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", 0, 0); bar.track:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", 0, 0)
+  bar.track:SetHeight(h)
   bar.track:SetVertexColor(t.hairline[1], t.hairline[2], t.hairline[3], 0.30)
   local frac = Style.Clamp(xp / mx, 0, 1)
-  bar.fill:ClearAllPoints(); bar.fill:SetPoint("TOPLEFT", bar, "TOPLEFT", 0, 0)
+  bar.fill:ClearAllPoints(); bar.fill:SetPoint("TOPLEFT", bar.track, "TOPLEFT", 0, 0)
   bar.fill:SetSize(math.max(frac * w, frac > 0 and Px(1) or 0), h)
   bar.fill:SetVertexColor(t.strong[1], t.strong[2], t.strong[3], 0.95)
   bar.fill:SetShown(frac > 0)
   local restFrac = (self.db.rested and rested and rested > 0) and Style.Clamp(math.min(rested, mx - xp) / mx, 0, 1 - frac) or 0
-  bar.rest:ClearAllPoints(); bar.rest:SetPoint("TOPLEFT", bar, "TOPLEFT", frac * w, 0)
+  bar.rest:ClearAllPoints(); bar.rest:SetPoint("TOPLEFT", bar.track, "TOPLEFT", frac * w, 0)
   bar.rest:SetSize(restFrac * w, h)
   bar.rest:SetVertexColor(REST_COLOR[1], REST_COLOR[2], REST_COLOR[3], 0.60)
   bar.rest:SetShown(restFrac > 0)
+  if textPx > 0 then
+    bar.text:SetFont(Style.FRIZ, Px(textPx), "")
+    bar.text:ClearAllPoints(); bar.text:SetPoint("BOTTOMRIGHT", bar.track, "TOPRIGHT", 0, Px(3))
+    bar.text:SetText("Lv " .. tostring(lvl) .. "  " .. math.floor(frac * 100) .. "%")
+    bar.text:SetTextColor(t.faded[1], t.faded[2], t.faded[3], 1)
+    bar.text:Show()
+  else
+    bar.text:Hide()
+  end
   bar:Show()
   self.last = { level = lvl, xp = xp, max = mx, rested = rested, frac = frac }
   self:ApplyBlizzard()
@@ -156,7 +178,7 @@ function mod:ShowTooltip(owner)
   if not xp then return end
   GameTooltip:SetOwner(owner, "ANCHOR_BOTTOMLEFT")
   GameTooltip:SetText("Level " .. tostring(lvl), 1, 0.96, 0.82)
-  GameTooltip:AddLine(string.format("%s / %s  (%d%%)", Comma(xp), Comma(mx), math.floor(xp / mx * 100 + 0.5)), 0.85, 0.82, 0.72)
+  GameTooltip:AddLine(string.format("%s / %s  (%d%%)", Comma(xp), Comma(mx), math.floor(xp / mx * 100)), 0.85, 0.82, 0.72)
   GameTooltip:AddLine(Comma(mx - xp) .. " to go", 0.7, 0.7, 0.7)
   if rested and rested > 0 then
     GameTooltip:AddLine(string.format("Rested +%s  (%d%%)%s", Comma(rested), math.floor(rested / mx * 100 + 0.5), resting and "  resting" or ""),
@@ -213,15 +235,19 @@ QB:RegisterSlash(mod, "xp", function(rest)
     d.gapPx = Style.Clamp(n, 0, 20)
   elseif sub == "rested" and (arg == "on" or arg == "off") then
     d.rested = (arg == "on")
+  elseif sub == "text" and (arg == "on" or arg == "off") then
+    d.text = (arg == "on")
+  elseif sub == "textsize" and n then
+    d.textPx = Style.Clamp(n, 10, 30)
   elseif sub == "blizzard" and (arg == "on" or arg == "off") then
     d.blizzard = (arg == "on")        -- on = fade Blizzard's bottom bar while this one is up
   elseif sub ~= "" and sub ~= "status" then
-    QB:Usage("/qb xp width <px> | height <px> | gap <px> | rested on|off | blizzard on|off   (blizzard on = Blizzard's own bottom bar is faded out)")
+    QB:Usage("/qb xp width <px> | height <px> | gap <px> | text on|off | textsize <px> | rested on|off | blizzard on|off   (blizzard on = Blizzard's own bottom bar is faded out)")
   end
   mod:Refresh()
   local l = mod.last
-  QB:Say(string.format("xp bar: %s, %d x %d px, gap %d, rested %s, Blizzard's bar %s%s",
+  QB:Say(string.format("xp bar: %s, %d x %d px, gap %d, number %s, rested %s, Blizzard's bar %s%s",
     mod.showing and "shown" or "not shown (maximum level, XP gain off, or no data)", d.widthPx, d.heightPx, d.gapPx,
-    d.rested and "on" or "off", d.blizzard and "faded out" or "left alone",
+    d.text and "on" or "off", d.rested and "on" or "off", d.blizzard and "faded out" or "left alone",
     l and string.format(" | level %s, %d / %d (%.0f%%), rested %d", tostring(l.level), l.xp, l.max, l.frac * 100, l.rested or 0) or ""))
-end, "xp width|height|gap|rested|blizzard: the experience bar under the strip")
+end, "xp width|height|gap|text|textsize|rested|blizzard: the experience bar under the strip")

@@ -9,7 +9,10 @@ local bar = QuestBookXpBar
 assert(bar and bar:IsShown(), "the bar is up")
 
 -- whole pixels, right-aligned under the strip
-assert(math.abs(bar:GetWidth() - 360 * u) < 1e-6 and math.abs(bar:GetHeight() - 3 * u) < 1e-6, "360 x 3 px")
+assert(math.abs(bar:GetWidth() - 360 * u) < 1e-6 and math.abs(bar.track:GetHeight() - 3 * u) < 1e-6, "360 x 3 px")
+-- the number above it, and the frame is both (one bigger thing to hover)
+assert(bar.text:IsShown() and bar.text:GetText() == "Lv 8  44%", "the number: " .. tostring(bar.text:GetText()))
+assert(bar:GetHeight() > bar.track:GetHeight() + 10 * u, "the hover area covers the number too: " .. bar:GetHeight() / u .. " px")
 local p = { bar:GetPoint(1) }
 assert(p[1] == "TOPRIGHT" and p[2] == S:GetFrame() and p[3] == "BOTTOMRIGHT", "hangs under the strip, right-aligned")
 
@@ -35,12 +38,16 @@ assert(math.abs(bar.fill:GetWidth() / bar:GetWidth() - 2500 / 2800) < 1e-6)
 assert(math.abs((bar.rest:GetWidth() + bar.fill:GetWidth()) / bar:GetWidth() - 1) < 1e-6, "rested never runs past the end: " .. (bar.rest:GetWidth() + bar.fill:GetWidth()) / bar:GetWidth())
 __xp.rested = 0; __fire("UPDATE_EXHAUSTION"); assert(not bar.rest:IsShown(), "no rested part when none")
 __xp.xp, __xp.level, __xp.max = 10, 9, 3000; __fire("PLAYER_LEVEL_UP")
+assert(bar.text:GetText() == "Lv 9  0%", "level up updates the number: " .. tostring(bar.text:GetText()))
 assert(math.abs(bar.fill:GetWidth() / bar:GetWidth() - 10 / 3000) < 1e-6, "a new level starts over")
 __xp.xp = 0; __fire("PLAYER_XP_UPDATE"); assert(not bar.fill:IsShown(), "an empty bar shows no fill")
 
 -- settings
 slash("xp width 500"); assert(math.abs(bar:GetWidth() - 500 * u) < 1e-6)
-slash("xp height 6"); assert(math.abs(bar:GetHeight() - 6 * u) < 1e-6)
+slash("xp height 6"); assert(math.abs(bar.track:GetHeight() - 6 * u) < 1e-6)
+slash("xp text off"); assert(not bar.text:IsShown() and math.abs(bar:GetHeight() - 6 * u) < 1e-6, "no number: the frame is just the bar")
+slash("xp text on"); slash("xp textsize 20"); assert(bar.text.__fsize and math.abs(bar.text.__fsize - 20 * u) < 1e-6, "text size in px")
+slash("xp textsize 15")
 slash("xp width 360"); slash("xp height 3")
 slash("xp rested off"); __xp.rested = 400; __xp.xp = 100; __fire("PLAYER_XP_UPDATE"); assert(not bar.rest:IsShown(), "rested off")
 slash("xp rested on")
