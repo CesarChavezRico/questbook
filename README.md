@@ -48,7 +48,7 @@ Options > Keybindings > AddOns > QuestBook: **Toggle quest log**, **Map overlay:
 reason when a module is unavailable. The version is printed in chat at login and by `/qb version`; if the `.toc` file
 says something else than the Lua files, it says so (a mixed or half-updated install).
 
-- Quest reader: `reader height <0.3-0.95>|auto`, `reader aspect <n>`, `reader size <px>`, `reader hide minimap|frames on|off`, `size <px>` (body text, 14-40, default 22), `voice`, `rate <n>`, `prosody`, `voices`, `usevoice <id>`, `say`, `debug`,
+- Quest reader: `reader height <0.3-0.95>|auto`, `reader aspect <n>`, `reader size <px>`, `reader scrollbar on|off`, `reader hide minimap|frames on|off`, `size <px>` (body text, 14-40, default 22), `voice`, `rate <n>`, `prosody`, `voices`, `usevoice <id>`, `say`, `debug`,
   `log replace|blizzard`, `blizzlog`.
 - Overlay: `/qb overlay cycle | off | local | zone`, `shape`, `size`, `alpha`, `rotate`, `corner on|off|move|lock|reset|size|pos|alpha|rotate|mask`,
   `ground auto|native|hybrid`, `bars actions|all|none`, `icons <n>`, `mask`, `diag`.

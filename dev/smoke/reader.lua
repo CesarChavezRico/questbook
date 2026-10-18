@@ -115,6 +115,7 @@ R:Hide(); __tick(3, 0.05)
 -- no scroll bar on the page; its own height
 QB:Call("questlog", "Open", 100); __tick(3, 0.05)
 assert(not R.thumb:IsShown() and not R.track:IsShown(), "no scroll bar")
+slash("reader scrollbar on"); slash("reader scrollbar off")      -- (the setting exists; nothing overflows in the stub)
 local mapH = R:GetHeight()
 slash("reader height 0.8")
 local want = Style.Snap(UIParent:GetHeight() * 0.8, R)

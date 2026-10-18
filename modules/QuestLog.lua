@@ -38,6 +38,7 @@ local mod = QB:NewModule("questlog", {
   aspect = 0.84,        -- page width / height
   hideMinimap = true,   -- hide the small corner minimap while the reader is open
   hideFrames = true,    -- hide the player and target frames while the reader is open
+  scrollbar = false,    -- a thin scroll track beside the text (off: the wheel still scrolls)
 })
 
 local db              -- QB.db: the flat legacy QuestBookDB settings
@@ -403,11 +404,10 @@ local function ScrollMax()
   return math.max(0, (R.child:GetHeight() or 0) - (R.scroll:GetHeight() or 0))
 end
 
--- No scroll bar on the page (Cesar, 2026-10-17): a long text still scrolls with the wheel, and `/qb reader height` makes
--- the page taller. The track and thumb are kept (hidden) in case a setting brings them back.
+-- No scroll bar on the page by default (Cesar, 2026-10-17): a long text still scrolls with the wheel, and
+-- `/qb reader height` makes the page taller. `/qb reader scrollbar on` brings the thin track and thumb back.
 local function UpdateThumb()
-  R.thumb:Hide(); R.track:Hide()
-  if true then return end
+  if not mod.db.scrollbar then R.thumb:Hide(); R.track:Hide(); return end
   local max = ScrollMax()
   if max <= 0 then R.thumb:Hide(); R.track:Hide(); return end
   local vh = R.scroll:GetHeight()
@@ -910,6 +910,8 @@ QB:RegisterSlash(mod, "reader", function(rest)
     if arg == "auto" or arg == "map" then d.height = 0 elseif n then d.height = Style.Clamp(n, 0.3, 0.95) end
   elseif sub == "aspect" and n then
     d.aspect = Style.Clamp(n, 0.5, 1.4)
+  elseif sub == "scrollbar" and (arg == "on" or arg == "off") then
+    d.scrollbar = (arg == "on")
   elseif sub == "size" and n then
     d.body = Style.Clamp(n, 14, 40)
   elseif sub == "hide" then
@@ -920,7 +922,7 @@ QB:RegisterSlash(mod, "reader", function(rest)
       QB:Usage("/qb reader hide minimap|frames on|off")
     end
   elseif sub ~= "" and sub ~= "status" then
-    QB:Usage("/qb reader height <0.3-0.95>|auto | aspect <0.5-1.4> | size <px> | hide minimap|frames on|off")
+    QB:Usage("/qb reader height <0.3-0.95>|auto | aspect <0.5-1.4> | size <px> | scrollbar on|off | hide minimap|frames on|off")
   end
   if R and R:IsShown() then
     mod:Layout()
