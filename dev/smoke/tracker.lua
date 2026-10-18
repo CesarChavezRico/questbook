@@ -31,8 +31,14 @@ assert(T.total == 2, "the new watch shows up: " .. tostring(T.total))
 local row
 for _, f in ipairs(__frames) do if f.__parent == P and f.questID == 101 and f:IsShown() then row = f end end
 assert(row, "row for quest 101")
+-- left click: it becomes the active quest and nothing opens; right click: it opens
 row:Click()
-assert(QuestBookFrame and QuestBookFrame:IsShown(), "the book opened")
+assert(C_SuperTrack.GetSuperTrackedQuestID() == 101, "left click makes it the active quest")
+assert(not (QuestBookFrame and QuestBookFrame:IsShown()), "left click opens nothing")
+C_SuperTrack.SetSuperTrackedQuestID(0)
+row:Click("RightButton")
+assert(QuestBookFrame and QuestBookFrame:IsShown(), "right click opened the book")
+assert(C_SuperTrack.GetSuperTrackedQuestID() == 0, "and did not change the active quest")
 assert(QuestBookFrame.title:GetText():find("Kobolds"), "on the clicked quest: " .. tostring(QuestBookFrame.title:GetText()))
 QuestBookFrame:Hide()
 -- the Book link toggles the book
@@ -70,5 +76,19 @@ QB:SetEnabled("tracker", false)
 assert(ObjectiveTrackerFrame:IsShown() and not P:IsShown(), "disable: Blizzard's tracker is back and ours is gone")
 QB:SetEnabled("tracker", true)
 assert(not ObjectiveTrackerFrame:IsShown() and P:IsShown(), "enable: replaced again")
+-- the list keeps its place when the big overlay takes the minimap (Cesar, 2026-10-17: "the quest list moves up")
+local before = { P:GetPoint(1) }
+assert(before[2] == O.cornerPanel, "anchored to the corner minimap's slot")
+slash("overlay local"); __tick(8)
+assert(O.host == "big" and not O.cornerPanel:IsShown(), "the big overlay holds the minimap, the corner is hidden")
+local during = { P:GetPoint(1) }
+assert(during[1] == before[1] and during[2] == O.cornerPanel and during[3] == before[3] and during[4] == before[4] and during[5] == before[5],
+  "the list did not move: " .. tostring(during[2]) .. " " .. tostring(during[4]) .. "," .. tostring(during[5]))
+slash("overlay off"); __tick(8)
+-- with no corner minimap at all it sits in the screen corner
+slash("overlay corner off"); __tick(3); slash("tracker")
+local nocorner = { P:GetPoint(1) }
+assert(nocorner[2] == UIParent, "no corner minimap: the screen corner, got " .. tostring(nocorner[2]))
+slash("overlay corner on"); __tick(3); slash("tracker")
 slash("tracker"); flush("tracker")
 print("tracker ok")

@@ -126,6 +126,7 @@ local function Row(i)
   local r = rows[i]
   if r then return r end
   r = CreateFrame("Button", nil, panel)
+  r:RegisterForClicks("LeftButtonUp", "RightButtonUp")
   r.title = NewText(r, 12)
   r.title:SetPoint("TOPLEFT", 0, 0)
   r.objs = NewText(r, 11)
@@ -139,13 +140,16 @@ local function Row(i)
   return r
 end
 
--- Anchor under the corner minimap (when it is up), else in the corner under the text strip.
+-- Anchor under the corner minimap's SLOT, whether or not the minimap is in it right now: opening the big
+-- overlay hides the small minimap, and the list used to jump up to the screen corner when it did (Cesar,
+-- 2026-10-17). A frame anchored to a hidden frame stays where that frame would be. Without a corner
+-- minimap (turned off) the list sits in the screen corner under the text strip.
 local function Place(self)
   if not panel then return end
   panel:ClearAllPoints()
   local ov = QB.modules.overlay
-  local corner = ov and ov.active and ov.cornerPanel
-  if corner and corner:IsShown() then
+  local corner = ov and ov.active and ov.db and ov.db.corner and ov.cornerPanel
+  if corner then
     panel:SetPoint("TOPRIGHT", corner, "BOTTOMRIGHT", 0, -10)
   else
     panel:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", -24, -44)
@@ -192,8 +196,12 @@ function mod:Refresh()
     r:ClearAllPoints()
     r:SetPoint("TOPLEFT", panel, "TOPLEFT", PAD, -y)
     r.hover:SetColorTexture(t.hover[1], t.hover[2], t.hover[3], t.hover[4])
+    -- left click: make it the active quest (the one the markers and the game point at); right click: open it
     r:SetScript("OnClick", function(_, button)
-      QB:Safe(mod, function() QB:Call("questlog", "OpenBook", r.questID) end)
+      QB:Safe(mod, function()
+        if button == "RightButton" then QB:Call("questlog", "OpenBook", r.questID)
+        else QB:Call("questlog", "SetActive", r.questID) end
+      end)
     end)
     r:Show()
     y = y + h + GAP

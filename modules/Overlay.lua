@@ -299,6 +299,89 @@ function mod:LayoutCorner()
   c:SetSize(s, s)
   c:ClearAllPoints()
   c:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", tonumber(db.cornerX) or -24, tonumber(db.cornerY) or -44)
+  self:LayoutMover()
+end
+
+-- ---------------------------------------------------------------- moving the corner minimap
+-- `/qb overlay corner move` puts a translucent handle over the small minimap; drag it, and the minimap (and the
+-- tracker under it) follow live. Right-click the handle or `/qb overlay corner lock` finishes. The position is
+-- saved as the offset of its top-right corner from the screen's (cornerX, cornerY), as `pos` always was.
+
+function mod:LayoutMover()
+  local m = self.mover
+  if not m or m.dragging then return end
+  local c = self:EnsureCorner()
+  m:SetSize(c:GetWidth() or 100, c:GetHeight() or 100)
+  m:ClearAllPoints()
+  m:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", tonumber(self.db.cornerX) or -24, tonumber(self.db.cornerY) or -44)
+end
+
+-- While dragging: read where the handle is and move the real thing to it.
+function mod:FollowMover()
+  local m = self.mover
+  if not (m and m.dragging) then return end
+  local r, t = m:GetRight(), m:GetTop()
+  local pr = UIParent:GetRight() or UIParent:GetWidth()
+  local pt = UIParent:GetTop() or UIParent:GetHeight()
+  if not (r and t and pr and pt) then return end
+  self.db.cornerX = math.floor(r - pr + 0.5)
+  self.db.cornerY = math.floor(t - pt + 0.5)
+  self:LayoutCorner()
+end
+
+function mod:EnsureMover()
+  if self.mover then return self.mover end
+  local Style = QB.Style
+  local t = Style.Get("dark")
+  local m = CreateFrame("Frame", "QuestBookCornerMover", UIParent, "BackdropTemplate")
+  m:SetFrameStrata("DIALOG")
+  m:SetMovable(true)
+  m:EnableMouse(true)
+  m:SetClampedToScreen(true)
+  m:RegisterForDrag("LeftButton")
+  m:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
+  m:SetBackdropColor(t.selected[1], t.selected[2], t.selected[3], 0.30)
+  m:SetBackdropBorderColor(t.strong[1], t.strong[2], t.strong[3], 0.9)
+  m.text = m:CreateFontString(nil, "OVERLAY")
+  m.text:SetFont(Style.FRIZ, 12, "")                       -- a font at birth: SetText on a fontless string errors
+  m.text:SetPoint("CENTER", m, "CENTER", 0, 0)
+  m.text:SetJustifyH("CENTER")
+  m.text:SetTextColor(t.ink[1], t.ink[2], t.ink[3], 1)
+  m.text:SetText("Drag to move\nright-click when done")
+  m:SetScript("OnDragStart", function(f)
+    QB:Safe(mod, function() f.dragging = true; f:StartMoving(); f:SetScript("OnUpdate", function() QB:Safe(mod, mod.FollowMover, mod) end) end)
+  end)
+  m:SetScript("OnDragStop", function(f)
+    QB:Safe(mod, function()
+      f:StopMovingOrSizing()
+      mod:FollowMover()
+      f.dragging = false
+      f:SetScript("OnUpdate", nil)
+      mod:LayoutMover()
+    end)
+  end)
+  m:SetScript("OnMouseUp", function(_, button)
+    if button == "RightButton" then QB:Safe(mod, mod.CornerMove, mod, false) end
+  end)
+  m:Hide()
+  self.mover = m
+  return m
+end
+
+function mod:CornerMove(on)
+  if on then
+    if not self.db.corner then QB:Say("the corner minimap is off (/qb overlay corner on)"); return end
+    local m = self:EnsureMover()
+    m.dragging = false
+    self:LayoutMover()
+    m:Show()
+    QB:Say("drag the handle to move the corner minimap; right-click it or /qb overlay corner lock when done")
+  elseif self.mover then
+    self.mover.dragging = false
+    self.mover:SetScript("OnUpdate", nil)
+    self.mover:Hide()
+    QB:Say(string.format("corner minimap at %d, %d from the top-right corner", self.db.cornerX, self.db.cornerY))
+  end
 end
 
 function mod:HostPanel()
@@ -1386,6 +1469,7 @@ function mod:OnEnable()
 end
 
 function mod:OnDisable()
+  if self.mover then self:CornerMove(false) end
   self:PlateHide(true)
   self.noCorner = true          -- give the Minimap back to Blizzard's cluster
   self:SetState("off", true)
@@ -1550,7 +1634,7 @@ QB:RegisterSlash(mod, "overlay", function(rest)
     db.iconScale = clamp(n1, 0.5, 4)
     if mod.localOn then mod:ApplyIconScale() end
   elseif sub == "corner" then
-    -- /qb overlay corner on|off | size <n> | pos <x> <y> | alpha <n> | rotate on|off | mask stock|soft
+    -- /qb overlay corner on|off | move | lock | reset | size <n> | pos <x> <y> | alpha <n> | rotate on|off | mask stock|soft
     local what, v1, v2 = arg:match("^(%S*)%s*(%S*)%s*(%S*)$")
     local m1, m2 = tonumber(v1), tonumber(v2)
     if what == "on" or what == "off" then
@@ -1560,6 +1644,12 @@ QB:RegisterSlash(mod, "overlay", function(rest)
       db.cornerSize = clamp(m1, 0.05, 0.5)
     elseif what == "pos" and m1 and m2 then
       db.cornerX, db.cornerY = m1, m2
+    elseif what == "move" then
+      mod:CornerMove(true)
+    elseif what == "lock" then
+      mod:CornerMove(false)
+    elseif what == "reset" then
+      db.cornerX, db.cornerY = -24, -44
     elseif what == "alpha" and m1 then
       db.cornerAlpha = clamp(m1, 0, 1)
     elseif what == "rotate" and (v1 == "on" or v1 == "off") then
@@ -1567,7 +1657,7 @@ QB:RegisterSlash(mod, "overlay", function(rest)
     elseif what == "mask" and (v1 == "stock" or v1 == "soft") then
       db.cornerMask = v1
     elseif what ~= "" and what ~= "status" then
-      QB:Usage("/qb overlay corner on|off | size <n> | pos <x> <y> | alpha <n> | rotate on|off | mask stock|soft   (pos: from the top-right corner, y negative = down)")
+      QB:Usage("/qb overlay corner on|off | move | lock | reset | size <n> | pos <x> <y> | alpha <n> | rotate on|off | mask stock|soft   (pos: from the top-right corner, y negative = down)")
     end
     if not QB:InCombat() then mod:Layout(); mod:Apply(mod.state) else QB:Say("overlay: applied after combat"); mod.dirty = true end
   elseif sub == "mask" then

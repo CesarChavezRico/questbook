@@ -175,11 +175,18 @@ charter was dropped on purpose.
 - **A compact list replaces Blizzard's objective tracker** (*written*, v0.9.0; Cesar, 2026-10-15: "a replacement of
   the original quest list, with a toggle to open the book"). Under the corner minimap: your tracked quests
   (`/qb tracker all` for every quest) with up to three objective lines each, the active quest marked, "ready"
-  quests in green, a "Book" link in the header, and a click on a quest opens the book on it. It is a glance
+  quests in green, a "Book" link in the header. Since v0.11.0: left click makes a quest the active one, right click opens
+  it (Cesar, 2026-10-17). It is a glance
   surface, so it uses the dark panel, not paper. Blizzard's `ObjectiveTrackerFrame` is hidden while it is on and
   restored by `/qb disable tracker`. **Interpretation, not confirmed:** I read "the original quest list" as that
   tracker. *Unverified*: that hiding the frame is honoured, and what else lives in it (world quest, bonus and
   scenario objectives, achievements, auto-accept pop-ups) that is lost while it is hidden.
+
+- **It keeps its place** (v0.11.0, *written*; Cesar, 2026-10-17: "when I open the big overlay the quest list moves up"). The
+  list hung under the corner minimap and jumped to the screen corner whenever the big overlay hid the small minimap. It is
+  now anchored to the corner minimap's *slot*, shown or not. Cesar's other idea, relocating the small minimap, is
+  `/qb overlay corner move` (a drag handle; the minimap and the list follow live; right-click or `lock` ends;
+  `reset` puts it back). Not decided: whether the list should instead have a position of its own.
 
 ### The strip and drawers
 
