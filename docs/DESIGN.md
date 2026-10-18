@@ -220,7 +220,9 @@ charter was dropped on purpose.
   numeral before the title (`/qb tracker level on|off`); difficulty colours were not used, to keep the active quest the only accent. The
   whole list is put away and brought back with a key binding ("Show / hide the quest list", none bound by default) or
   `/qb tracker toggle|show|hide`; the state is saved, a log update does not bring it back, and `/qb tracker move` shows it first.
-  A collapse-to-header state (click the header) was not built.
+  v0.14.6 adds the state between: the title ("QUESTS 9") is a link; a click collapses the list to its title row (the
+  Voice and Log links stay, so there is always something on screen to click), another click expands it; saved,
+  `/qb tracker collapse|expand`.
 - **It has a position of its own** (v0.11.0, *written*; Cesar, 2026-10-17: "when I open the big overlay the quest list
   moves up", then "the list position should be independent from the map"). The list used to hang under the corner
   minimap and jumped to the screen corner whenever the big overlay hid the small minimap. Now its position is its own

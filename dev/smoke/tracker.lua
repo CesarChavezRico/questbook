@@ -58,6 +58,18 @@ __fire("QUEST_LOG_UPDATE"); __runTimers(); assert(not P:IsShown(), "a log update
 slash("tracker toggle"); assert(P:IsShown() and not T.db.hidden, "toggle brings it back")
 slash("tracker hide"); assert(not P:IsShown()); slash("tracker show"); assert(P:IsShown())
 slash("tracker hide"); slash("tracker move"); assert(P:IsShown() and T.mover and T.mover:IsShown(), "moving a hidden list shows it first"); slash("tracker lock")
+-- click the title: the list collapses to its title row (links stay), click again expands; saved
+local fullH = P:GetHeight()
+local function shownRows() local n = 0 for _, f in ipairs(__frames) do if f.__parent == P and f.questID and f:IsShown() then n = n + 1 end end return n end
+assert(shownRows() > 0 and P.head and P.head:GetText():find("%d"), "the title is a link: " .. tostring(P.head and P.head:GetText()))
+P.head:Click()
+assert(T.db.collapsed and shownRows() == 0, "collapsed: no quest rows")
+assert(P.book:IsShown() and P.voice:IsShown() and P:IsShown(), "the links and the title row stay")
+assert(P:GetHeight() < fullH * 0.5, "and the panel is short: " .. P:GetHeight() .. " vs " .. fullH)
+__fire("QUEST_LOG_UPDATE"); __runTimers(); assert(T.db.collapsed and shownRows() == 0, "a log update keeps it collapsed")
+P.head:Click()
+assert(not T.db.collapsed and shownRows() > 0 and math.abs(P:GetHeight() - fullH) < 1, "expanded again")
+slash("tracker collapse"); assert(T.db.collapsed); slash("tracker expand"); assert(not T.db.collapsed)
 -- the Log link toggles the reader
 P.book:Click(); assert(QuestBookReader:IsShown()); P.book:Click(); assert(not QuestBookReader:IsShown())
 -- active quest is marked, ready quest is marked
