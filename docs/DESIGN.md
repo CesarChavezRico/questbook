@@ -182,11 +182,12 @@ charter was dropped on purpose.
   tracker. *Unverified*: that hiding the frame is honoured, and what else lives in it (world quest, bonus and
   scenario objectives, achievements, auto-accept pop-ups) that is lost while it is hidden.
 
-- **It keeps its place** (v0.11.0, *written*; Cesar, 2026-10-17: "when I open the big overlay the quest list moves up"). The
-  list hung under the corner minimap and jumped to the screen corner whenever the big overlay hid the small minimap. It is
-  now anchored to the corner minimap's *slot*, shown or not. Cesar's other idea, relocating the small minimap, is
-  `/qb overlay corner move` (a drag handle; the minimap and the list follow live; right-click or `lock` ends;
-  `reset` puts it back). Not decided: whether the list should instead have a position of its own.
+- **It has a position of its own** (v0.11.0, *written*; Cesar, 2026-10-17: "when I open the big overlay the quest list
+  moves up", then "the list position should be independent from the map"). The list used to hang under the corner
+  minimap and jumped to the screen corner whenever the big overlay hid the small minimap. Now its position is its own
+  (`x`, `y`: the offset of its top-right corner from the screen's, seeded once from where the corner minimap sits so it
+  starts where it was). `/qb tracker move` drags it, `pos <x> <y>` sets it, `reset` seeds it again; `/qb overlay corner
+  move` drags the small minimap. Both use one drag handle (`Style.Mover`): drag, right-click to finish.
 
 ### The strip and drawers
 

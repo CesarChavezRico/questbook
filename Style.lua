@@ -194,3 +194,76 @@ function Style.Link(parent, onClick, getTone)
   link:Paint()
   return link
 end
+
+-- A drag handle for placing a piece of our UI (the corner minimap, the quest list): a translucent brass-edged
+-- rectangle that sits on the thing, is dragged with the left button and finished with a right click. Positions
+-- are offsets of the TOP-RIGHT corner from the screen's, the way `pos <x> <y>` always was.
+--   opts.name   global frame name
+--   opts.size() -> w, h        the size of what is being moved (the handle covers it)
+--   opts.get()  -> x, y        where it is now
+--   opts.set(x, y)             called with whole numbers while dragging and at the drop: move the real thing
+--   opts.lock()                called on a right click on the handle
+--   opts.hint   text on the handle
+function Style.Mover(opts)
+  local t = Style.Get("dark")
+  local m = CreateFrame("Frame", opts.name, UIParent, "BackdropTemplate")
+  m:SetFrameStrata("DIALOG")
+  m:SetMovable(true)
+  m:EnableMouse(true)
+  m:SetClampedToScreen(true)
+  m:RegisterForDrag("LeftButton")
+  m:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
+  m:SetBackdropColor(t.selected[1], t.selected[2], t.selected[3], 0.30)
+  m:SetBackdropBorderColor(t.strong[1], t.strong[2], t.strong[3], 0.9)
+  m.text = m:CreateFontString(nil, "OVERLAY")
+  m.text:SetFont(Style.FRIZ, 12, "")                       -- a font at birth: SetText on a fontless string errors
+  m.text:SetPoint("CENTER", m, "CENTER", 0, 0)
+  m.text:SetJustifyH("CENTER")
+  m.text:SetTextColor(t.ink[1], t.ink[2], t.ink[3], 1)
+  m.text:SetText(opts.hint or "Drag to move\nright-click when done")
+  m.dragging = false
+
+  -- put the handle on the thing's current place and size (not while it is being dragged)
+  function m:Layout()
+    if self.dragging then return end
+    local w, h = opts.size()
+    self:SetSize(w or 100, h or 100)
+    self:ClearAllPoints()
+    local x, y = opts.get()
+    self:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", x or 0, y or 0)
+  end
+
+  -- while dragging: read where the handle is and tell the owner
+  function m:Follow()
+    if not self.dragging then return end
+    local r, tp = self:GetRight(), self:GetTop()
+    local pr = UIParent:GetRight() or UIParent:GetWidth()
+    local pt = UIParent:GetTop() or UIParent:GetHeight()
+    if not (r and tp and pr and pt) then return end
+    opts.set(math.floor(r - pr + 0.5), math.floor(tp - pt + 0.5))
+  end
+
+  m:SetScript("OnDragStart", function(f)
+    f.dragging = true
+    f:StartMoving()
+    f:SetScript("OnUpdate", function() f:Follow() end)
+  end)
+  m:SetScript("OnDragStop", function(f)
+    f:StopMovingOrSizing()
+    f:Follow()
+    f.dragging = false
+    f:SetScript("OnUpdate", nil)
+    f:Layout()
+  end)
+  m:SetScript("OnMouseUp", function(_, button)
+    if button == "RightButton" and opts.lock then opts.lock() end
+  end)
+  function m:Stop()
+    self.dragging = false
+    self:SetScript("OnUpdate", nil)
+    self:Hide()
+  end
+  m:Hide()
+  return m
+end
+

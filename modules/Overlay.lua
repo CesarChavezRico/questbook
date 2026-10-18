@@ -303,69 +303,24 @@ function mod:LayoutCorner()
 end
 
 -- ---------------------------------------------------------------- moving the corner minimap
--- `/qb overlay corner move` puts a translucent handle over the small minimap; drag it, and the minimap (and the
--- tracker under it) follow live. Right-click the handle or `/qb overlay corner lock` finishes. The position is
+-- `/qb overlay corner move` puts a translucent handle over the small minimap; drag it, and the minimap follows
+-- live (the handle is Style.Mover, shared with the tracker). Right-click the handle or `/qb overlay corner lock` finishes. The position is
 -- saved as the offset of its top-right corner from the screen's (cornerX, cornerY), as `pos` always was.
 
 function mod:LayoutMover()
-  local m = self.mover
-  if not m or m.dragging then return end
-  local c = self:EnsureCorner()
-  m:SetSize(c:GetWidth() or 100, c:GetHeight() or 100)
-  m:ClearAllPoints()
-  m:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", tonumber(self.db.cornerX) or -24, tonumber(self.db.cornerY) or -44)
-end
-
--- While dragging: read where the handle is and move the real thing to it.
-function mod:FollowMover()
-  local m = self.mover
-  if not (m and m.dragging) then return end
-  local r, t = m:GetRight(), m:GetTop()
-  local pr = UIParent:GetRight() or UIParent:GetWidth()
-  local pt = UIParent:GetTop() or UIParent:GetHeight()
-  if not (r and t and pr and pt) then return end
-  self.db.cornerX = math.floor(r - pr + 0.5)
-  self.db.cornerY = math.floor(t - pt + 0.5)
-  self:LayoutCorner()
+  if self.mover then self.mover:Layout() end
 end
 
 function mod:EnsureMover()
   if self.mover then return self.mover end
-  local Style = QB.Style
-  local t = Style.Get("dark")
-  local m = CreateFrame("Frame", "QuestBookCornerMover", UIParent, "BackdropTemplate")
-  m:SetFrameStrata("DIALOG")
-  m:SetMovable(true)
-  m:EnableMouse(true)
-  m:SetClampedToScreen(true)
-  m:RegisterForDrag("LeftButton")
-  m:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
-  m:SetBackdropColor(t.selected[1], t.selected[2], t.selected[3], 0.30)
-  m:SetBackdropBorderColor(t.strong[1], t.strong[2], t.strong[3], 0.9)
-  m.text = m:CreateFontString(nil, "OVERLAY")
-  m.text:SetFont(Style.FRIZ, 12, "")                       -- a font at birth: SetText on a fontless string errors
-  m.text:SetPoint("CENTER", m, "CENTER", 0, 0)
-  m.text:SetJustifyH("CENTER")
-  m.text:SetTextColor(t.ink[1], t.ink[2], t.ink[3], 1)
-  m.text:SetText("Drag to move\nright-click when done")
-  m:SetScript("OnDragStart", function(f)
-    QB:Safe(mod, function() f.dragging = true; f:StartMoving(); f:SetScript("OnUpdate", function() QB:Safe(mod, mod.FollowMover, mod) end) end)
-  end)
-  m:SetScript("OnDragStop", function(f)
-    QB:Safe(mod, function()
-      f:StopMovingOrSizing()
-      mod:FollowMover()
-      f.dragging = false
-      f:SetScript("OnUpdate", nil)
-      mod:LayoutMover()
-    end)
-  end)
-  m:SetScript("OnMouseUp", function(_, button)
-    if button == "RightButton" then QB:Safe(mod, mod.CornerMove, mod, false) end
-  end)
-  m:Hide()
-  self.mover = m
-  return m
+  self.mover = QB.Style.Mover({
+    name = "QuestBookCornerMover",
+    size = function() local c = mod:EnsureCorner(); return c:GetWidth(), c:GetHeight() end,
+    get = function() return tonumber(mod.db.cornerX) or -24, tonumber(mod.db.cornerY) or -44 end,
+    set = function(x, y) mod.db.cornerX, mod.db.cornerY = x, y; mod:LayoutCorner() end,
+    lock = function() QB:Safe(mod, mod.CornerMove, mod, false) end,
+  })
+  return self.mover
 end
 
 function mod:CornerMove(on)
@@ -373,13 +328,11 @@ function mod:CornerMove(on)
     if not self.db.corner then QB:Say("the corner minimap is off (/qb overlay corner on)"); return end
     local m = self:EnsureMover()
     m.dragging = false
-    self:LayoutMover()
+    m:Layout()
     m:Show()
     QB:Say("drag the handle to move the corner minimap; right-click it or /qb overlay corner lock when done")
   elseif self.mover then
-    self.mover.dragging = false
-    self.mover:SetScript("OnUpdate", nil)
-    self.mover:Hide()
+    self.mover:Stop()
     QB:Say(string.format("corner minimap at %d, %d from the top-right corner", self.db.cornerX, self.db.cornerY))
   end
 end

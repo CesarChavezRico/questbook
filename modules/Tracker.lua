@@ -22,6 +22,8 @@ local mod = QB:NewModule("tracker", {
   maxFrac = 0.42,       -- the panel never grows past this fraction of the screen height
   alpha = 0.55,         -- the panel's opacity
   objectives = 3,       -- objective lines shown under each quest
+  -- x, y: where the list sits, the offset of its top-right corner from the screen's top-right corner (y < 0 = down).
+  -- Not in the defaults: first run seeds them from where the corner minimap sits, then they are the list's own.
 })
 
 local FRIZ = Style.FRIZ
@@ -140,20 +142,28 @@ local function Row(i)
   return r
 end
 
--- Anchor under the corner minimap's SLOT, whether or not the minimap is in it right now: opening the big
--- overlay hides the small minimap, and the list used to jump up to the screen corner when it did (Cesar,
--- 2026-10-17). A frame anchored to a hidden frame stays where that frame would be. Without a corner
--- minimap (turned off) the list sits in the screen corner under the text strip.
+-- The list has a position of its own (Cesar, 2026-10-17: "the list position should be independent from the map"):
+-- the offset of its top-right corner from the screen's. The first time, it is seeded from where the corner minimap
+-- sits (right under it, as it was), after that moving the minimap does not move the list, and the other way round.
+-- `/qb tracker move` drags it, `/qb tracker pos <x> <y>` sets it, `/qb tracker reset` seeds it again.
+local function Seed(self)
+  local x, y = -24, -44
+  local ov = QB.modules.overlay
+  if ov and ov.db and ov.db.corner then
+    local H = UIParent:GetHeight() or 0
+    local size = math.max(48, Style.Clamp(tonumber(ov.db.cornerSize) or 0.16, 0.05, 0.5) * H)
+    x = tonumber(ov.db.cornerX) or x
+    y = (tonumber(ov.db.cornerY) or y) - size - 10
+  end
+  self.db.x, self.db.y = math.floor(x + 0.5), math.floor(y + 0.5)
+end
+
 local function Place(self)
   if not panel then return end
+  if self.db.x == nil or self.db.y == nil then Seed(self) end
   panel:ClearAllPoints()
-  local ov = QB.modules.overlay
-  local corner = ov and ov.active and ov.db and ov.db.corner and ov.cornerPanel
-  if corner then
-    panel:SetPoint("TOPRIGHT", corner, "BOTTOMRIGHT", 0, -10)
-  else
-    panel:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", -24, -44)
-  end
+  panel:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", self.db.x, self.db.y)
+  if self.mover then self.mover:Layout() end
 end
 
 function mod:Refresh()
@@ -294,7 +304,31 @@ function mod:OnEnable()
   self:Refresh()
 end
 
+-- the drag handle (created on first use)
+function mod:Move(on)
+  if on then
+    if not panel then return end
+    if not self.mover then
+      self.mover = Style.Mover({
+        name = "QuestBookTrackerMover",
+        size = function() return panel:GetWidth(), panel:GetHeight() end,
+        get = function() return mod.db.x, mod.db.y end,
+        set = function(x, y) mod.db.x, mod.db.y = x, y; Place(mod) end,
+        lock = function() QB:Safe(mod, mod.Move, mod, false) end,
+      })
+    end
+    self.mover.dragging = false
+    self.mover:Layout()
+    self.mover:Show()
+    QB:Say("drag the handle to move the quest list; right-click it or /qb tracker lock when done")
+  elseif self.mover then
+    self.mover:Stop()
+    QB:Say(string.format("quest list at %d, %d from the top-right corner", self.db.x or 0, self.db.y or 0))
+  end
+end
+
 function mod:OnDisable()
+  if self.mover then self.mover:Stop() end
   if panel then panel:Hide() end
   self:RestoreBlizzard()
 end
@@ -309,9 +343,6 @@ mod.events.DISPLAY_SIZE_CHANGED = Queue
 mod.events.UI_SCALE_CHANGED = Queue
 mod.events.EDIT_MODE_LAYOUTS_UPDATED = function(self) self:HideBlizzard(); Queue() end
 
--- the minimap moves between the corner and the big panel: follow it
-QB:On("overlay_state", function() if panel and mod.active then Place(mod) end end, mod)
-QB:On("overlay_host", function() if panel and mod.active then Place(mod) end end, mod)
 QB:On("combat_end", function() if panel and mod.active then Place(mod) end end, mod)
 
 -- ---------------------------------------------------------------- slash
@@ -329,10 +360,19 @@ QB:RegisterSlash(mod, "tracker", function(rest)
     mod.db.objectives = Style.Clamp(math.floor(n), 0, 8)
   elseif sub == "max" and n then
     mod.db.maxFrac = Style.Clamp(n > 1 and n / 100 or n, 0.05, 0.9)
+  elseif sub == "move" then
+    mod:Move(true)
+  elseif sub == "lock" then
+    mod:Move(false)
+  elseif sub == "pos" then
+    local px, py = arg:match("^(%-?%d+%.?%d*)%s+(%-?%d+%.?%d*)$")
+    if px then mod.db.x, mod.db.y = tonumber(px), tonumber(py) else QB:Usage("/qb tracker pos <x> <y>   (from the top-right corner of the screen; y negative = down)") end
+  elseif sub == "reset" then
+    mod.db.x, mod.db.y = nil, nil            -- Place seeds it again, under the corner minimap
   elseif sub ~= "" and sub ~= "status" then
-    QB:Usage("/qb tracker all|tracked | width <n> | alpha <0-1> | lines <n> | max <fraction>   (/qb disable tracker gives Blizzard's tracker back)")
+    QB:Usage("/qb tracker all|tracked | width <n> | alpha <0-1> | lines <n> | max <fraction> | move | lock | pos <x> <y> | reset   (/qb disable tracker gives Blizzard's tracker back)")
   end
   mod:Refresh()
-  QB:Say(string.format("tracker: %s, %d of %d quests shown, width %d, alpha %.2f, %d objective lines | Blizzard's tracker: %s",
-    mod.db.mode, mod.shown or 0, mod.total or 0, mod.db.width, mod.db.alpha, mod.db.objectives, tostring(mod.blizzard)))
-end, "tracker all|tracked|width|alpha|lines|max: the compact quest list that replaces Blizzard's tracker")
+  QB:Say(string.format("tracker: %s, %d of %d quests shown, width %d, alpha %.2f, %d objective lines, at %d,%d | Blizzard's tracker: %s",
+    mod.db.mode, mod.shown or 0, mod.total or 0, mod.db.width, mod.db.alpha, mod.db.objectives, mod.db.x or 0, mod.db.y or 0, tostring(mod.blizzard)))
+end, "tracker all|tracked|width|alpha|lines|max|move|lock|pos|reset: the compact quest list that replaces Blizzard's tracker")
