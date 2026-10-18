@@ -299,6 +299,42 @@ function mod:LayoutCorner()
   c:SetSize(s, s)
   c:ClearAllPoints()
   c:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", tonumber(db.cornerX) or -24, tonumber(db.cornerY) or -44)
+  self:LayoutMover()
+end
+
+-- ---------------------------------------------------------------- moving the corner minimap
+-- `/qb overlay corner move` puts a translucent handle over the small minimap; drag it, and the minimap follows
+-- live (the handle is Style.Mover, shared with the tracker). Right-click the handle or `/qb overlay corner lock` finishes. The position is
+-- saved as the offset of its top-right corner from the screen's (cornerX, cornerY), as `pos` always was.
+
+function mod:LayoutMover()
+  if self.mover then self.mover:Layout() end
+end
+
+function mod:EnsureMover()
+  if self.mover then return self.mover end
+  self.mover = QB.Style.Mover({
+    name = "QuestBookCornerMover",
+    size = function() local c = mod:EnsureCorner(); return c:GetWidth(), c:GetHeight() end,
+    get = function() return tonumber(mod.db.cornerX) or -24, tonumber(mod.db.cornerY) or -44 end,
+    set = function(x, y) mod.db.cornerX, mod.db.cornerY = x, y; mod:LayoutCorner() end,
+    lock = function() QB:Safe(mod, mod.CornerMove, mod, false) end,
+  })
+  return self.mover
+end
+
+function mod:CornerMove(on)
+  if on then
+    if not self.db.corner then QB:Say("the corner minimap is off (/qb overlay corner on)"); return end
+    local m = self:EnsureMover()
+    m.dragging = false
+    m:Layout()
+    m:Show()
+    QB:Say("drag the handle to move the corner minimap; right-click it or /qb overlay corner lock when done")
+  elseif self.mover then
+    self.mover:Stop()
+    QB:Say(string.format("corner minimap at %d, %d from the top-right corner", self.db.cornerX, self.db.cornerY))
+  end
 end
 
 function mod:HostPanel()
@@ -1386,6 +1422,7 @@ function mod:OnEnable()
 end
 
 function mod:OnDisable()
+  if self.mover then self:CornerMove(false) end
   self:PlateHide(true)
   self.noCorner = true          -- give the Minimap back to Blizzard's cluster
   self:SetState("off", true)
@@ -1550,7 +1587,7 @@ QB:RegisterSlash(mod, "overlay", function(rest)
     db.iconScale = clamp(n1, 0.5, 4)
     if mod.localOn then mod:ApplyIconScale() end
   elseif sub == "corner" then
-    -- /qb overlay corner on|off | size <n> | pos <x> <y> | alpha <n> | rotate on|off | mask stock|soft
+    -- /qb overlay corner on|off | move | lock | reset | size <n> | pos <x> <y> | alpha <n> | rotate on|off | mask stock|soft
     local what, v1, v2 = arg:match("^(%S*)%s*(%S*)%s*(%S*)$")
     local m1, m2 = tonumber(v1), tonumber(v2)
     if what == "on" or what == "off" then
@@ -1560,6 +1597,12 @@ QB:RegisterSlash(mod, "overlay", function(rest)
       db.cornerSize = clamp(m1, 0.05, 0.5)
     elseif what == "pos" and m1 and m2 then
       db.cornerX, db.cornerY = m1, m2
+    elseif what == "move" then
+      mod:CornerMove(true)
+    elseif what == "lock" then
+      mod:CornerMove(false)
+    elseif what == "reset" then
+      db.cornerX, db.cornerY = -24, -44
     elseif what == "alpha" and m1 then
       db.cornerAlpha = clamp(m1, 0, 1)
     elseif what == "rotate" and (v1 == "on" or v1 == "off") then
@@ -1567,7 +1610,7 @@ QB:RegisterSlash(mod, "overlay", function(rest)
     elseif what == "mask" and (v1 == "stock" or v1 == "soft") then
       db.cornerMask = v1
     elseif what ~= "" and what ~= "status" then
-      QB:Say("/qb overlay corner on|off | size <n> | pos <x> <y> | alpha <n> | rotate on|off | mask stock|soft   (pos: from the top-right corner, y negative = down)")
+      QB:Usage("/qb overlay corner on|off | move | lock | reset | size <n> | pos <x> <y> | alpha <n> | rotate on|off | mask stock|soft   (pos: from the top-right corner, y negative = down)")
     end
     if not QB:InCombat() then mod:Layout(); mod:Apply(mod.state) else QB:Say("overlay: applied after combat"); mod.dirty = true end
   elseif sub == "mask" then
@@ -1582,7 +1625,7 @@ QB:RegisterSlash(mod, "overlay", function(rest)
     Diag()
     return
   elseif sub ~= "" and sub ~= "status" then
-    QB:Say("/qb overlay corner ... (the small minimap) | cycle | off | local | zone | shape rect|circle | size <n> | aspect <n> | pos <x> <y> | alpha <local> [zone] | zoom <n> | rotate on|off | ground hybrid|native|auto | bars actions|all|none | icons <n> | mask | diag")
+    QB:Usage("/qb overlay corner ... (the small minimap) | cycle | off | local | zone | shape rect|circle | size <n> | aspect <n> | pos <x> <y> | alpha <local> [zone] | zoom <n> | rotate on|off | ground hybrid|native|auto | bars actions|all|none | icons <n> | mask | diag")
   end
   QB:Say(Status())
 end, "map overlay (cycle | off | local | zone | shape | size | alpha | rotate | ground | bars | icons | mask | diag)")

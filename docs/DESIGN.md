@@ -101,6 +101,14 @@ charter was dropped on purpose.
   offset).
 - **Every CVar is backed up in saved variables before the first change and restored from there**, also
   at the next login if the game was closed with the overlay open (*unverified*: nobody has crashed it).
+- **Dialogue UI at the same time** (Cesar, 2026-10-17, v0.10.1: "the camera wobbles going in and out" when talking to a
+  quest NPC with the minimap open). Cause from reading Dialogue UI's public source (`Code/Camera.lua`), not observed in
+  the game: it also writes `test_cameraOverShoulder` every 0.03 s towards its own target and moves the zoom, and our
+  zoom poll answered each zoom step with a second ease towards ours. Two writers, one CVar. v0.10.2 pauses the camera
+  module while a gossip or quest dialogue is open (`GOSSIP_SHOW`, `QUEST_GREETING`, `QUEST_DETAIL`, `QUEST_PROGRESS`,
+  `QUEST_COMPLETE`) and takes the CVar up again 0.8 s after it closes (`GOSSIP_CLOSED`, `QUEST_FINISHED`), easing to
+  the shift from wherever the dialogue left it; a safety timeout of 120 s covers a close event that never comes.
+  *Written, not played.* Unverified: which of those events this client sends.
 
 ### The quest log
 
@@ -167,11 +175,19 @@ charter was dropped on purpose.
 - **A compact list replaces Blizzard's objective tracker** (*written*, v0.9.0; Cesar, 2026-10-15: "a replacement of
   the original quest list, with a toggle to open the book"). Under the corner minimap: your tracked quests
   (`/qb tracker all` for every quest) with up to three objective lines each, the active quest marked, "ready"
-  quests in green, a "Book" link in the header, and a click on a quest opens the book on it. It is a glance
+  quests in green, a "Book" link in the header. Since v0.11.0: left click makes a quest the active one, right click opens
+  it (Cesar, 2026-10-17). It is a glance
   surface, so it uses the dark panel, not paper. Blizzard's `ObjectiveTrackerFrame` is hidden while it is on and
   restored by `/qb disable tracker`. **Interpretation, not confirmed:** I read "the original quest list" as that
   tracker. *Unverified*: that hiding the frame is honoured, and what else lives in it (world quest, bonus and
   scenario objectives, achievements, auto-accept pop-ups) that is lost while it is hidden.
+
+- **It has a position of its own** (v0.11.0, *written*; Cesar, 2026-10-17: "when I open the big overlay the quest list
+  moves up", then "the list position should be independent from the map"). The list used to hang under the corner
+  minimap and jumped to the screen corner whenever the big overlay hid the small minimap. Now its position is its own
+  (`x`, `y`: the offset of its top-right corner from the screen's, seeded once from where the corner minimap sits so it
+  starts where it was). `/qb tracker move` drags it, `pos <x> <y>` sets it, `reset` seeds it again; `/qb overlay corner
+  move` drags the small minimap. Both use one drag handle (`Style.Mover`): drag, right-click to finish.
 
 ### The strip and drawers
 

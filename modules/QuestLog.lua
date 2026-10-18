@@ -247,6 +247,19 @@ local function ToggleActive(entry)
   RefreshChrome()
 end
 
+-- Make a quest the active one (never clears it: the tracker's left click; Book > Active toggles).
+function mod:SetActive(questID)
+  if not (questID and C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID) then
+    Say("choosing the active quest is not available on this client")
+    return
+  end
+  if not IsWatched(questID) and C_QuestLog and C_QuestLog.AddQuestWatch then
+    pcall(C_QuestLog.AddQuestWatch, questID)
+  end
+  pcall(C_SuperTrack.SetSuperTrackedQuestID, questID)
+  RefreshChrome()
+end
+
 local function CanShare(entry)
   if not entry or type(QuestLogPushQuest) ~= "function" then return false end
   local pushable = false
@@ -1109,7 +1122,7 @@ QB:RegisterSlash(mod, "book", function(rest)
     end
   end
   local f, r = G.fit, G.rows
-  Say("book theme: " .. mod.db.theme .. "  map plate: " .. (mod.db.plate and "on" or "off") .. "  (/qb book paper|dark, /qb book map on|off)")
+  Say("book theme: " .. mod.db.theme .. "  map plate: " .. (mod.db.plate and "on" or "off") .. "  (/qb book paper||dark, /qb book map on||off)")
   if f then
     Say(string.format("  left page: text %d px at font %d (set %d) in %d px, %s%s", f.total or 0, f.font or 0, f.base or 0,
       f.avail or 0, f.fits and "fits" or "SCROLLS", f.plate and (", plate " .. f.plateH .. " px") or ", no map plate"))

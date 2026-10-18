@@ -68,3 +68,37 @@ assert(__cvar("rotateMinimap") ~= nil)
 QB:SetEnabled("overlay", true); assert(O.host == "corner", "enable puts the corner back")
 slash("overlay diag"); flush("diag")
 print("corner ok")
+
+-- ---- moving the corner minimap (Cesar, 2026-10-17: "implement a function to relocate it")
+slash("overlay corner reset")
+slash("overlay corner move")
+local M = O.mover
+assert(M and M:IsShown(), "the handle is up")
+local mp = { M:GetPoint(1) }
+assert(mp[1] == "TOPRIGHT" and mp[2] == UIParent and mp[4] == -24 and mp[5] == -44, "the handle sits on the corner slot")
+-- drag it 300 units left and 200 down: the handle's right edge / top edge are what the code reads
+local W, H2 = UIParent:GetWidth(), UIParent:GetHeight()
+M.GetRight = function() return W - 24 - 300 end
+M.GetTop = function() return H2 - 44 - 200 end
+UIParent.GetRight = function() return W end
+UIParent.GetTop = function() return H2 end
+M.__scripts.OnDragStart(M)
+assert(M.dragging, "dragging")
+M.__scripts.OnUpdate(M)
+assert(O.db.cornerX == -324 and O.db.cornerY == -244, "position follows live, got " .. O.db.cornerX .. "," .. O.db.cornerY)
+local cp = { O.cornerPanel:GetPoint(1) }
+assert(cp[4] == -324 and cp[5] == -244, "the minimap panel moved with it")
+M.__scripts.OnDragStop(M)
+assert(not M.dragging and O.db.cornerX == -324, "dropped and saved")
+local mp2 = { M:GetPoint(1) }
+assert(mp2[4] == -324 and mp2[5] == -244, "the handle re-anchors on the saved place")
+-- right-click finishes
+M.__scripts.OnMouseUp(M, "RightButton")
+assert(not M:IsShown(), "right-click locks")
+slash("overlay corner move"); assert(M:IsShown()); slash("overlay corner lock"); assert(not M:IsShown(), "lock hides the handle")
+slash("overlay corner reset")
+assert(O.db.cornerX == -24 and O.db.cornerY == -44, "reset")
+-- off: no handle
+slash("overlay corner off"); slash("overlay corner move"); assert(not M:IsShown(), "no handle without a corner minimap")
+slash("overlay corner on")
+print("corner move ok")

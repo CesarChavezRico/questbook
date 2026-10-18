@@ -94,7 +94,7 @@ function Frame:GetVerticalScroll() return 0 end
 function Frame:GetStringWidthOf() return 0 end
 function Frame:IsMouseOver() return false end
 function Frame:GetNumChildren() return 0 end
-function Frame:Click() if self.__scripts.OnClick then self.__scripts.OnClick(self, "LeftButton") end end
+function Frame:Click(b) if self.__scripts.OnClick then self.__scripts.OnClick(self, b or "LeftButton") end end
 
 function CreateFrame(kind, name, parent) return newFrame(kind, name, parent) end
 UIParent = newFrame("Frame", "UIParent")
