@@ -8,7 +8,7 @@ did and did not verify, open a PR into `dev`. Cesar reviews and merges.
 ```
 Core.lua            module registry, protected calls, event + message bus, slash, keybinding functions
 Style.lua           palettes (paper / dark), font helpers; see docs/STYLE.md
-modules/QuestLog.lua   the quest log and its duties (the oldest code, from before the modular split)
+modules/QuestLog.lua   the quest reader (one page) and the quest log's duties: active, track, share, abandon, voice
 modules/Overlay.lua    Off / Minimap / Map, masks, ground, bars, indoor handling
 modules/Camera.lua     lateral shift + zoom-out, CVar backup and restore
 modules/Tracker.lua    the compact quest list that replaces Blizzard's objective tracker

@@ -17,9 +17,7 @@ local mod = QB:NewModule("kit", {})
 
 -- type ramp, in physical pixels (Style.Px turns them into units)
 local TYPE = { title = 40, header = 26, body = 22, small = 18 }
-local INK = { 0.19, 0.17, 0.13 }          -- warm dark brown
-local FADED = { 0.50, 0.36, 0.24 }
-local BRICK = { 0.416, 0.18, 0.165 }      -- the one strong colour
+local INK, FADED, BRICK = Style.KIT.ink, Style.KIT.faded, Style.KIT.brick     -- the reader's palette
 local frame
 
 local function Text(parent, path, px, color, justify)

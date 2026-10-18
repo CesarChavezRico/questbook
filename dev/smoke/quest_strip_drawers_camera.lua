@@ -6,22 +6,22 @@ local function flush(tag) for _, l in ipairs(__take()) do print(tag .. " | " .. 
 slash("modules"); flush("modules")
 -- quest log: open, buttons, duties
 slash(""); flush("open")
-local Book = QuestBookFrame
-assert(Book and Book:IsShown(), "book should be shown")
+local Book = QuestBookReader
+assert(Book and Book:IsShown(), "the reader should be shown")
 print("title:", Book.title:GetText())
 local function click(b) b.__scripts.OnClick(b) end
-click(Book.btnTrack);   print("track label now:", Book.btnTrack:GetText())
-click(Book.btnActive);  print("active label now:", Book.btnActive:GetText(), "super:", C_SuperTrack.GetSuperTrackedQuestID())
-click(Book.btnShare);   print("pushed index:", __pushed)
-click(Book.btnAbandon); print("popup:", __popup and __popup[1], __popup and __popup[2])
+click(Book.trackBtn);   print("track label now:", Book.trackBtn:GetText())
+click(Book.primary);    print("active label now:", Book.primary:GetText(), "super:", C_SuperTrack.GetSuperTrackedQuestID())
+click(Book.share);      print("pushed index:", __pushed)
+click(Book.abandon);    print("popup:", __popup and __popup[1], __popup and __popup[2])
 click(Book.next);       print("title after next:", Book.title:GetText())
 click(Book.next);       print("title after next:", Book.title:GetText())
 __fire("QUEST_LOG_UPDATE"); __runTimers()
-__fire("PLAYER_STARTED_MOVING"); print("docked layout points:", #Book.__points)
-slash("size 20"); slash("dark"); slash("dock left"); slash("log blizzard")
+__fire("PLAYER_STARTED_MOVING")
+slash("size 24"); slash("log blizzard")
 ToggleQuestLog(); print("blizz log opened via override with replace off:", __blizzLogOpened)
 slash("log replace"); __blizzLogOpened = false
-ToggleQuestLog(); print("override closes book (shown):", Book:IsShown(), "blizz:", __blizzLogOpened)
+ToggleQuestLog(); print("override closes the reader (shown):", Book:IsShown(), "blizz:", __blizzLogOpened)
 slash("blizzlog"); print("blizzlog fallback opened:", __blizzLogOpened)
 flush("qlog")
 -- strip / coordinates

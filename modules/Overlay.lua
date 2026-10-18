@@ -36,7 +36,6 @@ local mod = QB:NewModule("overlay", {
                        -- "auto" = native, but hybrid where the native ground is blank (indoors)
   bars = "actions",    -- hidden while a map mode is open: "actions" | "all" (adds xp/rep bars) | "none"
   iconScale = 1,       -- Minimap:SetIconScale for blips (1 = Blizzard's default)
-  plateZoom = 1.6,     -- the quest book's map plate: magnification over "whole zone fits the plate"
   corner = true,       -- the small always-on minimap (when the big one is not in use)
   cornerSize = 0.16,   -- fraction of screen height (square)
   cornerX = -24,       -- offset from the top-right corner of the screen (UI units; x < 0 = inwards)
@@ -74,8 +73,6 @@ mod.zoneTweaks = { order = {}, map = {} }
 mod.barTweaks = { order = {}, map = {} }
 mod.mode = "off"         -- the mode being laid out ("local" panel is square, "zone" follows `aspect`)
 mod.host = nil           -- who holds the Minimap right now: nil | "big" | "corner"
-mod.zoneHost = "overlay" -- who holds the WORLD MAP frame: "overlay" (Map mode) | "plate" (the quest book)
-mod.plate = nil          -- { frame, entry, cap, target } while the quest book hosts the map
 mod.groundNow = "native" -- what Local actually uses right now ("hybrid" | "native")
 mod.hybridFails = 0
 
@@ -269,6 +266,15 @@ function mod:Geometry()
   -- scales (the first client run showed pins off in position and direction)
   if db.shape ~= "circle" and self.mode ~= "local" then aspect = clamp(tonumber(db.aspect) or 1.25, 0.5, 3) end
   return h * aspect, h, (tonumber(db.offsetX) or 0) * W, (tonumber(db.offsetY) or 0) * H
+end
+
+-- The quest reader sits where the big map sits: the same centre and height; its width is its own (a page).
+-- Returns width, height, centre offset x, y (UI units from the screen centre).
+function mod:ReaderRect(aspect)
+  local db = self.db
+  local W, H = UIParent:GetWidth(), UIParent:GetHeight()
+  local h = math.max(64, clamp(tonumber(db.size) or 0.62, 0.1, 1.5) * H)
+  return h * (aspect or 1), h, (tonumber(db.offsetX) or 0) * W, (tonumber(db.offsetY) or 0) * H
 end
 
 function mod:EnsurePanel()
@@ -748,10 +754,6 @@ function mod:ZoneRegisterTiles()
 end
 
 function mod:ZoneApplyMask()
-  if self.zoneHost == "plate" then       -- the plate is a crisp rectangle in a paper frame
-    self:ZoneRemoveMask()
-    return false
-  end
   local wmf = G("WorldMapFrame")
   local sc = wmf and wmf.ScrollContainer
   if not (sc and sc.CreateMaskTexture and wmf.SetMaskTexture and wmf.SetUseMaskTexture) then return false end
@@ -821,10 +823,8 @@ function mod:ZoneStyle()
   -- look: translucent, behind the Local layer and the HUD
   -- invisible until the first position pass is done (no flash of the whole, unmasked zone)
   TAlpha(set, "z.alpha.wmf", wmf, self.zoneRevealed and 1 or 0)
-  local plateHost = self.zoneHost == "plate"
-  TAlpha(set, "z.alpha.sc", sc, plateHost and 1 or clamp(tonumber(db.zoneAlpha) or 0.45, 0, 1))
-  -- over the book (strata HIGH) for the plate; behind the Minimap layer for the overlay
-  TStrata(set, "z.strata", wmf, plateHost and "DIALOG" or "BACKGROUND")
+  TAlpha(set, "z.alpha.sc", sc, clamp(tonumber(db.zoneAlpha) or 0.45, 0, 1))
+  TStrata(set, "z.strata", wmf, "BACKGROUND")      -- behind the Minimap layer and the HUD
 
   -- click-through (pins are handled in PinDisable)
   TMouse(set, "z.mouse.wmf", wmf, false)
@@ -836,7 +836,6 @@ function mod:ZoneStyle()
   local panel = self:ZoneHostPanel()
   if panel then
     local w, h = panel:GetSize()
-    if plateHost then w, h = w - 2, h - 2 end          -- inside the plate's one-pixel edge
     local resized = false
     TweakDo(set, "z.size", wmf,
       function(x) local a, b = x:GetSize() return { a, b } end,
@@ -878,40 +877,23 @@ end
 
 -- Keep the Zone layer on the player's zone and centred on the player.
 function mod:ZoneHostPanel()
-  if self.zoneHost == "plate" and self.plate and self.plate.frame then return self.plate.frame end
   return self.panel
 end
 
--- Keep the map on its target and centred: the player's zone and position for the overlay's Map
--- mode; the quest's map and position for the quest book's plate.
+-- Keep the map on the player's zone and centred on the player.
 function mod:TickZone()
   local wmf = G("WorldMapFrame")
   local sc = wmf and wmf.ScrollContainer
   if not (sc and wmf:IsShown()) then return end
   self:ReapplyZone()
 
-  local plateHost = self.zoneHost == "plate"
   local mapID, px, py
-  if plateHost then
-    mapID, px, py = self:PlateTarget()
-    if not mapID then return end
-    if wmf.GetMapID and wmf:GetMapID() ~= mapID then
-      wmf:SetMapID(mapID)
-      self.zoomDirty = true
-    end
-    local qid = self.plate and self.plate.entry and self.plate.entry.questID
-    if qid and self.plate.focused ~= qid and wmf.SetFocusedQuestID then
-      -- Blizzard's own call (QuestMapFrame_ShowQuestDetails): the quest-area providers react to it
-      if Try("SetFocusedQuestID", wmf.SetFocusedQuestID, wmf, qid) then self.plate.focused = qid end
-    end
-  else
-    mapID = PlayerMapID()
-    if mapID and wmf.GetMapID and wmf:GetMapID() ~= mapID then
-      wmf:SetMapID(mapID)
-      self.zoomDirty = true
-    end
-    mapID = wmf:GetMapID()
+  mapID = PlayerMapID()
+  if mapID and wmf.GetMapID and wmf:GetMapID() ~= mapID then
+    wmf:SetMapID(mapID)
+    self.zoomDirty = true
   end
+  mapID = wmf:GetMapID()
 
   local sw = sc:GetWidth()
   if sw ~= self.lastSW then
@@ -921,22 +903,20 @@ function mod:TickZone()
   end
 
   if not (mapID and sc.HasZoomLevels and sc:HasZoomLevels()) then return end
-  if not plateHost then
-    if not (C_Map and C_Map.GetPlayerMapPosition) then return end
-    local okp, pos = pcall(C_Map.GetPlayerMapPosition, mapID, "player")
-    if not (okp and pos and pos.GetXY) then return end
-    px, py = pos:GetXY()
-  end
+  if not (C_Map and C_Map.GetPlayerMapPosition) then return end
+  local okp, pos = pcall(C_Map.GetPlayerMapPosition, mapID, "player")
+  if not (okp and pos and pos.GetXY) then return end
+  px, py = pos:GetXY()
   if not (px and py) then return end
 
   local minS, maxS = sc:GetScaleForMinZoom(), sc:GetScaleForMaxZoom()
-  local zoom = plateHost and (tonumber(self.db.plateZoom) or 1.6) or (tonumber(self.db.zoneZoom) or 2)
+  local zoom = tonumber(self.db.zoneZoom) or 2
   local want = clamp(minS * zoom, minS, maxS)
   local cur = sc:GetCanvasScale()
   if self.zoomDirty or math.abs(cur - want) > want * 0.01 then
     self.zoomDirty = false
     sc:InstantPanAndZoom(want, px, py, true)         -- (MapCanvas_ScrollContainerMixin.lua)
-  elseif not plateHost then
+  else
     local x0, x1, y0, y1 = sc:CalculateScrollExtentsAtScale(cur)
     sc:SetPanTarget(clamp(px, x0, x1), clamp(py, y0, y1))   -- eased by the container's own OnUpdate
   end
@@ -970,10 +950,6 @@ function mod:InstallZoneHooks()
 end
 
 function mod:OnZoneClosedExternally()
-  if self.zoneHost == "plate" then       -- ESC, the M key or another panel took the map from the book
-    self:PlateHide(true)
-    return
-  end
   QB:Say("overlay: the game closed the map; overlay off")
   self:SetState("off", true)
 end
@@ -1048,119 +1024,6 @@ function mod:ZoneLeave()
   end
 end
 
--- ---------------------------------------------------------------- the quest book's map plate
---
--- The quest book (modules/QuestLog.lua) asks for a map for the quest on its page. The same world
--- map frame the Map mode restyles is hosted inside the book's plate instead: the zone code above
--- is reused, with the plate as the host panel (crisp edge, opaque, above the book, no soft mask).
--- There is ONE world map frame: Map mode and the plate exclude each other.
--- UNVERIFIED in the client: that the map frame can sit in a place where it is not a UI panel's
--- usual spot, that pins draw correctly at that size, and that SetFocusedQuestID shows the blob.
-
--- The quest's map and position: the next waypoint the game computes (Blizzard_UIPanels_Game
--- uses it for the quest log), else the quest's marker on the player's map or its parents.
-function mod:PlateTarget()
-  local pl = self.plate
-  if not pl then return end
-  if pl.target then return pl.target[1], pl.target[2], pl.target[3] end
-  if pl.target == false then return end
-  local qid = pl.entry and pl.entry.questID
-  local mapID, x, y
-  if qid and C_QuestLog and C_QuestLog.GetNextWaypoint then
-    local ok, m, wx, wy = pcall(C_QuestLog.GetNextWaypoint, qid)
-    if ok and m and wx and wy then mapID, x, y = m, wx, wy end
-  end
-  if not mapID and qid and C_QuestLog and C_QuestLog.GetQuestsOnMap and C_Map and C_Map.GetMapInfo then
-    local m = PlayerMapID()
-    for _ = 1, 5 do
-      if not m then break end
-      local ok, list = pcall(C_QuestLog.GetQuestsOnMap, m)
-      if ok and type(list) == "table" then
-        for _, q in ipairs(list) do
-          if q.questID == qid then mapID, x, y = m, q.x, q.y break end
-        end
-      end
-      if mapID then break end
-      local okI, info = pcall(C_Map.GetMapInfo, m)
-      m = okI and info and info.parentMapID
-      if not m or m == 0 then break end
-    end
-  end
-  if mapID and C_Map and C_Map.MapHasArt then
-    local ok, has = pcall(C_Map.MapHasArt, mapID)
-    if ok and not has then mapID = nil end
-  end
-  pl.target = mapID and { mapID, x, y } or false
-  if mapID then return mapID, x, y end
-end
-
--- Host the map in `frame` for this quest. Returns true when a map is showing (the book then
--- reserves room for the plate); false (the book is text only) when the quest has no map position,
--- in combat (no re-hosting then), or when the world map frame is unavailable.
-function mod:PlateShow(frame, entry, cap)
-  if not (frame and entry) then return false end
-  local pl = self.plate
-  if self.zoneOn and self.zoneHost == "plate" and pl then
-    if pl.entry and pl.entry.questID == entry.questID then       -- same quest: nothing to do
-      pl.frame, pl.cap = frame, cap
-      return true
-    end
-    pl.entry, pl.target, pl.frame, pl.cap = entry, nil, frame, cap
-    if not self:PlateTarget() then self:PlateHide(true) return false end
-    self.zoomDirty = true
-    self:PlateCaption()
-    Try("position", self.TickZone, self)          -- now, not on the next tick
-    return true
-  end
-  if QB:InCombat() then return false end
-  if self.state == "zone" then self:SetState("off", true) end    -- one world map: Map mode gives way
-  self.plate = { frame = frame, entry = entry, cap = cap }
-  if not self:PlateTarget() then self.plate = nil return false end
-  self.zoneHost = "plate"
-  if not self:ZoneEnter() then
-    self.zoneHost = "overlay"
-    self.plate = nil
-    return false
-  end
-  self:PlateCaption()
-  self:EnsureDriver()
-  return true
-end
-
-function mod:PlateCaption()
-  local pl = self.plate
-  if not (pl and pl.cap) then return end
-  local mapID = self:PlateTarget()
-  local name
-  if mapID and C_Map and C_Map.GetMapInfo then
-    local ok, info = pcall(C_Map.GetMapInfo, mapID)
-    name = ok and info and info.name
-  end
-  pl.cap:SetText(name or "")
-  pl.cap:SetShown(name and true or false)
-end
-
--- The plate's size changed (the book re-fitted): re-apply the map's size and zoom.
-function mod:PlateLayout()
-  if not (self.zoneOn and self.zoneHost == "plate") then return end
-  self.zoomDirty, self.lastSW = true, nil
-  self:ReapplyZone()
-end
-
--- Give the world map back. `notify`: tell the book its plate is gone (so the text takes the page).
-function mod:PlateHide(notify)
-  local pl = self.plate
-  if not (pl or self.zoneHost == "plate") then return end
-  local wmf = G("WorldMapFrame")
-  if pl and pl.focused and wmf and wmf.ClearFocusedQuestID then Try("ClearFocusedQuestID", wmf.ClearFocusedQuestID, wmf) end
-  if pl and pl.cap then pl.cap:Hide() end
-  if self.zoneOn and self.zoneHost == "plate" then self:ZoneLeave() end
-  self.zoneHost = "overlay"
-  self.plate = nil
-  self:EnsureDriver()
-  if notify then QB:Fire("plate_lost") end
-end
-
 -- ---------------------------------------------------------------- bars
 
 -- Action bars are faded to alpha 0 (not hidden): SetAlpha is not protected, so it is also
@@ -1219,9 +1082,7 @@ function mod:Apply(target)
     hostWanted = "corner"
   end
 
-  -- the quest book's plate hosts the map on its own (PlateHide); Map mode takes it over
-  if needZone and self.zoneHost == "plate" then self:PlateHide(true) end
-  if self.zoneOn and not needZone and self.zoneHost ~= "plate" then self:ZoneLeave() end
+  if self.zoneOn and not needZone then self:ZoneLeave() end
   if self.localOn and not hostWanted then self:LocalLeave() end
   self:LayoutPanel()                      -- the panel is square for "local", `aspect` for "zone"
   self:LayoutCorner()
@@ -1256,7 +1117,7 @@ function mod:Apply(target)
   self:ApplyBars(achieved ~= "off")
 
   self:EnsureDriver()
-  panel:SetShown(self.host == "big" or (self.zoneOn and self.zoneHost ~= "plate"))
+  panel:SetShown(self.host == "big" or self.zoneOn)
   corner:SetShown(self.host == "corner")
   -- tell the others where the minimap is now (the tracker sits under the corner one)
   if self.host ~= hostBefore then QB:Fire("overlay_host", self.host) end
@@ -1327,7 +1188,7 @@ function mod:Tick()
     if self.db.ground == "native" then self:SuppressBlizzardHybrid() end
     self:VerifyGround()
   end
-  if self.zoneOn and (self.state == "zone" or self.zoneHost == "plate") then self:TickZone() end
+  if self.zoneOn and self.state == "zone" then self:TickZone() end
 end
 
 -- ---------------------------------------------------------------- hooks / cluster
@@ -1423,7 +1284,6 @@ end
 
 function mod:OnDisable()
   if self.mover then self:CornerMove(false) end
-  self:PlateHide(true)
   self.noCorner = true          -- give the Minimap back to Blizzard's cluster
   self:SetState("off", true)
   self.noCorner = false
@@ -1447,11 +1307,11 @@ mod.events.DISPLAY_SIZE_CHANGED = function(self) self:Layout() end
 mod.events.UI_SCALE_CHANGED = function(self) self:Layout() end
 mod.events.EDIT_MODE_LAYOUTS_UPDATED = function(self) self:HideCluster() end
 -- make sure the saved CVar holds the user's value, not ours
-mod.events.PLAYER_LOGOUT = function(self) self:PlateHide(true); self.noCorner = true; self:SetState("off", true) end
+mod.events.PLAYER_LOGOUT = function(self) self.noCorner = true; self:SetState("off", true) end
 
 function mod:OnCombatStart()
   if not self.db.combatGuard then return end
-  if self.state ~= "off" or (self.zoneOn and self.zoneHost ~= "plate") or self.host == "big" then
+  if self.state ~= "off" or self.zoneOn or self.host == "big" then
     -- Deviation from "no changes in combat": the frames involved (Minimap, WorldMapFrame,
     -- MinimapCluster) are not protected; every step is pcall-guarded and anything that
     -- fails is retried on PLAYER_REGEN_ENABLED.
@@ -1524,8 +1384,6 @@ local function Diag()
   QB:Say(FrameLine("WorldMapFrame", wmf) .. " mapID=" .. tostring(wmf and wmf.GetMapID and wmf:GetMapID()))
   if wmf and wmf.ScrollContainer then QB:Say(FrameLine("  ScrollContainer", wmf.ScrollContainer)) end
   QB:Say(FrameLine("cornerPanel", mod.cornerPanel) .. " host=" .. tostring(mod.host))
-  QB:Say("world map host: " .. tostring(mod.zoneHost) .. (mod.plate and (" quest=" .. tostring(mod.plate.entry and mod.plate.entry.questID)
-    .. " target=" .. (mod.plate.target and (tostring(mod.plate.target[1]) .. "@" .. string.format("%.2f,%.2f", mod.plate.target[2] or 0, mod.plate.target[3] or 0)) or tostring(mod.plate.target))) or ""))
   QB:Say("bars: mode=" .. tostring(mod.db.bars) .. " frames faded=" .. tostring(#mod.barTweaks.order)
     .. " (found " .. tostring(mod.barsFound or 0) .. ")")
   if mod.lastError then QB:Say("last error: " .. mod.lastError) end

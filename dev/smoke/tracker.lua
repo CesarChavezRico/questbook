@@ -15,7 +15,9 @@ assert(T.blizzard == "hidden")
 local O = QB.modules.overlay
 local pt = { P:GetPoint(1) }
 assert(pt[1] == "TOPRIGHT" and pt[2] == UIParent, "anchored to the screen's top-right corner (it has a position of its own)")
--- tracked quests only by default: quest 100 is watched in the stub
+-- the default is every quest in the log (v0.13); this scenario starts from the watch list: quest 100 is watched in the stub
+assert(T.db.mode == "all", "the default list is every quest")
+slash("tracker tracked")
 local function visibleRows() local n = 0 for _, f in ipairs(__frames) do if f.__parent == P and f.questID and f:IsShown() then n = n + 1 end end return n end
 __runTimers()
 assert(T.total == 1 and T.shown == 1, "one tracked quest, got " .. tostring(T.total))
@@ -34,15 +36,15 @@ assert(row, "row for quest 101")
 -- left click: it becomes the active quest and nothing opens; right click: it opens
 row:Click()
 assert(C_SuperTrack.GetSuperTrackedQuestID() == 101, "left click makes it the active quest")
-assert(not (QuestBookFrame and QuestBookFrame:IsShown()), "left click opens nothing")
+assert(not (QuestBookReader and QuestBookReader:IsShown()), "left click opens nothing")
 C_SuperTrack.SetSuperTrackedQuestID(0)
 row:Click("RightButton")
-assert(QuestBookFrame and QuestBookFrame:IsShown(), "right click opened the book")
+assert(QuestBookReader and QuestBookReader:IsShown(), "right click opened the reader")
 assert(C_SuperTrack.GetSuperTrackedQuestID() == 0, "and did not change the active quest")
-assert(QuestBookFrame.title:GetText():find("Kobolds"), "on the clicked quest: " .. tostring(QuestBookFrame.title:GetText()))
-QuestBookFrame:Hide()
--- the Book link toggles the book
-P.book:Click(); assert(QuestBookFrame:IsShown()); P.book:Click(); assert(not QuestBookFrame:IsShown())
+assert(QuestBookReader.title:GetText():find("Kobolds"), "on the clicked quest: " .. tostring(QuestBookReader.title:GetText()))
+QuestBookReader:Hide()
+-- the Log link toggles the reader
+P.book:Click(); assert(QuestBookReader:IsShown()); P.book:Click(); assert(not QuestBookReader:IsShown())
 -- active quest is marked, ready quest is marked
 C_SuperTrack.SetSuperTrackedQuestID(100); __fire("SUPER_TRACKING_CHANGED"); __runTimers()
 local titles = {}
