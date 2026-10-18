@@ -44,6 +44,20 @@ assert(QuestBookReader and QuestBookReader:IsShown(), "right click opened the re
 assert(C_SuperTrack.GetSuperTrackedQuestID() == 0, "and did not change the active quest")
 assert(QuestBookReader.title:GetText():find("Kobolds"), "on the clicked quest: " .. tostring(QuestBookReader.title:GetText()))
 QuestBookReader:Hide()
+-- the quest's level is before its title (faded), and can be switched off
+local row100
+for _, f in ipairs(__frames) do if f.__parent == P and f.questID == 100 and f:IsShown() then row100 = f end end
+assert(row100.title:GetText():find("3", 1, true) and row100.title:GetText():find("Wolves", 1, true), "level before the title: " .. tostring(row100.title:GetText()))
+slash("tracker level off")
+assert(not row100.title:GetText():find("%f[%d]3%f[%D]  "), "no level with `level off`: " .. tostring(row100.title:GetText()))
+slash("tracker level on")
+-- the list can be put away and brought back (the key, /qb tracker toggle), and stays away across refreshes
+assert(P:IsShown() and not T.db.hidden)
+QuestBook_ToggleList(); assert(not P:IsShown() and T.db.hidden, "the key puts the list away")
+__fire("QUEST_LOG_UPDATE"); __runTimers(); assert(not P:IsShown(), "a log update does not bring it back")
+slash("tracker toggle"); assert(P:IsShown() and not T.db.hidden, "toggle brings it back")
+slash("tracker hide"); assert(not P:IsShown()); slash("tracker show"); assert(P:IsShown())
+slash("tracker hide"); slash("tracker move"); assert(P:IsShown() and T.mover and T.mover:IsShown(), "moving a hidden list shows it first"); slash("tracker lock")
 -- the Log link toggles the reader
 P.book:Click(); assert(QuestBookReader:IsShown()); P.book:Click(); assert(not QuestBookReader:IsShown())
 -- active quest is marked, ready quest is marked

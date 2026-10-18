@@ -215,6 +215,12 @@ charter was dropped on purpose.
   quest) as a 4 px bar under the lines, links drawn with `Style.InkLink` (pixel text, 1 px rule) in cream on dark. The
   "(ready)" and ">" text marks are gone. Not done: a quest-type icon (campaign, daily): the client's icon assets for it are
   not known here.
+- **Level and toggle** (v0.14.5, *written*; Cesar, 2026-10-17: "do we have access to the quest level? let's add it to the list, also we need a
+  way to toggle the list"): yes, `C_QuestLog.GetInfo` gives `level` (the reader's meta line already showed it). It is a faded
+  numeral before the title (`/qb tracker level on|off`); difficulty colours were not used, to keep the active quest the only accent. The
+  whole list is put away and brought back with a key binding ("Show / hide the quest list", none bound by default) or
+  `/qb tracker toggle|show|hide`; the state is saved, a log update does not bring it back, and `/qb tracker move` shows it first.
+  A collapse-to-header state (click the header) was not built.
 - **It has a position of its own** (v0.11.0, *written*; Cesar, 2026-10-17: "when I open the big overlay the quest list
   moves up", then "the list position should be independent from the map"). The list used to hang under the corner
   minimap and jumped to the screen corner whenever the big overlay hid the small minimap. Now its position is its own

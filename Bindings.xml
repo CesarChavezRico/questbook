@@ -2,6 +2,9 @@
   <Binding name="QUESTBOOK_TOGGLE" category="ADDONS">
     QuestBook_Toggle()
   </Binding>
+  <Binding name="QUESTBOOK_LIST" category="ADDONS">
+    QuestBook_ToggleList()
+  </Binding>
   <Binding name="QUESTBOOK_MAPCYCLE" category="ADDONS">
     QuestBook_MapCycle()
   </Binding>

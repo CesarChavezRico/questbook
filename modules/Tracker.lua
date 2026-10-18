@@ -23,6 +23,8 @@ local mod = QB:NewModule("tracker", {
   maxFrac = 0.62,       -- the panel never grows past this fraction of the screen height
   alpha = 0.55,         -- the panel's opacity
   objectives = 3,       -- objective lines shown under each quest
+  level = true,         -- the quest's level before its title (faded)
+  hidden = false,       -- the whole list is put away (the key, `/qb tracker toggle`); the module still works
   -- x, y: where the list sits, the offset of its top-right corner from the screen's top-right corner (y < 0 = down).
   -- Not in the defaults: first run seeds them from where the corner minimap sits, then they are the list's own.
 })
@@ -214,9 +216,20 @@ end
 -- Lay the whole list out in physical pixels: header with its links and the tapering rule, then one block per quest
 -- (title, objective lines, a thin bar when objectives are counted), the active quest marked by a bar at the left and a gold
 -- title, a quest ready to hand in in green.
+-- Put the whole list away or bring it back (a key binding and `/qb tracker toggle`); saved across sessions.
+function mod:SetListShown(on)
+  self.db.hidden = not on
+  self:Refresh()
+end
+function mod:ToggleList()
+  self:SetListShown(self.db.hidden and true or false)
+  QB:Say("quest list " .. (self.db.hidden and "hidden (/qb tracker toggle or the key brings it back)" or "shown"))
+end
+
 function mod:Refresh()
   refreshQueued = false
   if not panel then return end
+  if self.db.hidden then panel:Hide(); return end
   local t = Tone()
   local u = Style.PixelUnit(panel)
   local tp, op, hp = Sizes(self)
@@ -256,7 +269,8 @@ function mod:Refresh()
     r.title:SetFont(FRIZ, Px(tp), ""); r.objs:SetFont(FRIZ, Px(op), "")
     r.title:SetWidth(Px(innerW)); r.objs:SetWidth(Px(innerW))
     r.title:ClearAllPoints(); r.title:SetPoint("TOPLEFT", r, "TOPLEFT", Px(10), 0)
-    r.title:SetText(q.title or "?")
+    local lvl = self.db.level and tonumber(q.level) or nil
+    r.title:SetText(((lvl and lvl > 0) and ("|cff" .. Style.Hex(t.faded) .. lvl .. "|r  ") or "") .. (q.title or "?"))
     local tc = ready and t.done or (active and t.strong or t.ink)
     r.title:SetTextColor(tc[1], tc[2], tc[3], 1)
     local lines = {}
@@ -415,6 +429,7 @@ end
 function mod:Move(on)
   if on then
     if not panel then return end
+    if self.db.hidden then self:SetListShown(true) end       -- a hidden list has nothing to drag
     if not self.mover then
       self.mover = Style.Mover({
         name = "QuestBookTrackerMover",
@@ -470,6 +485,12 @@ QB:RegisterSlash(mod, "tracker", function(rest)
     mod.db.objectives = Style.Clamp(math.floor(n), 0, 8)
   elseif sub == "max" and n then
     mod.db.maxFrac = Style.Clamp(n > 1 and n / 100 or n, 0.05, 0.9)
+  elseif sub == "toggle" then
+    mod:ToggleList()
+  elseif sub == "show" or sub == "hide" then
+    mod:SetListShown(sub == "show")
+  elseif sub == "level" and (arg == "on" or arg == "off") then
+    mod.db.level = (arg == "on")
   elseif sub == "move" then
     mod:Move(true)
   elseif sub == "lock" then
@@ -480,9 +501,10 @@ QB:RegisterSlash(mod, "tracker", function(rest)
   elseif sub == "reset" then
     mod.db.x, mod.db.y = nil, nil            -- Place seeds it again, under the corner minimap
   elseif sub ~= "" and sub ~= "status" then
-    QB:Usage("/qb tracker all|tracked | width <px> | size <px> | alpha <0-1> | lines <n> | max <fraction> | move | lock | pos <x> <y> | reset   (/qb disable tracker gives Blizzard's tracker back)")
+    QB:Usage("/qb tracker toggle|show|hide | level on|off | all|tracked | width <px> | size <px> | alpha <0-1> | lines <n> | max <fraction> | move | lock | pos <x> <y> | reset   (/qb disable tracker gives Blizzard's tracker back)")
   end
   mod:Refresh()
-  QB:Say(string.format("tracker: %s, %d of %d quests shown, width %d px, text %d px, alpha %.2f, %d objective lines, at %d,%d | Blizzard's tracker: %s",
-    mod.db.mode, mod.shown or 0, mod.total or 0, mod.db.widthPx, mod.db.size, mod.db.alpha, mod.db.objectives, mod.db.x or 0, mod.db.y or 0, tostring(mod.blizzard)))
-end, "tracker all|tracked|width|size|alpha|lines|max|move|lock|pos|reset: the compact quest list that replaces Blizzard's tracker")
+  QB:Say(string.format("tracker: %s, %d of %d quests shown, width %d px, text %d px, alpha %.2f, %d objective lines, at %d,%d | list %s, levels %s | Blizzard's tracker: %s",
+    mod.db.mode, mod.shown or 0, mod.total or 0, mod.db.widthPx, mod.db.size, mod.db.alpha, mod.db.objectives, mod.db.x or 0, mod.db.y or 0,
+    mod.db.hidden and "hidden" or "shown", mod.db.level and "on" or "off", tostring(mod.blizzard)))
+end, "tracker toggle|show|hide|level|all|tracked|width|size|alpha|lines|max|move|lock|pos|reset: the compact quest list that replaces Blizzard's tracker")
