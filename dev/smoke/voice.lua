@@ -56,6 +56,17 @@ click(R.talk); click(R.next)                         -- next reads the next ques
 assert(calls[#calls].action == "play" and calls[#calls].ref ~= "q100", "the arrows read the quest they land on: " .. calls[#calls].ref)
 R:Hide()
 
+-- the tracker's Play button: PlayQuest reads any quest by id with its giver's slot, with the reader shut; again = Stop
+local n0 = #calls
+Q:PlayQuest(101)
+assert(#calls == n0 + 1 and calls[#calls].action == "play" and calls[#calls].slot == "female" and calls[#calls].ref == "q101", "PlayQuest sent the quest's own slot")
+assert(Q:SpeakingQuestID() == 101, "and knows which quest is being read")
+Q:PlayQuest(100)
+assert(calls[#calls].ref == "q100" and Q:SpeakingQuestID() == 100, "another quest replaces it")
+Q:PlayQuest(100)
+assert(calls[#calls].action == "stop" and Q:SpeakingQuestID() == nil, "the same quest again is Stop")
+local n1 = #calls; Q:PlayQuest(99999); assert(#calls == n1, "an unknown quest does nothing")
+
 -- walk-and-listen puts the page away when the reading started
 QB:Call("questlog", "Open", 101)
 local n = #calls

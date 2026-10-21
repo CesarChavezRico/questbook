@@ -380,6 +380,7 @@ end
 
 local relayToken = 0      -- the latest relay reading; a timer from an older one does nothing
 local relaySpeaking = false
+local speakingID = nil    -- the quest being read aloud right now (the tracker's Play / Stop follows it), nil when none
 
 -- Ask the bridge to read it. true when the request went out, false (and why) otherwise.
 local function RelaySpeak(entry, desc)
@@ -402,6 +403,7 @@ local function Speak(entry, desc, force)
     local ok, why, text = RelaySpeak(entry, desc)
     if ok then
       mod.relayText = text
+      speakingID = entry.questID
       mod:RelayStarted(#text)
       return true
     end
@@ -415,12 +417,14 @@ local function Speak(entry, desc, force)
   local prefix = IsReadyToTurnIn(entry) and "This quest is complete and ready to turn in. " or ""
   local ok, why = SpeakText(((entry and entry.title) or "") .. ". " .. prefix .. desc)
   if not ok and why then Say("voice problem: " .. why .. " (try /qb voices)") end
+  if ok then speakingID = entry and entry.questID or nil end
   return ok
 end
 
 local function SetSpeaking(state)
   local changed = (isSpeaking ~= state)
   isSpeaking = state
+  if not state then speakingID = nil end
   if R and R.talk then R.talk:SetText(state and "Stop" or "Talk") end
   if changed then QB:Fire("speech_state", state) end       -- the tracker's voice link follows it
 end
@@ -791,6 +795,24 @@ function mod:Nav(delta)
   StopSpeaking()
   Speak(lastEntry, lastDesc, true)
 end
+
+-- The tracker's Play button: read that quest aloud (Stop when it is the one being read), whatever is on the reader's page.
+function mod:PlayQuest(questID)
+  if not questID then return end
+  if isSpeaking and speakingID == questID then StopSpeaking() return end
+  local _, quests = ScanLog()
+  for _, e in ipairs(quests) do
+    if e.questID == questID then
+      StopSpeaking()
+      local desc = GetQuestText(e)
+      if not desc or desc == UNAVAILABLE then Say("voice: this quest has no text to read") return end
+      Speak(e, desc, true)
+      return
+    end
+  end
+end
+-- The quest being read aloud now, or nil.
+function mod:SpeakingQuestID() return isSpeaking and speakingID or nil end
 
 function mod:ToggleSpeak()
   if isSpeaking then

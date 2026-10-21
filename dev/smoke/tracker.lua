@@ -44,13 +44,30 @@ assert(QuestBookReader and QuestBookReader:IsShown(), "right click opened the re
 assert(C_SuperTrack.GetSuperTrackedQuestID() == 0, "and did not change the active quest")
 assert(QuestBookReader.title:GetText():find("Kobolds"), "on the clicked quest: " .. tostring(QuestBookReader.title:GetText()))
 QuestBookReader:Hide()
--- the quest's level is before its title (faded), and can be switched off
+-- the quest's level is at the right of its row, in [ ] (not in the title), and can be switched off
 local row100
 for _, f in ipairs(__frames) do if f.__parent == P and f.questID == 100 and f:IsShown() then row100 = f end end
-assert(row100.title:GetText():find("3", 1, true) and row100.title:GetText():find("Wolves", 1, true), "level before the title: " .. tostring(row100.title:GetText()))
+assert(row100.level:GetText() == "[3]", "level at the right in brackets: " .. tostring(row100.level:GetText()))
+assert(row100.title:GetText() == "Wolves at the Gate" or not row100.title:GetText():find("%f[%d]3%f[%D]"), "no level in the title: " .. tostring(row100.title:GetText()))
+local lp = { row100.level:GetPoint(1) }
+assert(lp[1] == "TOPRIGHT", "the level is anchored to the right edge: " .. tostring(lp[1]))
 slash("tracker level off")
-assert(not row100.title:GetText():find("%f[%d]3%f[%D]  "), "no level with `level off`: " .. tostring(row100.title:GetText()))
+assert(row100.level:GetText() == "", "no level with `level off`: " .. tostring(row100.level:GetText()))
 slash("tracker level on")
+assert(row100.level:GetText() == "[3]")
+-- the objectives are indented from the title
+local tp, op = { row100.title:GetPoint(1) }, { row100.objs:GetPoint(1) }
+assert(op[4] > tp[4], "objectives start to the right of the title: " .. tostring(op[4]) .. " vs " .. tostring(tp[4]))
+-- Play: a button on the row that reads the quest aloud; Stop while it is the one being read; the row is not triggered by it
+assert(row100.play and row100.play:IsShown() and row100.play:GetText() == "Play", "a Play button on the row")
+local activeBefore = C_SuperTrack.GetSuperTrackedQuestID()
+row100.play:Click(); __fire("VOICE_CHAT_TTS_PLAYBACK_STARTED")
+assert(C_SuperTrack.GetSuperTrackedQuestID() == activeBefore, "Play does not change the active quest")
+assert(QB.modules.questlog:SpeakingQuestID() == 100, "Play started reading quest 100: " .. tostring(QB.modules.questlog:SpeakingQuestID()))
+assert(row100.play:GetText() == "Stop", "and says Stop while it is read: " .. tostring(row100.play:GetText()))
+row100.play:Click()
+assert(QB.modules.questlog:SpeakingQuestID() == nil, "Stop ends it")
+assert(row100.play:GetText() == "Play", "and says Play again")
 -- the list can be put away and brought back (the key, /qb tracker toggle), and stays away across refreshes
 assert(P:IsShown() and not T.db.hidden)
 QuestBook_ToggleList(); assert(not P:IsShown() and T.db.hidden, "the key puts the list away")
