@@ -328,6 +328,11 @@ dump says, that the tooltip text matches the log's, and the icon art paths (stoc
   `/qb voice slot` (what the quest on the page would use).
 - **Unverified (needs the rig):** all of it end to end; the ElevenLabs call and the playback live in wow-relay (pull request 12 there).
 
+**Casting (v0.21.1):** the request also carries who is speaking (`meta`: NPC number, giver name, sex, creature type, zone, quest title,
+from the recorded giver; nothing when no giver was recorded), so the bridge can have Jev pick a voice for each quest giver from the
+ElevenLabs Voice Library (`tts.casting` in the bridge; wow-relay `bridge/voices.js`). The slot is still sent, and is what speaks when
+casting is off or fails. Nothing else changes on this side.
+
 ### The quest giver (v0.16.0; 4BI-38 step 1)
 
 - **Why:** the voiceover will pick a voice by who gave the quest (creature type and gender, a per-NPC override, a quick-pick in the

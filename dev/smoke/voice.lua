@@ -9,7 +9,7 @@ local Q, G = QB.modules.questlog, QB.modules.giver
 local calls, connected = {}, true
 WoWAI = {
   IsConnected = function() return connected end,
-  SendTts = function(action, slot, ref, text) calls[#calls + 1] = { action = action, slot = slot, ref = ref, text = text }; return true, #calls end,
+  SendTts = function(action, slot, ref, text, meta) calls[#calls + 1] = { action = action, slot = slot, ref = ref, text = text, meta = meta }; return true, #calls end,
 }
 local spoken, stopped = 0, 0
 C_VoiceChat.SpeakText = function() spoken = spoken + 1 end
@@ -43,6 +43,9 @@ assert(c.text:find("^Wolves%. ") and c.text:find("Go and slay the beasts", 1, tr
 assert(not c.text:find("ready to turn in", 1, true), "no changing prefix: the cache must hold")
 assert(spoken == gameSpoke, "the game did not speak as well")
 assert(R.talk:GetText() == "Stop", "the page shows Stop while it is read")
+-- the giver goes with the request, so the bridge can cast a voice for him; no giver, no meta
+assert(c.meta and c.meta.giver == "Zenn Foulhoof" and c.meta.npc == 3498 and c.meta.sex == 2 and c.meta.type == "Humanoid" and c.meta.title == "Wolves",
+  "the giver and the quest title travel with the request: " .. tostring(c.meta and c.meta.giver))
 -- Stop sends a stop and does not wait for the estimate
 click(R.talk)
 assert(calls[#calls].action == "stop", "Stop sends a stop")
@@ -98,6 +101,7 @@ slash("voice prefetch on")
 calls = {}
 __fire("QUEST_ACCEPTED", 2, 100); __runTimers()
 assert(#calls == 1 and calls[1].action == "prefetch" and calls[1].ref == "q100" and calls[1].slot == "male", "prefetch with the giver's slot")
+assert(calls[1].meta and calls[1].meta.giver == "Zenn Foulhoof" and calls[1].meta.npc == 3498, "and with the giver, so the voice is cast at accept")
 slash("voice prefetch off"); calls = {}
 __fire("QUEST_ACCEPTED", 2, 100); __runTimers()
 assert(#calls == 0, "prefetch off: nothing")
