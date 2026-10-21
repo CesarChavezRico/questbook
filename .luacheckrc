@@ -30,6 +30,8 @@ read_globals = {
   "HybridMinimap_LoadUI", "IsIndoors",
   "Minimap", "MinimapCluster", "WorldMapFrame", "AddonCompartmentFrame", "MicroMenu",
   "MicroMenuContainer",
+  -- shift-click on a quest puts its link into the chat box
+  "IsModifiedClick", "IsShiftKeyDown", "GetQuestLink", "ChatFrameUtil", "ChatEdit_InsertLink",
 }
 -- globals the addon defines (slash, keybindings, saved variables, the ToggleQuestLog reroute)
 globals = {

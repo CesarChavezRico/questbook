@@ -224,6 +224,46 @@ local function PaintPlay(r, speaking)
   r.play:SetWarn(on)
 end
 
+-- Shift + left click on a quest: put its link into the chat box being typed in, the way Blizzard's own tracker does. The link
+-- goes through the game's insert function, which Blizzard's boxes and the WoW AI chat's input (a hook in the relay addon)
+-- both listen to; with no box open it does nothing but say so. Returns true when a box took it.
+local function QuestLink(qid, title, level)
+  local link
+  if C_QuestLog and C_QuestLog.GetQuestLink then
+    local ok, l = pcall(C_QuestLog.GetQuestLink, qid)
+    if ok and type(l) == "string" and l ~= "" then link = l end
+  end
+  if not link and GetQuestLink then
+    local ok, l = pcall(GetQuestLink, qid)
+    if ok and type(l) == "string" and l ~= "" then link = l end
+  end
+  -- built by hand when the client gives none: the same shape as the game's own quest link
+  return link or string.format("|cffffff00|Hquest:%d:%d|h[%s]|h|r", qid, tonumber(level) or 0, tostring(title or "?"))
+end
+
+local function ShiftClicked()
+  if IsModifiedClick and IsModifiedClick("CHATLINK") then return true end
+  return IsShiftKeyDown and IsShiftKeyDown() and true or false
+end
+
+local function InsertQuestLink(r)
+  local link = QuestLink(r.questID, r.qtitle, r.qlevel)
+  local took = false
+  if ChatFrameUtil and type(ChatFrameUtil.InsertLink) == "function" then
+    local ok, res = pcall(ChatFrameUtil.InsertLink, link)
+    took = ok and res and true or false
+  elseif ChatEdit_InsertLink then
+    local ok, res = pcall(ChatEdit_InsertLink, link)
+    took = ok and res and true or false
+  end
+  -- the WoW AI chat's own box is not one of Blizzard's: it takes the link through a hook, and is not told to the caller
+  local ai = _G.WoWAIInput
+  if ai and ai.HasFocus and ai:HasFocus() then took = true end
+  if not took then QB:Say("shift-click puts the quest link into the chat box you are typing in; open one first (Enter, or click in the AI chat's box)") end
+  return took
+end
+mod.InsertQuestLink = function(_, r) return InsertQuestLink(r) end
+
 function mod:RefreshVoice()
   if not (panel and panel.voice) then return end
   local okS, speaking = QB:Call("questlog", "SpeakingQuestID")
@@ -303,6 +343,7 @@ function mod:Refresh()
     local ready = IsReady(q.questID) or allDone
     local active = IsActive(q.questID)
     r.questID, r.active, r.ready = q.questID, active and true or false, ready and true or false
+    r.qtitle, r.qlevel = q.title, q.level
     local rowW = innerW + 20
     r:SetWidth(Px(rowW))
     r.title:SetFont(FRIZ, Px(tp), ""); r.objs:SetFont(FRIZ, Px(op), "")
@@ -365,10 +406,12 @@ function mod:Refresh()
     r.accent:SetWidth(Px(3))
     r.accent:SetVertexColor(t.strong[1], t.strong[2], t.strong[3], 0.95)
     r.accent:SetShown(active and true or false)
-    -- left click: make it the active quest (the one the markers and the game point at); right click: open it
+    -- left click: make it the active quest (the one the markers and the game point at); right click: open it;
+    -- shift + left click: its link into the chat box being typed in
     r:SetScript("OnClick", function(_, button)
       QB:Safe(mod, function()
-        if button == "RightButton" then QB:Call("questlog", "Open", r.questID)
+        if button ~= "RightButton" and ShiftClicked() then InsertQuestLink(r)
+        elseif button == "RightButton" then QB:Call("questlog", "Open", r.questID)
         else QB:Call("questlog", "SetActive", r.questID) end
       end)
     end)

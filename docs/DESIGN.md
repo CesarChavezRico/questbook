@@ -236,6 +236,12 @@ charter was dropped on purpose.
   shows, and says Stop while that quest is the one being read (`SpeakingQuestID`); a second quest replaces the first. The title and the
   objectives stop short of the column; the objectives (and the progress bar) are indented 18 px from the title. A title longer than the
   column wraps earlier than before: widen the list with `/qb tracker width`.
+- **Shift-click a quest** (v0.18.1, *written, not yet seen in game*; Cesar, 2026-10-20: "shift click the quests from the list into the
+  chat or the ai chat"): shift + left click on a row calls the game's link-insert function (`ChatFrameUtil.InsertLink`, else
+  `ChatEdit_InsertLink`) with the quest's link (`C_QuestLog.GetQuestLink`, else `GetQuestLink`, else one built by hand). Blizzard's
+  boxes take it as usual; the WoW AI chat's input takes it through a hook already in the relay addon (`TakeLink`, when that box has
+  the keyboard; its `ExpandLinks` then sends the quest's tooltip with the message). With no box open nothing is inserted and a chat
+  line says so. Shift + right click still opens the reader; the active quest is not changed by a shift-click.
 - **It has a position of its own** (v0.11.0, *written*; Cesar, 2026-10-17: "when I open the big overlay the quest list
   moves up", then "the list position should be independent from the map"). The list used to hang under the corner
   minimap and jumped to the screen corner whenever the big overlay hid the small minimap. Now its position is its own
