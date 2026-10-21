@@ -366,6 +366,14 @@ local function VoiceSlot(questID)
 end
 mod.VoiceSlot = function(_, questID) return VoiceSlot(questID) end
 
+-- Who is speaking, for the bridge's voice casting (Jev picks the voice for each quest giver): the recorded giver and the quest
+-- title; nil when no giver was recorded (the bridge then keeps the narrator slot).
+local function GiverMeta(questID, title)
+  local ok, rec = QB:Call("giver", "Get", questID)
+  if not (ok and rec and rec.name) then return nil end
+  return { npc = rec.npc, giver = rec.name, sex = rec.sex, type = rec.type, zone = rec.zone, title = title }
+end
+
 local function RelayReady()
   if not (_G.WoWAI and type(_G.WoWAI.SendTts) == "function") then return false, "the WoW AI relay addon is not loaded" end
   if type(_G.WoWAI.IsConnected) == "function" and not _G.WoWAI.IsConnected() then return false, "the relay bridge is not connected" end
@@ -387,7 +395,7 @@ local function RelaySpeak(entry, desc)
   local ready, why = RelayReady()
   if not ready then return false, why end
   local text = SpokenText(entry, desc)
-  local ok, err = _G.WoWAI.SendTts("play", VoiceSlot(entry.questID), "q" .. tostring(entry.questID), text)
+  local ok, err = _G.WoWAI.SendTts("play", VoiceSlot(entry.questID), "q" .. tostring(entry.questID), text, GiverMeta(entry.questID, entry.title))
   if not ok then return false, tostring(err) end
   relaySpeaking = true
   relayToken = relayToken + 1
@@ -462,7 +470,7 @@ function mod:Prefetch(questID)
     if e.questID == questID then
       local desc = GetQuestText(e)
       if desc and desc ~= UNAVAILABLE then
-        pcall(_G.WoWAI.SendTts, "prefetch", VoiceSlot(questID), "q" .. tostring(questID), SpokenText(e, desc))
+        pcall(_G.WoWAI.SendTts, "prefetch", VoiceSlot(questID), "q" .. tostring(questID), SpokenText(e, desc), GiverMeta(questID, e.title))
       end
       return
     end
