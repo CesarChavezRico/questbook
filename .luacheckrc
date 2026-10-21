@@ -39,7 +39,7 @@ globals = {
   -- (Blizzard_Minimap/Mainline/Minimap.lua), and puts the original back afterwards
   "C_Minimap",
   "SlashCmdList", "ToggleQuestLog",
-  "QuestBookDB", "QuestBook_Toggle", "QuestBook_ToggleList", "QuestBook_MapCycle", "QuestBook_FullMap",
+  "QuestBookDB", "QuestBook_Toggle", "QuestBook_ToggleList", "QuestBook_MapCycle", "QuestBook_FullMap", "QuestBook_MapRegion",
   "BINDING_HEADER_QUESTBOOK", "BINDING_NAME_QUESTBOOK_TOGGLE",
   "BINDING_NAME_QUESTBOOK_LIST", "BINDING_NAME_QUESTBOOK_MAPCYCLE", "BINDING_NAME_QUESTBOOK_FULLMAP",
   "SLASH_QUESTBOOK1", "SLASH_QUESTBOOK2",

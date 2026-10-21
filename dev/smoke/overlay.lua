@@ -41,6 +41,25 @@ __tick(4, 0.016)
 assert(WorldMapFrame:GetAlpha() == 1, "revealed after the position pass, got " .. WorldMapFrame:GetAlpha())
 assert(WorldMapFrame.ScrollContainer:GetAlpha() < 1, "map translucent")
 a1, a2 = barsAlpha(); assert(a1 == 0 and a2 == 0, "action bars hidden in zone mode")
+-- region view: the player's map is 37, its parent 13; the key shows the parent whole, again goes back (nothing above 13 here)
+assert(WorldMapFrame:GetMapID() == 37, "starts on the player's own map")
+slash("overlay up"); __tick(30, 0.016)
+assert(O.up == 1 and WorldMapFrame:GetMapID() == 13, "one level out shows the parent map: " .. tostring(WorldMapFrame:GetMapID()))
+QuestBook_MapRegion(); __tick(30, 0.016)
+assert(O.up == 0 and WorldMapFrame:GetMapID() == 37, "at the top the key goes back to the player's own map")
+slash("overlay up"); slash("overlay down"); __tick(30, 0.016)
+assert(O.up == 0 and WorldMapFrame:GetMapID() == 37, "down comes back in")
+slash("overlay up"); slash("overlay reset"); __tick(30, 0.016)
+assert(O.up == 0 and WorldMapFrame:GetMapID() == 37, "reset")
+-- the player walks into another map: back to the player's own
+slash("overlay up"); __tick(30, 0.016); assert(O.up == 1)
+local oldBest = C_Map.GetBestMapForUnit
+C_Map.GetBestMapForUnit = function() return 99 end
+MapUtil = nil
+__tick(30, 0.016)
+assert(O.up == 0 and WorldMapFrame:GetMapID() == 99, "a new player map resets the region: " .. tostring(WorldMapFrame:GetMapID()))
+C_Map.GetBestMapForUnit = oldBest
+__tick(30, 0.016)
 print("zone ok")
 
 slash("overlay cycle"); __tick(10)

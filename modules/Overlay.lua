@@ -708,6 +708,65 @@ local function PlayerMapID()
   return nil
 end
 
+-- Regions (Cesar, 2026-10-20: "zoom out to the next region view of the map ... the quest location is not at that zoom level"):
+-- the overland map shows the player's own map, and in a city that is the city, while the quest is on the zone map above it.
+-- `up` is how many levels up the parent chain the map shows (0 = the player's map); the key (or /qb overlay up|down|reset)
+-- changes it, and it goes back to 0 when the player's own map changes (walking out of the city). The world and the cosmos are
+-- not places to read a quest on, so the climb stops at the continent.
+mod.up = 0
+mod.upBase = nil
+mod.upShown = 0
+
+local function ParentMap(id)
+  if not (id and C_Map and C_Map.GetMapInfo) then return nil end
+  local ok, info = pcall(C_Map.GetMapInfo, id)
+  local p = ok and info and info.parentMapID
+  if not p or p == 0 then return nil end
+  local okP, pinfo = pcall(C_Map.GetMapInfo, p)
+  local mt = okP and pinfo and pinfo.mapType
+  if type(mt) == "number" and mt <= 1 then return nil end      -- Enum.UIMapType: 0 cosmic, 1 world
+  return p
+end
+
+-- The map the overland map should show now: the player's, `up` levels up (as many as there are).
+function mod:ShownMapID()
+  local base = PlayerMapID()
+  if base ~= self.upBase then self.upBase, self.up = base, 0 end
+  local id, n = base, 0
+  while id and n < self.up do
+    local p = ParentMap(id)
+    if not p then break end
+    id, n = p, n + 1
+  end
+  self.up, self.upShown = n, n
+  return id or base
+end
+
+-- dir: "up" (one level out; at the top it goes back to the player's own map), "down" (one level in), "reset".
+function mod:Region(dir)
+  if not self.zoneOn then QB:Say("overlay: the overland map is not open (the map overlay key); region view works there") return end
+  self:ShownMapID()                                            -- settles `up` against the player's current map
+  local max, id = 0, self.upBase
+  while true do
+    id = ParentMap(id)
+    if not id then break end
+    max = max + 1
+  end
+  if max == 0 then QB:Say("overlay: there is no larger region than this map") return end
+  if dir == "up" then self.up = (self.up < max) and (self.up + 1) or 0
+  elseif dir == "down" then self.up = math.max(0, self.up - 1)
+  else self.up = 0 end
+  self.zoomDirty = true
+  local shown = self:ShownMapID()
+  local name
+  if C_Map and C_Map.GetMapInfo then
+    local ok, info = pcall(C_Map.GetMapInfo, shown)
+    name = ok and info and info.name or nil
+  end
+  QB:Say("overlay: showing " .. tostring(name or shown) .. (self.up > 0 and (" (" .. self.up .. " level" .. (self.up > 1 and "s" or "") .. " out; the key again goes further, then back)") or " (your own map)"))
+end
+function mod:RegionCycle() self:Region("up") end
+
 mod.pinMouse = setmetatable({}, { __mode = "k" })   -- pin -> { click, motion }
 
 function mod:PinDisable(pin)
@@ -889,7 +948,7 @@ function mod:TickZone()
   self:ReapplyZone()
 
   local mapID, px, py
-  mapID = PlayerMapID()
+  mapID = self:ShownMapID()
   if mapID and wmf.GetMapID and wmf:GetMapID() ~= mapID then
     wmf:SetMapID(mapID)
     self.zoomDirty = true
@@ -911,7 +970,7 @@ function mod:TickZone()
   if not (px and py) then return end
 
   local minS, maxS = sc:GetScaleForMinZoom(), sc:GetScaleForMaxZoom()
-  local zoom = tonumber(self.db.zoneZoom) or 2
+  local zoom = (self.upShown > 0) and 1 or (tonumber(self.db.zoneZoom) or 2)      -- a region is shown whole
   local want = clamp(minS * zoom, minS, maxS)
   local cur = sc:GetCanvasScale()
   if self.zoomDirty or math.abs(cur - want) > want * 0.01 then
@@ -1463,6 +1522,8 @@ QB:RegisterSlash(mod, "overlay", function(rest)
     mod:Cycle()
   elseif sub == "off" or sub == "local" or sub == "zone" then
     mod:SetState(sub)
+  elseif sub == "up" or sub == "out" or sub == "down" or sub == "reset" then
+    mod:Region((sub == "out") and "up" or sub)
   elseif sub == "minimap" then
     mod:SetState("local")
   elseif sub == "map" then
@@ -1545,7 +1606,7 @@ QB:RegisterSlash(mod, "overlay", function(rest)
     Diag()
     return
   elseif sub ~= "" and sub ~= "status" then
-    QB:Usage("/qb overlay corner ... (the small minimap) | cycle | off | local | zone | shape rect|circle | size <n> | aspect <n> | pos <x> <y> | alpha <local> [zone] | zoom <n> | rotate on|off | ground hybrid|native|auto | bars actions|all|none | icons <n> | mask | diag")
+    QB:Usage("/qb overlay corner ... (the small minimap) | cycle | up | down | reset | off | local | zone | shape rect|circle | size <n> | aspect <n> | pos <x> <y> | alpha <local> [zone] | zoom <n> | rotate on|off | ground hybrid|native|auto | bars actions|all|none | icons <n> | mask | diag")
   end
   QB:Say(Status())
 end, "map overlay (cycle | off | local | zone | shape | size | alpha | rotate | ground | bars | icons | mask | diag)")
