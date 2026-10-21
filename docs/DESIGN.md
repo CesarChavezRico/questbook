@@ -104,6 +104,21 @@ close-up on the player, and the press after that is off. Where the player's map 
 back to 0 when the state changes or the player's own map changes. UNVERIFIED in game: that the client's `GetMapInfo` gives
 `parentMapID` for Darnassus and that the world map can be set to the parent while the player is in the city.
 
+### Quest icons on nameplates (v0.21.0; 4BI-36)
+
+Cesar, 2026-10-21: "display an icon if there's a quest associated with killing the unit or if it drops something for a quest".
+`modules/Plates.lua`, *written, not yet seen in game*. Research (2026-10-20, Forever UI source `forever` branch 1.60.1 and public addons):
+nameplates exist for the Classic game type (`C_NamePlate.GetNamePlateForUnit`, `NAME_PLATE_UNIT_ADDED`);
+`C_QuestLog.UnitIsRelatedToActiveQuest(unit)` is documented (Blizzard's own UI never calls it); `C_TooltipInfo.GetUnit` returns lines typed
+QuestTitle (17), QuestObjective (8), QuestPlayer (18). The module: on each plate (and again after a quest-log change, debounced) it asks
+`UnitIsRelatedToActiveQuest`; if true it reads the tooltip's QuestObjective lines up to the first QuestPlayer line, matches each, by its
+text without the counts, to `C_QuestLog.GetQuestObjectives` of the quests in the log, and takes the kind from the objective's `type`
+("monster" = kill = sword, "item" = loot = bag, else a plain mark) and the counts from `numFulfilled / numRequired`. Done objectives show
+nothing; players and units you cannot attack are skipped; forbidden plates are not touched (the game does not hand them out). The kill/loot
+split by matching tooltip text to objective text is our own method, not seen elsewhere. UNVERIFIED in game: that the calls answer as the
+dump says, that the tooltip text matches the log's, and the icon art paths (stock icons `INV_Sword_04`, `INV_Misc_Bag_08`,
+`GossipFrame\AvailableQuestIcon`). `/qb plates diag` prints what the module sees for the target or the unit under the mouse.
+
 ### The camera
 
 - While the overlay is open the camera is slid sideways so the character sits left of centre and the
