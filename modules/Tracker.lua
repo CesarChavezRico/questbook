@@ -23,6 +23,7 @@ local mod = QB:NewModule("tracker", {
   maxFrac = 0.62,       -- the panel never grows past this fraction of the screen height
   alpha = 0.55,         -- the panel's opacity
   objectives = 3,       -- objective lines shown under each quest
+  perPage = 10,         -- most quests to a page (fewer when they do not fit the panel); tabs next to the title move between pages
   level = true,         -- the quest's level at the right of its row, in [ ] (faded)
   hidden = false,       -- the whole list is put away (the key, `/qb tracker toggle`); the module still works
   collapsed = false,    -- only the title row is shown (click "QUESTS"); the links stay
@@ -292,6 +293,100 @@ function mod:ToggleList()
   QB:Say("quest list " .. (self.db.hidden and "hidden (/qb tracker toggle or the key brings it back)" or "shown"))
 end
 
+-- Everything about one quest's row except where it sits and what a click does: its texts, colours, the level and Play in the
+-- right-hand column, the objectives and the progress bar. Returns the row's height in UI units (the caller sizes and places it).
+-- Used on the scratch row to measure a page, and on the real rows to show it.
+local function FillRow(self, r, q, c)
+  local t, u, tp, op, innerW = c.t, c.u, c.tp, c.op, c.innerW
+  local objs, allDone, frac = Objectives(q.questID, c.nobj)
+  local ready = IsReady(q.questID) or allDone
+  local active = IsActive(q.questID)
+  r.questID, r.active, r.ready = q.questID, active and true or false, ready and true or false
+  r.qtitle, r.qlevel = q.title, q.level
+  r:SetWidth(Px(innerW + 20))
+  r.title:SetFont(FRIZ, Px(tp), ""); r.objs:SetFont(FRIZ, Px(op), "")
+  -- the title and the objectives stop short of the right-hand column; the objectives are indented from the title
+  r.title:SetWidth(Px(innerW - COLW)); r.objs:SetWidth(Px(innerW - COLW - INDENT))
+  r.title:ClearAllPoints(); r.title:SetPoint("TOPLEFT", r, "TOPLEFT", Px(10), 0)
+  local lvl = self.db.level and tonumber(q.level) or nil
+  r.title:SetText(q.title or "?")
+  r.level:SetFont(FRIZ, Px(tp), "")
+  r.level:SetWidth(Px(COLW))
+  r.level:ClearAllPoints(); r.level:SetPoint("TOPRIGHT", r, "TOPRIGHT", -Px(10), 0)
+  r.level:SetText((lvl and lvl > 0) and ("[" .. lvl .. "]") or "")
+  r.level:SetTextColor(t.faded[1], t.faded[2], t.faded[3], 1)
+  r.level:Show()
+  local lineH = math.floor(tp * 1.25 + 0.5)       -- about one title line: the Play link sits under the level
+  r.play:SetPx(op)
+  r.play:ClearAllPoints(); r.play:SetPoint("TOPRIGHT", r, "TOPRIGHT", -Px(10), -Px(lineH + 2))
+  r.play:Show()
+  PaintPlay(r, c.speakingNow)
+  local tc = ready and t.done or (active and t.strong or t.ink)
+  r.title:SetTextColor(tc[1], tc[2], tc[3], 1)
+  local lines = {}
+  if ready then
+    lines[1] = "|cff" .. Style.Hex(t.done) .. "ready to turn in|r"
+  else
+    for _, o in ipairs(objs) do
+      lines[#lines + 1] = "|cff" .. Style.Hex(o.done and t.done or t.faded) .. o.text .. "|r"
+    end
+  end
+  r.objs:SetText(table.concat(lines, "\n"))
+  local th = (r.title:GetStringHeight() or 0) / u
+  local h = th
+  if #lines > 0 then
+    r.objs:ClearAllPoints(); r.objs:SetPoint("TOPLEFT", r, "TOPLEFT", Px(10 + INDENT), -Px(th + 4))
+    h = th + 4 + (r.objs:GetStringHeight() or 0) / u
+    r.objs:Show()
+  else
+    r.objs:Hide()
+  end
+  h = math.max(h, lineH + 2 + op + 8)             -- room for the level and the Play link in the right-hand column
+  if frac then
+    local by = h + 8
+    r.track:ClearAllPoints(); r.track:SetPoint("TOPLEFT", r, "TOPLEFT", Px(10 + INDENT), -Px(by)); r.track:SetSize(Px(innerW - INDENT), Px(4))
+    r.track:SetVertexColor(t.hairline[1], t.hairline[2], t.hairline[3], 0.30)
+    local fc = ready and t.done or (active and t.strong or t.faded)
+    r.fill:ClearAllPoints(); r.fill:SetPoint("TOPLEFT", r.track, "TOPLEFT", 0, 0)
+    r.fill:SetSize(math.max(Px(1), Px(innerW - INDENT) * Style.Clamp(frac, 0, 1)), Px(4))
+    r.fill:SetVertexColor(fc[1], fc[2], fc[3], active and 0.95 or 0.75)
+    r.track:Show(); r.fill:Show()
+    h = by + 4
+  else
+    r.track:Hide(); r.fill:Hide()
+  end
+  return h
+end
+
+-- The page tabs next to the title: "1 2 3", the page you are on in the warn colour; none when everything fits on one page.
+local function PaintTabs(self, n, hp)
+  panel.tabs = panel.tabs or {}
+  for i = 1, math.max(n, #panel.tabs) do
+    local b = panel.tabs[i]
+    if i <= n then
+      if not b then
+        b = Style.InkLink(panel, hp, function() mod:SetPage(i) end, LinkPalette())
+        b:SetText(tostring(i))
+        panel.tabs[i] = b
+      end
+      b:SetPx(hp)
+      b:ClearAllPoints()
+      if i == 1 then b:SetPoint("TOPLEFT", header, "TOPRIGHT", Px(20), 0)
+      else b:SetPoint("TOPLEFT", panel.tabs[i - 1], "TOPRIGHT", Px(12), 0) end
+      b:SetWarn(i == self.page)
+      b:Show()
+    elseif b then
+      b:Hide()
+    end
+  end
+  if n <= 1 then for _, b in ipairs(panel.tabs) do b:Hide() end end
+end
+
+function mod:SetPage(n)
+  self.page = math.max(1, math.floor(tonumber(n) or 1))
+  self:Refresh()
+end
+
 function mod:Refresh()
   refreshQueued = false
   if not panel then return end
@@ -325,6 +420,7 @@ function mod:Refresh()
   if self.db.collapsed then
     -- only the title row: no quests, no rule; the links stay so there is always something to click
     for _, r in ipairs(rows) do r:Hide() end
+    for _, b in ipairs(panel.tabs or {}) do b:Hide() end
     more:Hide()
     self.shown, self.total = 0, #list
     panel:SetHeight(Px(PADY + hp + 8 + PADY - 4))
@@ -333,91 +429,59 @@ function mod:Refresh()
     return
   end
 
-  local shown = 0
   local okS, speakingNow = QB:Call("questlog", "SpeakingQuestID")
   if not okS then speakingNow = nil end
   for _, r in ipairs(rows) do r:Hide() end
+  local ctx = { t = t, u = u, tp = tp, op = op, innerW = innerW, speakingNow = speakingNow, nobj = tonumber(self.db.objectives) or 3 }
+
+  -- Pages (Cesar, 2026-10-20: "maybe pages ... a tab controller next to QUESTS"): up to `perPage` quests to a page, and never
+  -- more than fit in the panel (so a larger font makes shorter pages, and no quest is ever out of reach). Heights are measured on
+  -- a scratch row that is never shown.
+  local perPage = Style.Clamp(math.floor(tonumber(self.db.perPage) or 10), 1, 40)
+  local room = maxHpx - 24 - y                                     -- what the rows of one page may take
+  local pages, cur, used = {}, nil, 0
+  local scratch = Row(0)
   for i, q in ipairs(list) do
-    local r = Row(i)
-    local objs, allDone, frac = Objectives(q.questID, tonumber(self.db.objectives) or 3)
-    local ready = IsReady(q.questID) or allDone
-    local active = IsActive(q.questID)
-    r.questID, r.active, r.ready = q.questID, active and true or false, ready and true or false
-    r.qtitle, r.qlevel = q.title, q.level
-    local rowW = innerW + 20
-    r:SetWidth(Px(rowW))
-    r.title:SetFont(FRIZ, Px(tp), ""); r.objs:SetFont(FRIZ, Px(op), "")
-    -- the title and the objectives stop short of the right-hand column; the objectives are indented from the title
-    r.title:SetWidth(Px(innerW - COLW)); r.objs:SetWidth(Px(innerW - COLW - INDENT))
-    r.title:ClearAllPoints(); r.title:SetPoint("TOPLEFT", r, "TOPLEFT", Px(10), 0)
-    local lvl = self.db.level and tonumber(q.level) or nil
-    r.title:SetText(q.title or "?")
-    r.level:SetFont(FRIZ, Px(tp), "")
-    r.level:SetWidth(Px(COLW))
-    r.level:ClearAllPoints(); r.level:SetPoint("TOPRIGHT", r, "TOPRIGHT", -Px(10), 0)
-    r.level:SetText((lvl and lvl > 0) and ("[" .. lvl .. "]") or "")
-    r.level:SetTextColor(t.faded[1], t.faded[2], t.faded[3], 1)
-    r.level:Show()
-    local lineH = math.floor(tp * 1.25 + 0.5)       -- about one title line: the Play link sits under the level
-    r.play:SetPx(op)
-    r.play:ClearAllPoints(); r.play:SetPoint("TOPRIGHT", r, "TOPRIGHT", -Px(10), -Px(lineH + 2))
-    r.play:Show()
-    PaintPlay(r, speakingNow)
-    local tc = ready and t.done or (active and t.strong or t.ink)
-    r.title:SetTextColor(tc[1], tc[2], tc[3], 1)
-    local lines = {}
-    if ready then
-      lines[1] = "|cff" .. Style.Hex(t.done) .. "ready to turn in|r"
+    local h = FillRow(self, scratch, q, ctx)
+    if not cur or (cur.last - cur.first + 1) >= perPage or used + h + ROWGAP > room then
+      cur = { first = i, last = i }; pages[#pages + 1] = cur; used = h + ROWGAP
     else
-      for _, o in ipairs(objs) do
-        lines[#lines + 1] = "|cff" .. Style.Hex(o.done and t.done or t.faded) .. o.text .. "|r"
-      end
+      cur.last = i; used = used + h + ROWGAP
     end
-    r.objs:SetText(table.concat(lines, "\n"))
-    local th = (r.title:GetStringHeight() or 0) / u
-    local h = th
-    if #lines > 0 then
-      r.objs:ClearAllPoints(); r.objs:SetPoint("TOPLEFT", r, "TOPLEFT", Px(10 + INDENT), -Px(th + 4))
-      h = th + 4 + (r.objs:GetStringHeight() or 0) / u
-      r.objs:Show()
-    else
-      r.objs:Hide()
-    end
-    h = math.max(h, lineH + 2 + op + 8)             -- room for the level and the Play link in the right-hand column
-    if frac then
-      local by = h + 8
-      r.track:ClearAllPoints(); r.track:SetPoint("TOPLEFT", r, "TOPLEFT", Px(10 + INDENT), -Px(by)); r.track:SetSize(Px(innerW - INDENT), Px(4))
-      r.track:SetVertexColor(t.hairline[1], t.hairline[2], t.hairline[3], 0.30)
-      local fc = ready and t.done or (active and t.strong or t.faded)
-      r.fill:ClearAllPoints(); r.fill:SetPoint("TOPLEFT", r.track, "TOPLEFT", 0, 0)
-      r.fill:SetSize(math.max(Px(1), Px(innerW - INDENT) * Style.Clamp(frac, 0, 1)), Px(4))
-      r.fill:SetVertexColor(fc[1], fc[2], fc[3], active and 0.95 or 0.75)
-      r.track:Show(); r.fill:Show()
-      h = by + 4
-    else
-      r.track:Hide(); r.fill:Hide()
-    end
-    if y + h + ROWGAP > maxHpx - 24 and i > 1 then break end     -- out of room: the rest is "more"
-    r:SetHeight(Px(h))
-    r:ClearAllPoints()
-    r:SetPoint("TOPLEFT", panel, "TOPLEFT", Px(PADX - 10), -Px(y))
-    r.hover:SetVertexColor(t.hover[1], t.hover[2], t.hover[3], t.hover[4])
-    r.accent:ClearAllPoints(); r.accent:SetPoint("TOPLEFT", r, "TOPLEFT", 0, 0); r.accent:SetPoint("BOTTOMLEFT", r, "BOTTOMLEFT", 0, 0)
-    r.accent:SetWidth(Px(3))
-    r.accent:SetVertexColor(t.strong[1], t.strong[2], t.strong[3], 0.95)
-    r.accent:SetShown(active and true or false)
-    -- left click: make it the active quest (the one the markers and the game point at); right click: open it;
-    -- shift + left click: its link into the chat box being typed in
-    r:SetScript("OnClick", function(_, button)
-      QB:Safe(mod, function()
-        if button ~= "RightButton" and ShiftClicked() then InsertQuestLink(r)
-        elseif button == "RightButton" then QB:Call("questlog", "Open", r.questID)
-        else QB:Call("questlog", "SetActive", r.questID) end
+  end
+  scratch:Hide()
+  self.page = Style.Clamp(math.floor(tonumber(self.page) or 1), 1, math.max(1, #pages))
+  self.pages = #pages
+  local pg = pages[self.page]
+  PaintTabs(self, #pages, hp)
+
+  local shown = 0
+  if pg then
+    for i = pg.first, pg.last do
+      local q = list[i]
+      local r = Row(i - pg.first + 1)
+      local h = FillRow(self, r, q, ctx)
+      r:SetHeight(Px(h))
+      r:ClearAllPoints()
+      r:SetPoint("TOPLEFT", panel, "TOPLEFT", Px(PADX - 10), -Px(y))
+      r.hover:SetVertexColor(t.hover[1], t.hover[2], t.hover[3], t.hover[4])
+      r.accent:ClearAllPoints(); r.accent:SetPoint("TOPLEFT", r, "TOPLEFT", 0, 0); r.accent:SetPoint("BOTTOMLEFT", r, "BOTTOMLEFT", 0, 0)
+      r.accent:SetWidth(Px(3))
+      r.accent:SetVertexColor(t.strong[1], t.strong[2], t.strong[3], 0.95)
+      r.accent:SetShown(r.active)
+      -- left click: make it the active quest (the one the markers and the game point at); right click: open it;
+      -- shift + left click: its link into the chat box being typed in
+      r:SetScript("OnClick", function(_, button)
+        QB:Safe(mod, function()
+          if button ~= "RightButton" and ShiftClicked() then InsertQuestLink(r)
+          elseif button == "RightButton" then QB:Call("questlog", "Open", r.questID)
+          else QB:Call("questlog", "SetActive", r.questID) end
+        end)
       end)
-    end)
-    r:Show()
-    y = y + h + ROWGAP
-    shown = i
+      r:Show()
+      y = y + h + ROWGAP
+      shown = shown + 1
+    end
   end
   if #list == 0 then
     -- an empty list still says so, and points to the log
@@ -437,16 +501,7 @@ function mod:Refresh()
     r:Show()
     y = y + h + ROWGAP
   end
-  local hidden = #list - shown
-  if hidden > 0 then
-    more:SetText("+ " .. hidden .. " more in the log")
-    more:ClearAllPoints()
-    more:SetPoint("TOPLEFT", panel, "TOPLEFT", Px(PADX), -Px(y - 6))
-    more:Show()
-    y = y + hp + 14
-  else
-    more:Hide()
-  end
+  more:Hide()
   panel:SetHeight(Px(y - ROWGAP + PADY))
   self.shown, self.total = shown, #list
   Place(self)
@@ -580,6 +635,11 @@ QB:RegisterSlash(mod, "tracker", function(rest)
     mod.db.objectives = Style.Clamp(math.floor(n), 0, 8)
   elseif sub == "max" and n then
     mod.db.maxFrac = Style.Clamp(n > 1 and n / 100 or n, 0.05, 0.9)
+  elseif sub == "perpage" and n then
+    mod.db.perPage = Style.Clamp(math.floor(n), 1, 40)
+    mod.page = 1
+  elseif sub == "page" and n then
+    mod.page = math.max(1, math.floor(n))
   elseif sub == "toggle" then
     mod:ToggleList()
   elseif sub == "collapse" or sub == "expand" then
@@ -598,10 +658,10 @@ QB:RegisterSlash(mod, "tracker", function(rest)
   elseif sub == "reset" then
     mod.db.x, mod.db.y = nil, nil            -- Place seeds it again, under the corner minimap
   elseif sub ~= "" and sub ~= "status" then
-    QB:Usage("/qb tracker toggle|show|hide | collapse|expand (or click the title) | level on|off | all|tracked | width <px> | size <px> | alpha <0-1> | lines <n> | max <fraction> | move | lock | pos <x> <y> | reset   (/qb disable tracker gives Blizzard's tracker back)")
+    QB:Usage("/qb tracker toggle|show|hide | collapse|expand (or click the title) | level on|off | all|tracked | width <px> | size <px> | alpha <0-1> | lines <n> | perpage <n> | page <n> | max <fraction> | move | lock | pos <x> <y> | reset   (/qb disable tracker gives Blizzard's tracker back)")
   end
   mod:Refresh()
-  QB:Say(string.format("tracker: %s, %d of %d quests shown, width %d px, text %d px, alpha %.2f, %d objective lines, at %d,%d | list %s%s, levels %s | Blizzard's tracker: %s",
-    mod.db.mode, mod.shown or 0, mod.total or 0, mod.db.widthPx, mod.db.size, mod.db.alpha, mod.db.objectives, mod.db.x or 0, mod.db.y or 0,
+  QB:Say(string.format("tracker: %s, %d of %d quests shown (page %d of %d, up to %d a page), width %d px, text %d px, alpha %.2f, %d objective lines, at %d,%d | list %s%s, levels %s | Blizzard's tracker: %s",
+    mod.db.mode, mod.shown or 0, mod.total or 0, mod.page or 1, mod.pages or 1, mod.db.perPage, mod.db.widthPx, mod.db.size, mod.db.alpha, mod.db.objectives, mod.db.x or 0, mod.db.y or 0,
     mod.db.hidden and "hidden" or "shown", mod.db.collapsed and " (collapsed)" or "", mod.db.level and "on" or "off", tostring(mod.blizzard)))
 end, "tracker toggle|show|hide|collapse|expand|level|all|tracked|width|size|alpha|lines|max|move|lock|pos|reset: the compact quest list that replaces Blizzard's tracker")

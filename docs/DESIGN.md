@@ -242,6 +242,13 @@ charter was dropped on purpose.
   boxes take it as usual; the WoW AI chat's input takes it through a hook already in the relay addon (`TakeLink`, when that box has
   the keyboard; its `ExpandLinks` then sends the quest's tooltip with the message). With no box open nothing is inserted and a chat
   line says so. Shift + right click still opens the reader; the active quest is not changed by a shift-click.
+- **Pages** (v0.19.0, *written, not yet seen in game*; Cesar, 2026-10-20: "show more quests in the list, maybe pages ... a tab controller
+  next to QUESTS to move between the pages of 10"): the list shows up to `perPage` quests (default 10; `/qb tracker perpage <n>`, 1 to
+  40) and never more than fit in the panel, so a bigger font makes shorter pages and no quest is out of reach (the old "+ N more in
+  the log" link is gone). Row heights are measured on a scratch row, pages are cut greedily, and the current page is kept in memory
+  only (`/qb tracker page <n>` too). The tabs "1 2 3" sit right of the title, the current one in the warn colour, and show only when
+  there is more than one page. The game's limit on quests in the log is `Constants.QuestLogConsts.MAXIMUM_NUM_QUESTS_LOG_CAN_ACCEPT`,
+  40 in the Forever API dump (`C_QuestLog.GetMaxNumQuestsCanAccept()` in game says what this client really allows; UNVERIFIED).
 - **It has a position of its own** (v0.11.0, *written*; Cesar, 2026-10-17: "when I open the big overlay the quest list
   moves up", then "the list position should be independent from the map"). The list used to hang under the corner
   minimap and jumped to the screen corner whenever the big overlay hid the small minimap. Now its position is its own
