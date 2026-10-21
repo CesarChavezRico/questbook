@@ -68,6 +68,36 @@ assert(row100.play:GetText() == "Stop", "and says Stop while it is read: " .. to
 row100.play:Click()
 assert(QB.modules.questlog:SpeakingQuestID() == nil, "Stop ends it")
 assert(row100.play:GetText() == "Play", "and says Play again")
+-- shift + left click: the quest's link goes into the chat box being typed in (Blizzard's, or the WoW AI chat's), nothing else happens
+local inserted
+ChatFrameUtil = { InsertLink = function(text) inserted = text; return true end }
+local shiftDown = true
+IsShiftKeyDown = function() return shiftDown end
+local act0 = C_SuperTrack.GetSuperTrackedQuestID()
+row100:Click()
+assert(inserted and inserted:find("Hquest:100", 1, true) and inserted:find("Wolves", 1, true), "shift-click inserts the quest link: " .. tostring(inserted))
+assert(C_SuperTrack.GetSuperTrackedQuestID() == act0, "and does not change the active quest")
+inserted = nil
+row100:Click("RightButton")
+assert(inserted == nil and QuestBookReader:IsShown(), "shift + right click still opens the reader, no link")
+QuestBookReader:Hide()
+-- no box open: it says how to use it, and inserts nothing
+ChatFrameUtil.InsertLink = function() return false end
+__take(); row100:Click()
+local said = table.concat(__take(), "\n")
+assert(said:find("chat box", 1, true), "with no box open it says what to do: " .. said)
+-- the AI chat's input takes it through the relay addon's hook: having the keyboard counts
+WoWAIInput = { HasFocus = function() return true end }
+__take(); row100:Click()
+assert(#__take() == 0, "no hint when the AI chat's box has the keyboard")
+WoWAIInput = nil
+shiftDown = false
+ChatFrameUtil = nil
+inserted = nil
+row100:Click()
+assert(inserted == nil, "no shift: a plain click only makes it active")
+assert(C_SuperTrack.GetSuperTrackedQuestID() == 100, "left click without shift: active quest")
+C_SuperTrack.SetSuperTrackedQuestID(act0 or 0)
 -- the list can be put away and brought back (the key, /qb tracker toggle), and stays away across refreshes
 assert(P:IsShown() and not T.db.hidden)
 QuestBook_ToggleList(); assert(not P:IsShown() and T.db.hidden, "the key puts the list away")
