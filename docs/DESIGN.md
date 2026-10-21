@@ -228,6 +228,14 @@ charter was dropped on purpose.
   v0.14.6 adds the state between: the title ("QUESTS 9") is a link; a click collapses the list to its title row (the
   Voice and Log links stay, so there is always something on screen to click), another click expands it; saved,
   `/qb tracker collapse|expand`.
+- **Rows: level at the right, indented objectives, Play** (v0.18.0, *written, not yet seen in game*; Cesar, 2026-10-20: "a button to
+  play the read out loud from the quest list", "the quest objectives indented from the title", "the level on the right hand side of the
+  quest in between [ ]"): each row has a right-hand column 64 px wide: the level as `[9]` (faded, same size as the title, replacing the
+  numeral before the title; `/qb tracker level off` still hides it) and, under it, a Play link. Play is a button of its own (a click on it
+  does not make the quest active) that calls `questlog:PlayQuest(questID)`: it reads that quest with its giver's slot whatever the reader
+  shows, and says Stop while that quest is the one being read (`SpeakingQuestID`); a second quest replaces the first. The title and the
+  objectives stop short of the column; the objectives (and the progress bar) are indented 18 px from the title. A title longer than the
+  column wraps earlier than before: widen the list with `/qb tracker width`.
 - **It has a position of its own** (v0.11.0, *written*; Cesar, 2026-10-17: "when I open the big overlay the quest list
   moves up", then "the list position should be independent from the map"). The list used to hang under the corner
   minimap and jumped to the screen corner whenever the big overlay hid the small minimap. Now its position is its own

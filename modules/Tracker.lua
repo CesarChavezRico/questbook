@@ -23,7 +23,7 @@ local mod = QB:NewModule("tracker", {
   maxFrac = 0.62,       -- the panel never grows past this fraction of the screen height
   alpha = 0.55,         -- the panel's opacity
   objectives = 3,       -- objective lines shown under each quest
-  level = true,         -- the quest's level before its title (faded)
+  level = true,         -- the quest's level at the right of its row, in [ ] (faded)
   hidden = false,       -- the whole list is put away (the key, `/qb tracker toggle`); the module still works
   collapsed = false,    -- only the title row is shown (click "QUESTS"); the links stay
   -- x, y: where the list sits, the offset of its top-right corner from the screen's top-right corner (y < 0 = down).
@@ -32,6 +32,8 @@ local mod = QB:NewModule("tracker", {
 
 local FRIZ = Style.FRIZ
 local PADX, PADY, ROWGAP = 24, 20, 20      -- physical pixels
+local INDENT = 18                -- the objectives sit this far in from the title (Cesar, 2026-10-20)
+local COLW = 64                  -- the right-hand column of a row: the level in [ ], and the Play link under it
 local rows = {}                  -- pooled row buttons
 local panel, header, rule, more
 local refreshQueued = false
@@ -51,10 +53,10 @@ local function LinkPalette()
   return { normal = t.chrome, hot = t.chromeHot, faded = t.chromeOff, warn = t.chromeWarn }
 end
 
-local function Fs(parent, px)
+local function Fs(parent, px, justify)
   local fs = parent:CreateFontString(nil, "OVERLAY")
   fs:SetFont(FRIZ, Px(px), "")           -- a font at birth: SetText on a fontless string is an error
-  fs:SetJustifyH("LEFT")
+  fs:SetJustifyH(justify or "LEFT")
   fs:SetShadowOffset(Px(1), -Px(1))
   fs:SetShadowColor(0, 0, 0, 0.85)
   return fs
@@ -172,7 +174,13 @@ local function Row(i)
   r.accent:SetTexture("Interface\\Buttons\\WHITE8x8")
   r.accent:Hide()
   r.title = Fs(r, 21)
+  r.level = Fs(r, 21, "RIGHT")                     -- "[9]", at the right edge of the title line
   r.objs = Fs(r, 17)
+  -- Play: read this quest aloud (Stop while it is the one being read). A button of its own, so it does not trigger the row.
+  r.play = Style.InkLink(r, 17, function()
+    QB:Safe(mod, function() QB:Call("questlog", "PlayQuest", r.questID) end)
+  end, LinkPalette())
+  r.play:SetText("Play")
   r.objs:SetSpacing(Px(3))
   r.track = r:CreateTexture(nil, "ARTWORK")        -- progress of the counted objectives, a thin bar
   r.track:SetTexture("Interface\\Buttons\\WHITE8x8")
@@ -208,8 +216,18 @@ local function Place(self)
   if self.mover then self.mover:Layout() end
 end
 
+-- "Play" on a row, "Stop" when that quest is the one being read aloud.
+local function PaintPlay(r, speaking)
+  if not (r.play and r.questID) then return end
+  local on = speaking ~= nil and speaking == r.questID
+  r.play:SetText(on and "Stop" or "Play")
+  r.play:SetWarn(on)
+end
+
 function mod:RefreshVoice()
   if not (panel and panel.voice) then return end
+  local okS, speaking = QB:Call("questlog", "SpeakingQuestID")
+  for _, r in ipairs(rows) do if r:IsShown() then PaintPlay(r, okS and speaking or nil) end end
   local ok, state = QB:Call("questlog", "VoiceState")
   if not ok then panel.voice:Hide() return end
   panel.voice:Show()
@@ -276,6 +294,8 @@ function mod:Refresh()
   end
 
   local shown = 0
+  local okS, speakingNow = QB:Call("questlog", "SpeakingQuestID")
+  if not okS then speakingNow = nil end
   for _, r in ipairs(rows) do r:Hide() end
   for i, q in ipairs(list) do
     local r = Row(i)
@@ -286,10 +306,22 @@ function mod:Refresh()
     local rowW = innerW + 20
     r:SetWidth(Px(rowW))
     r.title:SetFont(FRIZ, Px(tp), ""); r.objs:SetFont(FRIZ, Px(op), "")
-    r.title:SetWidth(Px(innerW)); r.objs:SetWidth(Px(innerW))
+    -- the title and the objectives stop short of the right-hand column; the objectives are indented from the title
+    r.title:SetWidth(Px(innerW - COLW)); r.objs:SetWidth(Px(innerW - COLW - INDENT))
     r.title:ClearAllPoints(); r.title:SetPoint("TOPLEFT", r, "TOPLEFT", Px(10), 0)
     local lvl = self.db.level and tonumber(q.level) or nil
-    r.title:SetText(((lvl and lvl > 0) and ("|cff" .. Style.Hex(t.faded) .. lvl .. "|r  ") or "") .. (q.title or "?"))
+    r.title:SetText(q.title or "?")
+    r.level:SetFont(FRIZ, Px(tp), "")
+    r.level:SetWidth(Px(COLW))
+    r.level:ClearAllPoints(); r.level:SetPoint("TOPRIGHT", r, "TOPRIGHT", -Px(10), 0)
+    r.level:SetText((lvl and lvl > 0) and ("[" .. lvl .. "]") or "")
+    r.level:SetTextColor(t.faded[1], t.faded[2], t.faded[3], 1)
+    r.level:Show()
+    local lineH = math.floor(tp * 1.25 + 0.5)       -- about one title line: the Play link sits under the level
+    r.play:SetPx(op)
+    r.play:ClearAllPoints(); r.play:SetPoint("TOPRIGHT", r, "TOPRIGHT", -Px(10), -Px(lineH + 2))
+    r.play:Show()
+    PaintPlay(r, speakingNow)
     local tc = ready and t.done or (active and t.strong or t.ink)
     r.title:SetTextColor(tc[1], tc[2], tc[3], 1)
     local lines = {}
@@ -304,19 +336,20 @@ function mod:Refresh()
     local th = (r.title:GetStringHeight() or 0) / u
     local h = th
     if #lines > 0 then
-      r.objs:ClearAllPoints(); r.objs:SetPoint("TOPLEFT", r, "TOPLEFT", Px(10), -Px(th + 4))
+      r.objs:ClearAllPoints(); r.objs:SetPoint("TOPLEFT", r, "TOPLEFT", Px(10 + INDENT), -Px(th + 4))
       h = th + 4 + (r.objs:GetStringHeight() or 0) / u
       r.objs:Show()
     else
       r.objs:Hide()
     end
+    h = math.max(h, lineH + 2 + op + 8)             -- room for the level and the Play link in the right-hand column
     if frac then
       local by = h + 8
-      r.track:ClearAllPoints(); r.track:SetPoint("TOPLEFT", r, "TOPLEFT", Px(10), -Px(by)); r.track:SetSize(Px(innerW), Px(4))
+      r.track:ClearAllPoints(); r.track:SetPoint("TOPLEFT", r, "TOPLEFT", Px(10 + INDENT), -Px(by)); r.track:SetSize(Px(innerW - INDENT), Px(4))
       r.track:SetVertexColor(t.hairline[1], t.hairline[2], t.hairline[3], 0.30)
       local fc = ready and t.done or (active and t.strong or t.faded)
       r.fill:ClearAllPoints(); r.fill:SetPoint("TOPLEFT", r.track, "TOPLEFT", 0, 0)
-      r.fill:SetSize(math.max(Px(1), Px(innerW) * Style.Clamp(frac, 0, 1)), Px(4))
+      r.fill:SetSize(math.max(Px(1), Px(innerW - INDENT) * Style.Clamp(frac, 0, 1)), Px(4))
       r.fill:SetVertexColor(fc[1], fc[2], fc[3], active and 0.95 or 0.75)
       r.track:Show(); r.fill:Show()
       h = by + 4
@@ -352,7 +385,7 @@ function mod:Refresh()
     r.title:SetWidth(Px(innerW)); r.title:ClearAllPoints(); r.title:SetPoint("TOPLEFT", r, "TOPLEFT", Px(10), 0)
     r.title:SetText(self.db.mode == "all" and "No quests in your log." or "No tracked quests.")
     r.title:SetTextColor(t.faded[1], t.faded[2], t.faded[3], 1)
-    r.objs:Hide(); r.track:Hide(); r.fill:Hide(); r.accent:Hide()
+    r.objs:Hide(); r.track:Hide(); r.fill:Hide(); r.accent:Hide(); r.level:Hide(); r.play:Hide()
     local h = (r.title:GetStringHeight() or 0) / u
     r:SetHeight(Px(h))
     r:ClearAllPoints()
