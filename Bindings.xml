@@ -11,7 +11,4 @@
   <Binding name="QUESTBOOK_FULLMAP" category="ADDONS">
     QuestBook_FullMap()
   </Binding>
-  <Binding name="QUESTBOOK_MAPREGION" category="ADDONS">
-    QuestBook_MapRegion()
-  </Binding>
 </Bindings>

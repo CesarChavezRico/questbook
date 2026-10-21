@@ -96,12 +96,13 @@ charter was dropped on purpose.
 - **Opacity** has defaults and is tuned live (`/qb overlay alpha`); no target value was ever chosen.
 
 **Region view** (v0.20.0, *written, not yet seen in game*; Cesar, 2026-10-20: in Darnassus the overland map showed only the city, but
-the quest (Tears of the Moon, in the Oracle Glade) is on the Teldrassil map above it). The map shows the player's own map
-(`TickZone` forces it each tick), and a city's quests are on its parent zone. A key ("Overland map: zoom out to the next region",
-`QUESTBOOK_MAPREGION`; `/qb overlay up | down | reset`) climbs the parent chain (`C_Map.GetMapInfo(...).parentMapID`) one level a press,
-stops at the continent (the world and cosmos are skipped), and at the top goes back to the player's own map. A region is shown whole
-(zoom 1) instead of the 2x close-up on the player. The level goes back to 0 when the player's own map changes. UNVERIFIED in game:
-that the client's `GetMapInfo` gives `parentMapID` for Darnassus and that the world map can be set to the parent while the player is in the city.
+the quest (Tears of the Moon, in the Oracle Glade) is on the Teldrassil map above it; "I don't want another keybind ... add it to our
+current rotation with the same keybind"). The map shows the player's own map (`TickZone` forces it each tick), and a city's quests are
+on its parent zone. The map key's rotation is now Off, Minimap, Overland, Overland one level out, Off: in the overland map the next
+press shows the parent map (`C_Map.GetMapInfo(...).parentMapID`, never the world or cosmos) whole, at zoom 1 instead of the 2x
+close-up on the player, and the press after that is off. Where the player's map has no parent the extra stop is skipped. The level goes
+back to 0 when the state changes or the player's own map changes. UNVERIFIED in game: that the client's `GetMapInfo` gives
+`parentMapID` for Darnassus and that the world map can be set to the parent while the player is in the city.
 
 ### The camera
 

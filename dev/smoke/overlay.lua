@@ -41,29 +41,35 @@ __tick(4, 0.016)
 assert(WorldMapFrame:GetAlpha() == 1, "revealed after the position pass, got " .. WorldMapFrame:GetAlpha())
 assert(WorldMapFrame.ScrollContainer:GetAlpha() < 1, "map translucent")
 a1, a2 = barsAlpha(); assert(a1 == 0 and a2 == 0, "action bars hidden in zone mode")
--- region view: the player's map is 37, its parent 13; the key shows the parent whole, again goes back (nothing above 13 here)
+-- region view: the player's map is 37, its parent 13. In zone the key's next stop is the parent, whole; the one after is off
 assert(WorldMapFrame:GetMapID() == 37, "starts on the player's own map")
-slash("overlay up"); __tick(30, 0.016)
-assert(O.up == 1 and WorldMapFrame:GetMapID() == 13, "one level out shows the parent map: " .. tostring(WorldMapFrame:GetMapID()))
-QuestBook_MapRegion(); __tick(30, 0.016)
-assert(O.up == 0 and WorldMapFrame:GetMapID() == 37, "at the top the key goes back to the player's own map")
-slash("overlay up"); slash("overlay down"); __tick(30, 0.016)
-assert(O.up == 0 and WorldMapFrame:GetMapID() == 37, "down comes back in")
-slash("overlay up"); slash("overlay reset"); __tick(30, 0.016)
-assert(O.up == 0 and WorldMapFrame:GetMapID() == 37, "reset")
--- the player walks into another map: back to the player's own
-slash("overlay up"); __tick(30, 0.016); assert(O.up == 1)
+slash("overlay cycle"); __tick(30, 0.016)
+assert(O:GetState() == "zone" and O.up == 1 and WorldMapFrame:GetMapID() == 13, "the key's next stop is the parent map, still zone: " .. O:GetState() .. " " .. tostring(WorldMapFrame:GetMapID()))
+slash("overlay cycle"); __tick(5, 0.016)
+assert(O:GetState() == "off" and O.up == 0, "and the one after is off, region reset")
+slash("overlay zone"); __tick(30, 0.016)
+assert(O:GetState() == "zone" and O.up == 0 and WorldMapFrame:GetMapID() == 37, "opening zone again starts on the player's own map: " .. tostring(WorldMapFrame:GetMapID()))
+-- no larger map: straight from zone to off
+local oldInfo = C_Map.GetMapInfo
+C_Map.GetMapInfo = function(id) return { name = "Map " .. tostring(id), mapID = id, parentMapID = 0 } end
+slash("overlay cycle"); __tick(5, 0.016)
+assert(O:GetState() == "off", "with no parent map the rotation skips the extra stop")
+C_Map.GetMapInfo = oldInfo
+-- the player walks into another map while zoomed out: back to the player's own
+slash("overlay zone"); __tick(30, 0.016); slash("overlay cycle"); __tick(30, 0.016); assert(O.up == 1)
 local oldBest = C_Map.GetBestMapForUnit
 C_Map.GetBestMapForUnit = function() return 99 end
 MapUtil = nil
 __tick(30, 0.016)
 assert(O.up == 0 and WorldMapFrame:GetMapID() == 99, "a new player map resets the region: " .. tostring(WorldMapFrame:GetMapID()))
 C_Map.GetBestMapForUnit = oldBest
-__tick(30, 0.016)
+slash("overlay zone"); __tick(30, 0.016)
 print("zone ok")
 
 slash("overlay cycle"); __tick(10)
-assert(O:GetState() == "off", "third press = off")
+assert(O:GetState() == "zone" and O.up == 1, "third press = the overland map one level out (this player's map has a parent)")
+slash("overlay cycle"); __tick(10)
+assert(O:GetState() == "off", "fourth press = off")
 a1, a2, a3 = barsAlpha(); assert(a1 == 1 and a2 == 1, "bars restored")
 assert(not WorldMapFrame:IsShown(), "map closed")
 assert(Minimap:GetParent() == MinimapCluster)

@@ -348,12 +348,10 @@ SlashCmdList.QUESTBOOK = function(msg) QB:HandleSlash(msg) end
 BINDING_HEADER_QUESTBOOK = "QuestBook"
 _G["BINDING_NAME_QUESTBOOK_TOGGLE"] = "Toggle quest log"
 _G["BINDING_NAME_QUESTBOOK_LIST"] = "Show / hide the quest list"
-_G["BINDING_NAME_QUESTBOOK_MAPCYCLE"] = "Map overlay: cycle Off / Local / Local + Zone"
+_G["BINDING_NAME_QUESTBOOK_MAPCYCLE"] = "Map overlay: cycle Off / Local / Zone / Zone one level out"
 _G["BINDING_NAME_QUESTBOOK_FULLMAP"] = "Open the Full map"
-_G["BINDING_NAME_QUESTBOOK_MAPREGION"] = "Overland map: zoom out to the next region (again: further, then back)"
 
 function QuestBook_Toggle() QB:Call("questlog", "Toggle") end
 function QuestBook_ToggleList() QB:Call("tracker", "ToggleList") end
 function QuestBook_MapCycle() QB:Call("overlay", "Cycle") end
 function QuestBook_FullMap() QB:Fire("open_full") end
-function QuestBook_MapRegion() QB:Call("overlay", "RegionCycle") end
