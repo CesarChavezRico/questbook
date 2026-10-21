@@ -708,6 +708,57 @@ local function PlayerMapID()
   return nil
 end
 
+-- Regions (Cesar, 2026-10-20: "zoom out to the next region view of the map ... the quest location is not at that zoom level"):
+-- the overland map shows the player's own map, and in a city that is the city, while the quest is on the zone map above it.
+-- `up` is how many levels up the parent chain the map shows (0 = the player's map, 1 = the zone above a city); the map key's
+-- rotation sets it (Cycle), and it goes back to 0 when the player's own map changes (walking out of the city) or the state
+-- changes. The world and the cosmos are not places to read a quest on, so a parent is never the world.
+mod.up = 0
+mod.upBase = nil
+mod.upShown = 0
+
+local function ParentMap(id)
+  if not (id and C_Map and C_Map.GetMapInfo) then return nil end
+  local ok, info = pcall(C_Map.GetMapInfo, id)
+  local p = ok and info and info.parentMapID
+  if not p or p == 0 then return nil end
+  local okP, pinfo = pcall(C_Map.GetMapInfo, p)
+  local mt = okP and pinfo and pinfo.mapType
+  if type(mt) == "number" and mt <= 1 then return nil end      -- Enum.UIMapType: 0 cosmic, 1 world
+  return p
+end
+
+-- The map the overland map should show now: the player's, `up` levels up (as many as there are).
+function mod:ShownMapID()
+  local base = PlayerMapID()
+  if base ~= self.upBase then self.upBase, self.up = base, 0 end
+  local id, n = base, 0
+  while id and n < self.up do
+    local p = ParentMap(id)
+    if not p then break end
+    id, n = p, n + 1
+  end
+  self.up, self.upShown = n, n
+  return id or base
+end
+
+-- The extra stop in the key's rotation (Cesar, 2026-10-20): minimap -> overland -> overland one level out -> off. Shows the map
+-- above the player's own, whole. Returns false (and changes nothing) when there is none, so the rotation goes on to "off".
+function mod:ZoomOutOneLevel()
+  self:ShownMapID()                                            -- settles `up` against the player's current map
+  if self.up > 0 or not ParentMap(self.upBase) then return false end
+  self.up = 1
+  self.zoomDirty = true
+  local shown = self:ShownMapID()
+  local name
+  if C_Map and C_Map.GetMapInfo then
+    local ok, info = pcall(C_Map.GetMapInfo, shown)
+    name = ok and info and info.name or nil
+  end
+  QB:Say("overlay: " .. tostring(name or shown) .. " (one level out; the key again turns the map off)")
+  return true
+end
+
 mod.pinMouse = setmetatable({}, { __mode = "k" })   -- pin -> { click, motion }
 
 function mod:PinDisable(pin)
@@ -889,7 +940,7 @@ function mod:TickZone()
   self:ReapplyZone()
 
   local mapID, px, py
-  mapID = PlayerMapID()
+  mapID = self:ShownMapID()
   if mapID and wmf.GetMapID and wmf:GetMapID() ~= mapID then
     wmf:SetMapID(mapID)
     self.zoomDirty = true
@@ -911,7 +962,7 @@ function mod:TickZone()
   if not (px and py) then return end
 
   local minS, maxS = sc:GetScaleForMinZoom(), sc:GetScaleForMaxZoom()
-  local zoom = tonumber(self.db.zoneZoom) or 2
+  local zoom = (self.upShown > 0) and 1 or (tonumber(self.db.zoneZoom) or 2)      -- a region is shown whole
   local want = clamp(minS * zoom, minS, maxS)
   local cur = sc:GetCanvasScale()
   if self.zoomDirty or math.abs(cur - want) > want * 0.01 then
@@ -1184,7 +1235,7 @@ function mod:SetState(state, force)
   end
   local prev = self.state
   self:Apply(state)
-  if self.state ~= prev then QB:Fire("overlay_state", self.state) end
+  if self.state ~= prev then self.up = 0; QB:Fire("overlay_state", self.state) end      -- a region view lasts only within "zone"
   return self.state == state
 end
 
@@ -1195,6 +1246,8 @@ function mod:Cycle()
     QB:Say("map overlay: not in combat")
     return
   end
+  -- in the overland map, one more stop before off: the same map one level out (only where there is a larger map)
+  if self.state == "zone" and self:ZoomOutOneLevel() then return end
   self:SetState(NEXT[self.state] or "off")
 end
 

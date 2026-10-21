@@ -10,7 +10,7 @@
 
 local ADDON, QB = ...
 QB.name = ADDON
-QB.version = "0.19.0"
+QB.version = "0.20.0"
 QB.modules = {}      -- name -> module table
 QB.order = {}        -- registration order
 QB.errors = {}       -- module name -> { msg = string, count = number }
@@ -348,7 +348,7 @@ SlashCmdList.QUESTBOOK = function(msg) QB:HandleSlash(msg) end
 BINDING_HEADER_QUESTBOOK = "QuestBook"
 _G["BINDING_NAME_QUESTBOOK_TOGGLE"] = "Toggle quest log"
 _G["BINDING_NAME_QUESTBOOK_LIST"] = "Show / hide the quest list"
-_G["BINDING_NAME_QUESTBOOK_MAPCYCLE"] = "Map overlay: cycle Off / Local / Local + Zone"
+_G["BINDING_NAME_QUESTBOOK_MAPCYCLE"] = "Map overlay: cycle Off / Local / Zone / Zone one level out"
 _G["BINDING_NAME_QUESTBOOK_FULLMAP"] = "Open the Full map"
 
 function QuestBook_Toggle() QB:Call("questlog", "Toggle") end
