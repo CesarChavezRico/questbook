@@ -11,4 +11,4 @@ QB:Call("bad", "Cycle")
 slash("modules"); slash("errors"); flush()
 slash("disable bad"); slash("modules"); flush()
 slash("")   -- quest log still opens
-print("book still works:", QuestBookFrame and QuestBookFrame:IsShown()); flush()
+print("reader still works:", QuestBookReader and QuestBookReader:IsShown()); flush()

@@ -25,7 +25,12 @@ end
 function Frame:Show() self.__shown = true; if self.__scripts.OnShow then self.__scripts.OnShow(self) end end
 function Frame:Hide() if self.__shown then self.__shown = false; if self.__scripts.OnHide then self.__scripts.OnHide(self) end end end
 function Frame:IsShown() return self.__shown end
-function Frame:IsVisible() return self.__shown end
+function Frame:IsVisible()
+  if not self.__shown then return false end
+  local p = self.__parent
+  if p and p ~= UIParent and p.IsVisible and p:IsVisible() == false then return false end
+  return true
+end
 function Frame:SetShown(b) if b then self:Show() else self:Hide() end end
 function Frame:SetScript(n, fn) self.__scripts[n] = fn end
 function Frame:GetScript(n) return self.__scripts[n] end
@@ -38,7 +43,12 @@ function Frame:SetHeight(h) self.__h = h end
 function Frame:GetWidth() return self.__w end
 function Frame:GetSize() return self.__w, self.__h end
 function Frame:GetHeight() return self.__h end
-function Frame:SetPoint(...) self.__points[#self.__points+1] = { ... } end
+-- like the client: a second SetPoint with the same point name REPLACES the first (it does not add an anchor)
+function Frame:SetPoint(...)
+  local a = { ... }
+  for i, p in ipairs(self.__points) do if p[1] == a[1] then self.__points[i] = a; return end end
+  self.__points[#self.__points+1] = a
+end
 function Frame:ClearAllPoints() self.__points = {} end
 function Frame:GetNumPoints() return #self.__points end
 function Frame:GetPoint(i) local p = self.__points[i or 1]; if p then return unpack(p) end end
@@ -49,21 +59,37 @@ function Frame:GetAlpha() return self.__alpha end
 function Frame:SetScale(s) self.__scale = s end
 function Frame:GetScale() return self.__scale end
 function Frame:GetEffectiveScale() return 1 end
+function GetPhysicalScreenSize() return 3420, 1435 end
 function Frame:SetFrameStrata(s) self.__strata = s end
 function Frame:GetFrameStrata() return self.__strata end
 function Frame:SetFrameLevel(l) self.__level = l end
 function Frame:GetFrameLevel() return self.__level end
 function Frame:EnableMouse(b) self.__mouse = b end
 function Frame:IsMouseEnabled() return self.__mouse end
-function Frame:SetText(t) self.__text = t end
+function Frame:SetText(t)
+  -- the real client refuses this on a FontString that has no font yet (seen 2026-10-15)
+  if self.__kind == "FontString" and not self.__ffile then error("FontString:SetText(): Font not set", 2) end
+  self.__text = t
+end
 function Frame:GetText() return self.__text end
 function Frame:GetStringWidth() return #tostring(self.__text) * 7 end
-function Frame:GetStringHeight() return 14 end
+function Frame:SetFont(file, size) self.__fsize = size; self.__ffile = file; return true end
+function Frame:SetSpacing(s) self.__spacing = s end
+function Frame:GetStringHeight()
+  -- crude but monotone: wrap by width / (0.5 * font size), one line height = size + spacing
+  local size = self.__fsize or 12
+  local w = self.__w or 100
+  local cpl = math.max(1, math.floor(w / (size * 0.5)))
+  local text = tostring(self.__text or "")
+  local lines = 0
+  for para in (text .. "\n"):gmatch("(.-)\n") do lines = lines + math.max(1, math.ceil(#para / cpl)) end
+  return lines * (size + (self.__spacing or 0))
+end
 function Frame:SetEnabled(b) self.__enabled = b end
 function Frame:IsEnabled() return self.__enabled end
 function Frame:GetName() return self.__name end
 function Frame:CreateFontString(n, ...) return newFrame("FontString", n, self) end
-function Frame:CreateTexture(n, ...) return newFrame("Texture", n, self) end
+function Frame:CreateTexture(n, layer, tmpl, sub) local t = newFrame("Texture", n, self); t.__layer, t.__sub = layer, sub; return t end
 function Frame:CreateMaskTexture(n, ...) return newFrame("MaskTexture", n, self) end
 function Frame:GetLeft() return 0 end
 function Frame:GetRight() return self.__w end
@@ -74,7 +100,7 @@ function Frame:GetVerticalScroll() return 0 end
 function Frame:GetStringWidthOf() return 0 end
 function Frame:IsMouseOver() return false end
 function Frame:GetNumChildren() return 0 end
-function Frame:Click() if self.__scripts.OnClick then self.__scripts.OnClick(self, "LeftButton") end end
+function Frame:Click(b) if self.__scripts.OnClick then self.__scripts.OnClick(self, b or "LeftButton") end end
 
 function CreateFrame(kind, name, parent) return newFrame(kind, name, parent) end
 UIParent = newFrame("Frame", "UIParent")
@@ -144,6 +170,7 @@ local log = {
 }
 local westfall = { { questID = 102, title = "Harvest", level = 8 } }
 local watched, super, selected, abandonArmed = { [100] = true }, 0, 0, nil
+function __watchedSet() return watched end
 C_QuestLog = {
   GetNumQuestLogEntries = function() return #log, 3 end,
   GetInfo = function(i) local e = log[i]; if not e then return nil end
@@ -250,6 +277,33 @@ function Minimap:SetIconScale(s) __iconScale = s end
 for _, n in ipairs({ "MainActionBar", "MultiBarBottomLeft", "MultiBarBottomRight", "MultiBarLeft", "MultiBarRight", "StanceBar", "PetActionBar", "StatusTrackingBarManager" }) do
   newFrame("Frame", n, UIParent)
 end
+-- the NPC you are talking to ("npc"), and the quest the dialog offers
+__npc = { name = "Zenn Foulhoof", sex = 2, ctype = "Humanoid", guid = "Creature-0-4379-1-30-3498-000012345A", quest = 100 }
+function UnitExists(u) return u == "npc" and __npc ~= nil end
+function UnitName(u) if u == "npc" and __npc then return __npc.name end end
+function UnitSex(u) if u == "npc" and __npc then return __npc.sex end end
+function UnitCreatureType(u) if u == "npc" and __npc then return __npc.ctype end end
+function UnitGUID(u) if u == "npc" and __npc then return __npc.guid end end
+function GetQuestID() return __npc and __npc.quest or 0 end
+function GetServerTime() return 1760000000 end
+-- experience (v0.15): a level 8 character with 1240 of 2800 XP and 400 rested
+__xp = { level = 8, xp = 1240, max = 2800, rested = 400, resting = true, disabled = false, maxLevel = 60 }
+function UnitLevel() return __xp.level end
+function UnitXP() return __xp.xp end
+function UnitXPMax() return __xp.max end
+function GetXPExhaustion() if __xp.rested > 0 then return __xp.rested end end
+function IsResting() return __xp.resting end
+function IsXPUserDisabled() return __xp.disabled end
+function GetMaxPlayerLevel() return __xp.maxLevel end
+GameTooltip = { __lines = {} }
+function GameTooltip:SetOwner(o) self.__owner = o; self.__lines = {} end
+function GameTooltip:SetText(t) self.__lines[#self.__lines + 1] = t end
+function GameTooltip:AddLine(t) self.__lines[#self.__lines + 1] = t end
+function GameTooltip:Show() self.__shown = true end
+function GameTooltip:Hide() self.__shown = false end
+-- unit frames (hidden by alpha while the reader is open)
+newFrame("Frame", "PlayerFrame", UIParent); newFrame("Frame", "TargetFrame", UIParent)
+newFrame("Frame", "BuffFrame", UIParent); newFrame("Frame", "DebuffFrame", UIParent); newFrame("Frame", "DeadlyDebuffFrame", UIParent)
 -- real mask bookkeeping on the world map + a pooled detail layer (v0.7.2)
 do
   local wmf = WorldMapFrame
@@ -281,3 +335,45 @@ function OpenQuestLog(mapID) __blizzOpenQuestLog = true end
 function QuestMapFrame_OpenToQuestDetails(id) __blizzOpenDetails = id end
 QuestUtil = { OpenQuestDetails = function(id) __blizzPopupDetails = id end }
 function IsPlayerMoving() return false end
+
+-- helpers for scenarios that need a different log / quest text (v0.8)
+function __setLog(newlog) for i = #log, 1, -1 do log[i] = nil end for i, e in ipairs(newlog) do log[i] = e end end
+local qtext = {}
+function __setQuestText(id, desc, obj) qtext[id] = { desc, obj } end
+function GetQuestLogQuestText() local sel = C_QuestLog.GetSelectedQuest(); local t = qtext[sel]; if t then return t[1], t[2] end return "Go and slay the beasts.\n\nThen return.", "Kill 5 things" end
+
+-- quest map positions for the book's plate (v0.8)
+__waypoints, __pois, __noArt = {}, {}, {}
+C_QuestLog.GetNextWaypoint = function(qid) local w = __waypoints[qid]; if w then return w[1], w[2], w[3] end end
+C_QuestLog.GetQuestsOnMap = function(map) return __pois[map] or {} end
+C_Map.GetMapInfo = function(id) return { name = "Map " .. tostring(id), mapID = id, parentMapID = (id == 37) and 13 or 0 } end
+C_Map.MapHasArt = function(id) return not __noArt[id] end
+WorldMapFrame.__focus = nil
+function WorldMapFrame:SetFocusedQuestID(id) self.__focus = id end
+function WorldMapFrame:ClearFocusedQuestID() self.__focus = nil end
+function WorldMapFrame.ScrollContainer:InstantPanAndZoom(sc2, x, y) self.__scale2 = sc2; self.__pan = { x, y }; __zoomed = (__zoomed or 0) + 1 end
+
+-- remember the backdrop fill, so a scenario can check nothing opaque sits over the pages (v0.8.4)
+function Frame:SetBackdropColor(r, g, b, a) self.__bd = { r, g, b, a } end
+
+-- Blizzard's objective tracker and the watch list by index (v0.9.0)
+ObjectiveTrackerFrame = newFrame("Frame", "ObjectiveTrackerFrame", UIParent)
+C_QuestLog.GetQuestIDForQuestWatchIndex = function(i)
+  local ids = {}
+  for id in pairs(__watchedSet and __watchedSet() or {}) do ids[#ids + 1] = id end
+  table.sort(ids)
+  return ids[i]
+end
+
+-- quest-area setters on the minimap: record the last value of every call (v0.9.1)
+__blob = {}
+for _, kind in ipairs({ "Quest", "Task", "Arch" }) do
+  for _, layer in ipairs({ "Inside", "Outside", "Ring" }) do
+    for _, what in ipairs({ "Alpha", "Texture", "Scalar" }) do
+      if not (what == "Scalar" and layer ~= "Ring") then
+        local name = "Set" .. kind .. "Blob" .. layer .. what
+        Minimap[name] = function(self, v) __blob[kind .. layer .. what] = v end
+      end
+    end
+  end
+end

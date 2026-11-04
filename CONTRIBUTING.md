@@ -7,12 +7,19 @@ did and did not verify, open a PR into `dev`. Cesar reviews and merges.
 
 ```
 Core.lua            module registry, protected calls, event + message bus, slash, keybinding functions
-modules/QuestLog.lua   the quest log and its duties (the oldest code, from before the modular split)
+Style.lua           palettes (paper / dark), font helpers; see docs/STYLE.md
+modules/QuestLog.lua   the quest reader (one page) and the quest log's duties: active, track, share, abandon, voice
 modules/Overlay.lua    Off / Minimap / Map, masks, ground, bars, indoor handling
 modules/Camera.lua     lateral shift + zoom-out, CVar backup and restore
+modules/Tracker.lua    the compact quest list that replaces Blizzard's objective tracker
+modules/Markers.lua    our quest markers on the minimap; switches the client's quest areas off
+modules/Giver.lua      who gave each quest (recorded at accept); feeds the reader and, later, the voice
+modules/Xp.lua         the experience bar under the strip; fades Blizzard's bottom bar while it is up
+modules/Kit.lua        `/qb kit`, `/qb screen`: the sample page of the paper look, in whole pixels
 modules/Strip.lua      the text strip, the Addons handle
 modules/Drawers.lua    the Menu panel (micro menu + bags)
-Textures/              the soft-alpha masks (TGA, 256x256, white with an alpha gradient)
+Textures/              the soft-alpha masks and the paper kit (TGA, power-of-two sizes, 32-bit with alpha)
+dev/art/gen_kit.py     generates the paper textures (pure Python, our own art); run it, commit the TGAs
 Bindings.xml           keybinding entry points, named in Core.lua
 QuestBook.toc          load order (Core first); lists every file
 dev/                   offline tools, not shipped (see below)
@@ -45,9 +52,12 @@ Rules the design depends on:
    Overlay's "tweak sets" (record the original, apply, undo in reverse) are the pattern to copy.
 4. **No protected-frame work in combat.** Check `QB:InCombat()` and defer to `PLAYER_REGEN_ENABLED`.
 5. **Modules talk through the bus, not through each other's tables.** Current topics:
-   `overlay_state` (`"off" | "local" | "zone"`), `open_full`, `strip_state`, `combat_start`,
-   `combat_end`. Add a topic before you add a cross-module call.
-6. **Settings:** Core fills only *missing* keys, so a value an old version saved beats a changed
+   `overlay_state` (`"off" | "local" | "zone"`), `overlay_host` (who holds the minimap), `open_full`,
+   `strip_state`, `combat_start`, `combat_end`. Add a topic before you add a cross-module call.
+6. **Chat text:** a single `|` followed by a letter is an escape code in the chat frame (`|t`, `|h`, `|r`, `|n`),
+   so `all|tracked` prints as `allracked`. Print help and usage with `QB:Usage` (it doubles the pipes), not `QB:Say`;
+   `dev/smoke/help.lua` fails on a stray one.
+7. **Settings:** Core fills only *missing* keys, so a value an old version saved beats a changed
    default. When you change what a default means, add a versioned migration (see `OnInit` in
    `Overlay.lua`, which fixed exactly this once). Keep a new version key *out* of the defaults table.
 
@@ -129,6 +139,6 @@ section; change this paragraph when it is settled.
 
 ## Design decisions
 
-The map layout, the keybinding plan and the reasoning behind the module split are recorded in the
-design note named in the README, with the open questions marked. If a change reverses one of those
-decisions, raise it with Cesar first; the note gets amended in the same breath.
+The map layout, the reasoning behind the module split, what has been seen working and the open
+questions are in [docs/DESIGN.md](docs/DESIGN.md). If a change reverses one of those decisions, raise
+it with Cesar first, and amend `docs/DESIGN.md` in the same PR.

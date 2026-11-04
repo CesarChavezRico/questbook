@@ -24,12 +24,14 @@ read_globals = {
   "GetNumQuestLeaderBoards", "GetQuestLogLeaderBoard", "IsQuestComplete", "ExpandQuestHeader",
   "QuestLogPushQuest", "QuestUtils_GetQuestName", "StaticPopup_Show", "StaticPopup_Hide",
   -- map, camera, strip, drawers
-  "GetCVar", "SetCVar", "GetCameraZoom", "CameraZoomIn", "CameraZoomOut",
+  "GetCVar", "SetCVar", "GetPlayerFacing", "GetAddOnMetadata", "C_AddOns", "UnitExists", "UnitSex", "UnitCreatureType", "UnitGUID", "UnitName", "GetQuestID", "GetServerTime", "UnitXP", "UnitXPMax", "UnitLevel", "GetXPExhaustion", "IsResting", "IsXPUserDisabled", "GetMaxPlayerLevel", "GetPhysicalScreenSize", "GetCameraZoom", "CameraZoomIn", "CameraZoomOut",
   "GetZoneText", "GetSubZoneText", "HasNewMail", "CursorHasItem", "GetMouseFoci", "GetMouseFocus",
   "ShowUIPanel", "HideUIPanel", "ToggleWorldMap", "PlayerMovementFrameFader",
   "HybridMinimap_LoadUI", "IsIndoors",
   "Minimap", "MinimapCluster", "WorldMapFrame", "AddonCompartmentFrame", "MicroMenu",
   "MicroMenuContainer",
+  -- shift-click on a quest puts its link into the chat box
+  "C_NamePlate", "C_TooltipInfo", "TooltipUtil", "UnitIsPlayer", "UnitCanAttack", "IsModifiedClick", "IsShiftKeyDown", "GetQuestLink", "ChatFrameUtil", "ChatEdit_InsertLink",
 }
 -- globals the addon defines (slash, keybindings, saved variables, the ToggleQuestLog reroute)
 globals = {
@@ -37,8 +39,8 @@ globals = {
   -- (Blizzard_Minimap/Mainline/Minimap.lua), and puts the original back afterwards
   "C_Minimap",
   "SlashCmdList", "ToggleQuestLog",
-  "QuestBookDB", "QuestBook_Toggle", "QuestBook_MapCycle", "QuestBook_FullMap",
+  "QuestBookDB", "QuestBook_Toggle", "QuestBook_ToggleList", "QuestBook_MapCycle", "QuestBook_FullMap",
   "BINDING_HEADER_QUESTBOOK", "BINDING_NAME_QUESTBOOK_TOGGLE",
-  "BINDING_NAME_QUESTBOOK_MAPCYCLE", "BINDING_NAME_QUESTBOOK_FULLMAP",
+  "BINDING_NAME_QUESTBOOK_LIST", "BINDING_NAME_QUESTBOOK_MAPCYCLE", "BINDING_NAME_QUESTBOOK_FULLMAP",
   "SLASH_QUESTBOOK1", "SLASH_QUESTBOOK2",
 }

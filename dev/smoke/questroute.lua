@@ -1,19 +1,19 @@
 __fire("ADDON_LOADED", "QuestBook"); __loggedIn = true; __fire("PLAYER_LOGIN")
 local function slash(s) SlashCmdList.QUESTBOOK(s) end
 local Q = QB.modules.questlog
--- tracker click on quest 101 opens OUR book on that quest, not Blizzard's
+-- tracker click on quest 101 opens OUR reader on that quest, not Blizzard's
 QuestMapFrame_OpenToQuestDetails(101)
-assert(QuestBookFrame:IsShown(), "book opened by a tracker click")
-assert(QuestBookFrame.title:GetText():find("Kobolds"), "on the clicked quest, got " .. tostring(QuestBookFrame.title:GetText()))
+assert(QuestBookReader:IsShown(), "the reader opened by a tracker click")
+assert(QuestBookReader.title:GetText():find("Kobolds"), "on the clicked quest, got " .. tostring(QuestBookReader.title:GetText()))
 assert(__blizzOpenDetails == nil, "Blizzard's details not opened")
-QuestBookFrame:Hide()
-OpenQuestLog(); assert(QuestBookFrame:IsShown() and not __blizzOpenQuestLog, "OpenQuestLog reroutes")
-QuestBookFrame:Hide()
-QuestUtil.OpenQuestDetails(100); assert(QuestBookFrame:IsShown() and not __blizzPopupDetails, "popup detail reroutes")
-QuestBookFrame:Hide()
+QuestBookReader:Hide()
+OpenQuestLog(); assert(QuestBookReader:IsShown() and not __blizzOpenQuestLog, "OpenQuestLog reroutes")
+QuestBookReader:Hide()
+QuestUtil.OpenQuestDetails(100); assert(QuestBookReader:IsShown() and not __blizzPopupDetails, "popup detail reroutes")
+QuestBookReader:Hide()
 -- fallback: replace off gives every original back
 slash("log blizzard")
-QuestMapFrame_OpenToQuestDetails(101); assert(__blizzOpenDetails == 101 and not QuestBookFrame:IsShown(), "blizzard path when replace is off")
+QuestMapFrame_OpenToQuestDetails(101); assert(__blizzOpenDetails == 101 and not QuestBookReader:IsShown(), "blizzard path when replace is off")
 OpenQuestLog(); assert(__blizzOpenQuestLog)
 slash("log replace")
 -- disable restores the originals themselves
@@ -21,11 +21,9 @@ local ours = QuestMapFrame_OpenToQuestDetails
 QB:SetEnabled("questlog", false)
 assert(QuestMapFrame_OpenToQuestDetails ~= ours, "original function restored on disable")
 QB:SetEnabled("questlog", true)
--- the subtle look
-assert(QuestBook ~= nil or true)
-slash("bg 0.4"); assert(Q.db.bgAlpha == 0.4)
 -- camera zoom out
 local C = QB.modules.camera
+__tick(40, 0.05)                 -- (the camera is still letting go after the reader closed)
 local z0 = GetCameraZoom()
 QB:Fire("overlay_state", "local"); __tick(30, 0.05)
 assert(math.abs(GetCameraZoom() - (z0 + 3)) < 0.01, "zoomed out by 3, got " .. GetCameraZoom() - z0)

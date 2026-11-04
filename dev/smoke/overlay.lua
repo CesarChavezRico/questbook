@@ -2,6 +2,7 @@ __fire("ADDON_LOADED", "QuestBook"); __loggedIn = true; __fire("PLAYER_LOGIN")
 local function slash(s) SlashCmdList.QUESTBOOK(s) end
 local function flush(tag) for _, l in ipairs(__take()) do io.write(tag .. " | " .. l .. "\n") end end
 local O = QB.modules.overlay
+slash("overlay corner off")   -- these assertions are about the big layers; the corner has corner.lua
 assert(O and O.active and not O.unavailable, "overlay should be active")
 local seen = {}
 QB:On("overlay_state", function(s) seen[#seen + 1] = s end, "test")
@@ -18,6 +19,7 @@ assert(O.groundNow == "native", "the REAL minimap ground is the default outdoors
 assert(not HybridMinimap:IsShown(), "no painted hybrid art outdoors")
 assert(C_Minimap.GetUiMapID() == nil, "no map id override outdoors")
 assert(O.maskMode == "ours", "our soft mask by default")
+slash("xp blizzard off")         -- (the xp module fades Blizzard's xp bar by default; this scenario is about the overlay)
 local a1, a2, a3 = barsAlpha(); assert(a1 == 0 and a2 == 0, "action bars hidden in local mode")
 assert(a3 == 1, "xp/rep bars untouched by default")
 assert((__zoomSets or 0) >= 2, "zoom nudged after the resize")
@@ -39,10 +41,35 @@ __tick(4, 0.016)
 assert(WorldMapFrame:GetAlpha() == 1, "revealed after the position pass, got " .. WorldMapFrame:GetAlpha())
 assert(WorldMapFrame.ScrollContainer:GetAlpha() < 1, "map translucent")
 a1, a2 = barsAlpha(); assert(a1 == 0 and a2 == 0, "action bars hidden in zone mode")
+-- region view: the player's map is 37, its parent 13. In zone the key's next stop is the parent, whole; the one after is off
+assert(WorldMapFrame:GetMapID() == 37, "starts on the player's own map")
+slash("overlay cycle"); __tick(30, 0.016)
+assert(O:GetState() == "zone" and O.up == 1 and WorldMapFrame:GetMapID() == 13, "the key's next stop is the parent map, still zone: " .. O:GetState() .. " " .. tostring(WorldMapFrame:GetMapID()))
+slash("overlay cycle"); __tick(5, 0.016)
+assert(O:GetState() == "off" and O.up == 0, "and the one after is off, region reset")
+slash("overlay zone"); __tick(30, 0.016)
+assert(O:GetState() == "zone" and O.up == 0 and WorldMapFrame:GetMapID() == 37, "opening zone again starts on the player's own map: " .. tostring(WorldMapFrame:GetMapID()))
+-- no larger map: straight from zone to off
+local oldInfo = C_Map.GetMapInfo
+C_Map.GetMapInfo = function(id) return { name = "Map " .. tostring(id), mapID = id, parentMapID = 0 } end
+slash("overlay cycle"); __tick(5, 0.016)
+assert(O:GetState() == "off", "with no parent map the rotation skips the extra stop")
+C_Map.GetMapInfo = oldInfo
+-- the player walks into another map while zoomed out: back to the player's own
+slash("overlay zone"); __tick(30, 0.016); slash("overlay cycle"); __tick(30, 0.016); assert(O.up == 1)
+local oldBest = C_Map.GetBestMapForUnit
+C_Map.GetBestMapForUnit = function() return 99 end
+MapUtil = nil
+__tick(30, 0.016)
+assert(O.up == 0 and WorldMapFrame:GetMapID() == 99, "a new player map resets the region: " .. tostring(WorldMapFrame:GetMapID()))
+C_Map.GetBestMapForUnit = oldBest
+slash("overlay zone"); __tick(30, 0.016)
 print("zone ok")
 
 slash("overlay cycle"); __tick(10)
-assert(O:GetState() == "off", "third press = off")
+assert(O:GetState() == "zone" and O.up == 1, "third press = the overland map one level out (this player's map has a parent)")
+slash("overlay cycle"); __tick(10)
+assert(O:GetState() == "off", "fourth press = off")
 a1, a2, a3 = barsAlpha(); assert(a1 == 1 and a2 == 1, "bars restored")
 assert(not WorldMapFrame:IsShown(), "map closed")
 assert(Minimap:GetParent() == MinimapCluster)
