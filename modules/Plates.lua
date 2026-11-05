@@ -272,6 +272,16 @@ local function Diag()
   local okR, rel = pcall(function() return C_QuestLog.UnitIsRelatedToActiveQuest(unit) end)
   QB:Say("plates: " .. tostring(UnitName and UnitName(unit)) .. " | related to a quest: " .. (okR and tostring(rel) or ("error " .. tostring(rel))))
   QB:Say("plates: its nameplate: " .. tostring(PlateOf(unit) ~= nil) .. " | tooltip API: " .. tostring(C_TooltipInfo and C_TooltipInfo.GetUnit ~= nil))
+  local plate = PlateOf(unit)
+  if plate then
+    -- the parts the icon is anchored to (names from Blizzard_NamePlates.xml): which of them this client really has
+    local uf, bar = Parts(plate)
+    local function W(frame) local w, h = frame and frame.GetSize and frame:GetSize(); return w and string.format("%.0fx%.0f", w, h or 0) or "?" end
+    QB:Say(string.format("plates: parts: UnitFrame %s | health bar %s %s | level box %s%s | name %s | raid mark %s | elite mark %s | plate %s",
+      tostring(plate.UnitFrame ~= nil), tostring(bar ~= plate), W(bar), tostring(uf.PlayerLevelDiffFrame ~= nil),
+      uf.PlayerLevelDiffFrame and (IsUp(uf.PlayerLevelDiffFrame) and " (showing)" or " (hidden)") or "", tostring(uf.name ~= nil),
+      tostring(IsUp(uf.RaidTargetFrame) and true or false), tostring(IsUp(uf.ClassificationFrame) and true or false), W(plate)))
+  end
   local lines = TooltipLines(unit)
   if lines then
     local shown = 0

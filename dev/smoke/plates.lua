@@ -144,4 +144,5 @@ UnitName = function() return "Timber Wolf" end
 __take(); slash("plates diag")
 local said = table.concat(__take(), "\n")
 assert(said:find("related to a quest: true", 1, true) and said:find("Wolf slain", 1, true) and said:find("result:", 1, true), "diag says what it sees: " .. said)
+assert(said:find("plates: parts: UnitFrame true | health bar true", 1, true) and said:find("level box true (showing)", 1, true), "diag lists the nameplate's parts: " .. said)
 print("plates ok")
