@@ -276,7 +276,11 @@ local function Diag()
   if plate then
     -- the parts the icon is anchored to (names from Blizzard_NamePlates.xml): which of them this client really has
     local uf, bar = Parts(plate)
-    local function W(frame) local w, h = frame and frame.GetSize and frame:GetSize(); return w and string.format("%.0fx%.0f", w, h or 0) or "?" end
+    local function W(frame)
+      if not (frame and frame.GetSize) then return "?" end
+      local w, h = frame:GetSize()
+      return string.format("%.0fx%.0f", w or 0, h or 0)
+    end
     QB:Say(string.format("plates: parts: UnitFrame %s | health bar %s %s | level box %s%s | name %s | raid mark %s | elite mark %s | plate %s",
       tostring(plate.UnitFrame ~= nil), tostring(bar ~= plate), W(bar), tostring(uf.PlayerLevelDiffFrame ~= nil),
       uf.PlayerLevelDiffFrame and (IsUp(uf.PlayerLevelDiffFrame) and " (showing)" or " (hidden)") or "", tostring(uf.name ~= nil),
