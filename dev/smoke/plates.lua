@@ -37,6 +37,53 @@ __fire("NAME_PLATE_UNIT_ADDED", "nameplate2")
 local f2 = iconOf("nameplate2")
 assert(f2 and f2:IsShown() and f2.text:GetText() == "0/5", "the bear shows the pelts: " .. tostring(f2 and f2.text:GetText()))
 
+-- WHERE the icon sits (Cesar, 2026-11-04, from a screenshot: the icon landed on the level box and above the bar): beside the
+-- health bar, not on the plate frame's edge and centre. A plate as Blizzard builds it: UnitFrame with the bar, the level box, ...
+local function Real(u)
+  local plate = plates[u]
+  local uf = CreateFrame("Frame", nil, plate); plate.UnitFrame = uf
+  uf.HealthBarsContainer = CreateFrame("Frame", nil, uf)
+  uf.HealthBarsContainer.healthBar = CreateFrame("StatusBar", nil, uf.HealthBarsContainer)
+  uf.PlayerLevelDiffFrame = CreateFrame("Frame", nil, uf); uf.PlayerLevelDiffFrame:Show()
+  uf.ClassificationFrame = CreateFrame("Frame", nil, uf); uf.ClassificationFrame:Hide()
+  uf.RaidTargetFrame = CreateFrame("Frame", nil, uf); uf.RaidTargetFrame:Hide()
+  uf.name = uf:CreateFontString(nil, "OVERLAY"); uf.name:Show()
+  return uf
+end
+local uf = Real("nameplate1")
+__fire("NAME_PLATE_UNIT_ADDED", "nameplate1"); __runTimers()
+local pt = { f:GetPoint(1) }
+assert(pt[1] == "LEFT" and pt[2] == uf.PlayerLevelDiffFrame and pt[3] == "RIGHT", "right of the level box when it shows, centred on it (not on the plate): " .. tostring(pt[2] == plates.nameplate1 and "the plate" or pt[2]))
+uf.PlayerLevelDiffFrame:Hide(); __fire("NAME_PLATE_UNIT_ADDED", "nameplate1"); __runTimers()
+pt = { f:GetPoint(1) }
+assert(pt[2] == uf.HealthBarsContainer.healthBar and pt[3] == "RIGHT", "right of the health bar when there is no level box")
+uf.PlayerLevelDiffFrame:Show()
+slash("plates side left"); pt = { f:GetPoint(1) }
+assert(pt[1] == "RIGHT" and pt[2] == uf.HealthBarsContainer.healthBar and pt[3] == "LEFT", "left: of the bar")
+uf.RaidTargetFrame:Show(); uf.ClassificationFrame:Show(); slash("plates side left"); pt = { f:GetPoint(1) }
+assert(pt[2] == uf.ClassificationFrame, "left: past the raid mark and the elite mark when they show")
+uf.RaidTargetFrame:Hide(); uf.ClassificationFrame:Hide()
+slash("plates side top"); pt = { f:GetPoint(1) }
+assert(pt[1] == "BOTTOM" and pt[2] == uf.name and pt[3] == "TOP", "top: above the name, not above the plate")
+slash("plates side right"); pt = { f:GetPoint(1) }
+assert(pt[2] == uf.PlayerLevelDiffFrame, "and back to the right")
+assert(f:GetFrameLevel() > 50, "above the level box (frame level 50), got " .. tostring(f:GetFrameLevel()))
+-- Blizzard shows the level box a moment AFTER the plate was added: the icon moves to it
+uf.PlayerLevelDiffFrame:Hide(); __fire("NAME_PLATE_UNIT_ADDED", "nameplate1")
+pt = { f:GetPoint(1) }; assert(pt[2] == uf.HealthBarsContainer.healthBar, "first, beside the bar")
+uf.PlayerLevelDiffFrame:Show(); __runTimers()
+pt = { f:GetPoint(1) }; assert(pt[2] == uf.PlayerLevelDiffFrame, "then beside the level box, once it is up")
+-- a plate that is gone by then is left alone
+uf.PlayerLevelDiffFrame:Hide(); __fire("NAME_PLATE_UNIT_ADDED", "nameplate1"); __fire("NAME_PLATE_UNIT_REMOVED", "nameplate1"); __runTimers()
+assert(not f:IsShown(), "removed: stays hidden")
+uf.PlayerLevelDiffFrame:Show(); __fire("NAME_PLATE_UNIT_ADDED", "nameplate1"); __runTimers()
+-- a client whose plates have no UnitFrame at all: the plate frame itself, as before
+plates.nameplate1.UnitFrame = nil
+__fire("NAME_PLATE_UNIT_ADDED", "nameplate1"); __runTimers()
+pt = { f:GetPoint(1) }; assert(pt[2] == plates.nameplate1, "no UnitFrame: the plate frame")
+plates.nameplate1.UnitFrame = uf
+__fire("NAME_PLATE_UNIT_ADDED", "nameplate1"); __runTimers()
+
 -- a mob that is not related: nothing
 tips.nameplate3 = tip({ { 0, "Rabbit" } })
 __fire("NAME_PLATE_UNIT_ADDED", "nameplate3")

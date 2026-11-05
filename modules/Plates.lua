@@ -10,6 +10,12 @@
 --      (have / need) come from that objective and are written beside the icon.
 -- An objective already done shows nothing. Nameplates the game forbids addons to touch (instances, probably) are skipped.
 --
+-- WHERE it sits (v0.21.2; Cesar, 2026-11-04, from a screenshot: "the icon is not rendering in the right place"): a nameplate frame is
+-- bigger than its health bar (the name above, the bar, and a small level box 5 px to the right of the bar), so the icon, anchored
+-- to the plate frame's edge and centre, landed on the level box and above the bar. It is now anchored to the parts, as Blizzard_NamePlates/
+-- Blizzard_NamePlates.xml names them: plate.UnitFrame.HealthBarsContainer.healthBar, .PlayerLevelDiffFrame (the level box, to the
+-- right of the bar), .ClassificationFrame and .RaidTargetFrame (to the left of the bar), .name (above it).
+--
 -- UNVERIFIED (client only): that these two calls answer on this client the way the Forever API dump documents them, that the
 -- tooltip's objective text matches the quest log's, and the icon art paths. `/qb plates diag` (with a mob targeted or under the
 -- mouse) prints everything this module sees about it, so one test settles each of them.
@@ -155,6 +161,36 @@ local function Hide(unit)
   if f then f:Hide() end
 end
 
+-- The parts of a nameplate we hang the icon on. Anything missing falls back to the plate frame itself.
+local function Parts(plate)
+  local uf = plate.UnitFrame or plate
+  local bars = uf.HealthBarsContainer
+  return uf, (bars and bars.healthBar) or bars or plate
+end
+
+local function IsUp(frame) return frame and frame.IsShown and frame:IsShown() end
+
+-- Put the icon beside the health bar: to the right of the level box when it is showing (else of the bar), to the left of the raid
+-- mark and the elite / rare mark when they are, above the name for "top". Centred on the bar, not on the plate.
+local function Place(f, plate, side)
+  local uf, bar = Parts(plate)
+  local gap = Px(6, f)                  -- the target's yellow glow reaches about 3 px out of the bar and the level box
+  f:ClearAllPoints()
+  if side == "left" then
+    local edge = bar
+    if IsUp(uf.RaidTargetFrame) then edge = uf.RaidTargetFrame end
+    if IsUp(uf.ClassificationFrame) then edge = uf.ClassificationFrame end
+    f:SetPoint("RIGHT", edge, "LEFT", -gap, 0)
+  elseif side == "top" then
+    local name = IsUp(uf.name) and uf.name or bar
+    f:SetPoint("BOTTOM", name, "TOP", 0, Px(2, f))
+  else
+    local edge = IsUp(uf.PlayerLevelDiffFrame) and uf.PlayerLevelDiffFrame or bar
+    f:SetPoint("LEFT", edge, "RIGHT", gap, 0)
+  end
+  f.plate, f.side = plate, side
+end
+
 local function Show(unit, res, plate)
   local f = Frame(unit)
   local db = mod.db
@@ -172,12 +208,16 @@ local function Show(unit, res, plate)
   if db.progress and res.need and res.need > 0 then txt = (res.have or 0) .. "/" .. res.need end
   f.text:SetText(txt)
   f.text:SetTextColor(1, 0.92, 0.55, 1)
-  f:ClearAllPoints()
-  local side = db.side
-  if side == "left" then f:SetPoint("RIGHT", plate, "LEFT", -Px(4, f), 0)
-  elseif side == "top" then f:SetPoint("BOTTOM", plate, "TOP", 0, Px(2, f))
-  else f:SetPoint("LEFT", plate, "RIGHT", Px(4, f), 0) end
-  f:SetFrameLevel((plate.GetFrameLevel and plate:GetFrameLevel() or 1) + 5)
+  Place(f, plate, db.side)
+  -- the level box and the other marks are set up by Blizzard's own code around the time the plate appears (this event can
+  -- come before it): look again a moment later, and only if this icon is still on the same plate
+  if C_Timer and C_Timer.After then
+    C_Timer.After(0.1, function()
+      if f:IsShown() and f.plate == plate and mod.db.on then QB:Safe(mod, Place, f, plate, mod.db.side) end
+    end)
+  end
+  -- above the level box (frame level 50 in Camelot's template) so a glow or border of theirs never covers it
+  f:SetFrameLevel((plate.GetFrameLevel and plate:GetFrameLevel() or 1) + 60)
   f:Show()
 end
 

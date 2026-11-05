@@ -119,6 +119,13 @@ split by matching tooltip text to objective text is our own method, not seen els
 dump says, that the tooltip text matches the log's, and the icon art paths (stock icons `INV_Sword_04`, `INV_Misc_Bag_08`,
 `GossipFrame\AvailableQuestIcon`). `/qb plates diag` prints what the module sees for the target or the unit under the mouse.
 
+*Seen in the game (2026-11-04, v0.21.1):* the icon (a bag, with "0/10" beside it) appeared, but in the wrong place: on top of the nameplate's
+small level box, and higher than the health bar. Cause (from the screenshot and Blizzard_NamePlates): the plate frame is bigger than its bar (name
+above, bar, and the level box 5 px right of the bar), and the icon was anchored to the plate frame's right edge and vertical centre. v0.21.2 anchors it
+to the parts instead: right of the level box when it is showing (else of the health bar), centred on the bar; `left` goes past the raid mark and the
+elite mark; `top` goes above the name. It looks again 0.1 s after the plate appears, because Blizzard sets the level box up around then.
+The level box's own "4" and the icon art itself were fine.
+
 ### The camera
 
 - While the overlay is open the camera is slid sideways so the character sits left of centre and the
