@@ -340,6 +340,21 @@ from the recorded giver; nothing when no giver was recorded), so the bridge can 
 ElevenLabs Voice Library (`tts.casting` in the bridge; wow-relay `bridge/voices.js`). The slot is still sent, and is what speaks when
 casting is off or fails. Nothing else changes on this side.
 
+**The relay goes quiet (v0.21.3; Cesar, 2026-11-05: "it goes idle and almost every time I want a quest read, I get the default voice. I need to go
+and reconnect the relay, and wait for a bit to be able to read it with the ElevenLabs voices").** The relay addon counts the bridge as
+connected only for a while after it last heard from it (90 s with the sound-file presence beats working; about 12 minutes without them), and
+`WoWAI.SendTts` refuses a request while it is not: so after a quiet spell the reader fell back to the game's voice until the Reconnect
+button was pressed. Now, when a reading needs the relay and it is not connected, the reader does what that button does (`WoWAI.Connect`:
+say hello; the bridge acks and refreshes what the addon reads), shows Stop while it waits, polls every half second for up to 10 seconds, and
+speaks through the relay as soon as it answers; only if it does not answer does it use the game's voice, with the reason and how long the
+bridge has been quiet. After a failed try it does not try again for 45 seconds (each hello costs one of the relay addon's 200 slots, and a
+bridge that is really gone should not make every Talk wait). Stop, or a newer reading, cancels a waiting one; the prefetch at accept does
+the same quietly. `/qb voice status` says in one line why the relay voice would or would not be used. *Unverified:* that Connect brings
+the bridge back in under 10 seconds on the rig, and WHY it goes quiet in the first place (the relay's own `/ai diag` is needed for that:
+whether its sound channel is usable, how many presence beats it hears). One thing seen in the relay's code: where the sound channel is
+unusable, the idle poll reads a slot whose clock only changes when the bridge publishes (on a reply or a hello), so the light cannot stay
+green by itself there.
+
 ### The quest giver (v0.16.0; 4BI-38 step 1)
 
 - **Why:** the voiceover will pick a voice by who gave the quest (creature type and gender, a per-NPC override, a quick-pick in the

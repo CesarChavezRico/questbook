@@ -374,10 +374,79 @@ local function GiverMeta(questID, title)
   return { npc = rec.npc, giver = rec.name, sex = rec.sex, type = rec.type, zone = rec.zone, title = title }
 end
 
+-- What the relay addon says about its own connection ("Bridge: last seen 7m ago"), for the messages that say why.
+local function BridgeNote()
+  if _G.WoWAI and type(_G.WoWAI.BridgeState) == "function" then
+    local ok, state, _, _, _, tip = pcall(_G.WoWAI.BridgeState)
+    if ok and type(tip) == "string" and tip ~= "" then return tip, state end
+  end
+  return nil
+end
+
 local function RelayReady()
   if not (_G.WoWAI and type(_G.WoWAI.SendTts) == "function") then return false, "the WoW AI relay addon is not loaded" end
-  if type(_G.WoWAI.IsConnected) == "function" and not _G.WoWAI.IsConnected() then return false, "the relay bridge is not connected" end
+  if type(_G.WoWAI.IsConnected) == "function" and not _G.WoWAI.IsConnected() then
+    local note = BridgeNote()
+    return false, "the relay bridge is not connected" .. (note and (" (" .. note .. ")") or "")
+  end
   return true
+end
+
+-- The relay goes quiet while nobody talks to it: the addon only counts the bridge as connected for a while after it last
+-- heard from it, and the strip refuses a request when it is not (Cesar, 2026-11-05: "it goes idle and almost every time I want
+-- a quest read, I get the default voice; I need to go and reconnect the relay, and wait a bit"). So when a reading needs the
+-- relay and it is not connected, do what the Reconnect button does (WoWAI.Connect: say hello, the bridge answers and refreshes
+-- what the addon reads), wait a few seconds for the answer, and only then give up and use the game's voice. At most one try per
+-- RECONNECT_GAP seconds after a failed one (each hello costs one of the relay addon's 200 slots, and a bridge that is really
+-- gone should not make every Talk wait).
+local RECONNECT_WAIT = 10       -- seconds to wait for the bridge after asking it to reconnect
+local RECONNECT_GAP = 45        -- seconds before trying again after a failed try
+local waiters = {}              -- { go, fail, cancelled }: requests waiting for the relay
+local connecting = false
+local connectStarted, reconnectFailedAt
+
+local function Resolve(ok, why)
+  connecting = false
+  local list = waiters
+  waiters = {}
+  for _, w in ipairs(list) do
+    if not w.cancelled then
+      if ok then QB:Safe(mod, w.go) else QB:Safe(mod, w.fail, why) end
+    end
+  end
+end
+
+local function Look()
+  if not connecting then return end
+  local ready, why = RelayReady()
+  if ready then Resolve(true) return end
+  local now = GetTime and GetTime() or 0
+  if now - connectStarted >= RECONNECT_WAIT then
+    reconnectFailedAt = now
+    Resolve(false, why)
+    return
+  end
+  C_Timer.After(0.5, function() QB:Safe(mod, Look) end)
+end
+
+-- Run go() when the relay is connected (now, or after a reconnect); fail(why) when it cannot be. Returns "now" (go ran),
+-- "no" (fail ran) or "wait" and a handle: set handle.cancelled = true to drop the request (Stop, or a newer reading).
+local function WhenRelayReady(go, fail, quiet)
+  local ready, why = RelayReady()
+  if ready then go() return "now" end
+  local W = _G.WoWAI
+  local canConnect = W and type(W.Connect) == "function" and type(W.IsConnected) == "function" and C_Timer and C_Timer.After
+  local now = GetTime and GetTime() or 0
+  if not canConnect or (reconnectFailedAt and now - reconnectFailedAt < RECONNECT_GAP) then fail(why) return "no" end
+  local w = { go = go, fail = fail }
+  waiters[#waiters + 1] = w
+  if not connecting then
+    connecting, connectStarted = true, now
+    if not quiet then Say("voice: the relay had gone quiet; reconnecting") end
+    pcall(W.Connect)
+    C_Timer.After(0.5, function() QB:Safe(mod, Look) end)
+  end
+  return "wait", w
 end
 
 -- What is read: the title, then the description. (No "ready to turn in" prefix: the text then never changes between the
@@ -402,25 +471,10 @@ local function RelaySpeak(entry, desc)
   return true, nil, text
 end
 
-local function Speak(entry, desc, force)
-  if not db then Dbg("no db -- core never booted?") return end
-  if not force and not db.voice then Dbg("voice is OFF (/qb voice)") return end
-  if not desc then Dbg("no description cached") return end
-  if desc == UNAVAILABLE then Dbg("description unavailable") return end
-  if mod.db.engine == "relay" and entry then
-    local ok, why, text = RelaySpeak(entry, desc)
-    if ok then
-      mod.relayText = text
-      speakingID = entry.questID
-      mod:RelayStarted(#text)
-      return true
-    end
-    -- the relay is not there: say so once in a while and use the game's voice, so Talk never does nothing
-    if not mod.relayWarned or (GetTime and GetTime() - mod.relayWarned > 60) then
-      mod.relayWarned = (GetTime and GetTime()) or 1
-      Say("voice: " .. tostring(why) .. "; using the game's voice instead")
-    end
-  end
+local SetSpeaking                                        -- (defined below: the reading state the Talk / Stop link follows)
+
+-- The game's own voice.
+local function GameSpeak(entry, desc)
   Dbg("calling SpeakText...")
   local prefix = IsReadyToTurnIn(entry) and "This quest is complete and ready to turn in. " or ""
   local ok, why = SpeakText(((entry and entry.title) or "") .. ". " .. prefix .. desc)
@@ -429,7 +483,51 @@ local function Speak(entry, desc, force)
   return ok
 end
 
-local function SetSpeaking(state)
+-- The relay is not there: say so once in a while and use the game's voice, so Talk never does nothing.
+local function FallbackVoice(entry, desc, why)
+  if not mod.relayWarned or (GetTime and GetTime() - mod.relayWarned > 60) then
+    mod.relayWarned = (GetTime and GetTime()) or 1
+    Say("voice: " .. tostring(why) .. "; using the game's voice instead")
+  end
+  local ok = GameSpeak(entry, desc)
+  if not ok then SetSpeaking(false) end
+  return ok
+end
+
+local function Speak(entry, desc, force)
+  if not db then Dbg("no db -- core never booted?") return end
+  if not force and not db.voice then Dbg("voice is OFF (/qb voice)") return end
+  if not desc then Dbg("no description cached") return end
+  if desc == UNAVAILABLE then Dbg("description unavailable") return end
+  if mod.db.engine == "relay" and entry then
+    if mod.speakWaiter then mod.speakWaiter.cancelled = true; mod.speakWaiter = nil end      -- a newer reading replaces a waiting one
+    local started = false
+    local function go()
+      local ok, why, text = RelaySpeak(entry, desc)
+      if ok then
+        mod.relayText = text
+        speakingID = entry.questID
+        mod:RelayStarted(#text)
+        started = true
+      else
+        started = FallbackVoice(entry, desc, why)
+      end
+    end
+    local function fail(why) started = FallbackVoice(entry, desc, why) end
+    local state, handle = WhenRelayReady(go, fail)
+    if state == "wait" then
+      -- asking the relay to reconnect: the page says Stop meanwhile, and Stop (or the next reading) cancels the wait
+      mod.speakWaiter = handle
+      speakingID = entry.questID
+      SetSpeaking(true)
+      return true
+    end
+    return started
+  end
+  return GameSpeak(entry, desc)
+end
+
+SetSpeaking = function(state)
   local changed = (isSpeaking ~= state)
   isSpeaking = state
   if not state then speakingID = nil end
@@ -438,6 +536,7 @@ local function SetSpeaking(state)
 end
 
 local function StopSpeaking()
+  if mod.speakWaiter then mod.speakWaiter.cancelled = true; mod.speakWaiter = nil end        -- a reading still waiting for the relay
   if C_VoiceChat and C_VoiceChat.StopSpeakingText then pcall(C_VoiceChat.StopSpeakingText) end
   if relaySpeaking then
     relaySpeaking = false
@@ -463,14 +562,15 @@ end
 -- When a quest is accepted, have the bridge make its audio now (the giver is recorded a moment later, so wait for it).
 function mod:Prefetch(questID)
   if self.db.engine ~= "relay" or not self.db.prefetch or not questID then return end
-  local ready = RelayReady()
-  if not ready then return end
   local _, quests = ScanLog()
   for _, e in ipairs(quests) do
     if e.questID == questID then
       local desc = GetQuestText(e)
       if desc and desc ~= UNAVAILABLE then
-        pcall(_G.WoWAI.SendTts, "prefetch", VoiceSlot(questID), "q" .. tostring(questID), SpokenText(e, desc), GiverMeta(questID, e.title))
+        -- if the relay has gone quiet this asks it to reconnect first (quietly): the audio is then ready when you press Talk
+        WhenRelayReady(function()
+          pcall(_G.WoWAI.SendTts, "prefetch", VoiceSlot(questID), "q" .. tostring(questID), SpokenText(e, desc), GiverMeta(questID, e.title))
+        end, function() end, true)
       end
       return
     end
@@ -1104,13 +1204,21 @@ QB.legacySlash = function(msg)
       mod.db.prefetch = (arg == "on")
       Say("relay prefetch " .. arg)
     elseif sub == "test" then
-      local ok, why = RelayReady()
-      if not ok then
-        Say("relay voice test: " .. tostring(why))
-      else
+      WhenRelayReady(function()
         local sent, err = _G.WoWAI.SendTts("play", "narrator", "test", "QuestBook voice test. If you hear this, the relay voice works.")
         Say(sent and "relay voice test sent: the bridge should speak it in a moment" or ("relay voice test failed: " .. tostring(err)))
-      end
+      end, function(why) Say("relay voice test: " .. tostring(why)) end)
+    elseif sub == "status" then
+      -- one line that says why the relay voice would or would not be used right now
+      local W = _G.WoWAI
+      local note, state = BridgeNote()
+      local ready, why = RelayReady()
+      Say(string.format("voice: engine %s | relay addon %s | %s | %s%s%s",
+        mod.db.engine, W and "loaded" or "NOT loaded", ready and "connected: the relay voice is used" or ("not connected: " .. tostring(why)),
+        note or "no bridge state from the relay addon", state and (" [" .. tostring(state) .. "]") or "",
+        connecting and " | reconnecting now" or (reconnectFailedAt and (" | the last automatic reconnect failed " ..
+          math.floor((GetTime and GetTime() or 0) - reconnectFailedAt) .. " s ago") or "")))
+      Say("voice: for the relay's own view (sound channel, presence beats, slots) type /ai diag in the game")
     elseif sub == "slot" then
       local id = mod:CurrentQuestID()
       if id then
@@ -1120,7 +1228,7 @@ QB.legacySlash = function(msg)
         Say("open a quest in the reader first")
       end
     else
-      QB:Usage("/qb voice | voice engine game|relay | voice prefetch on|off | voice test | voice slot")
+      QB:Usage("/qb voice | voice engine game|relay | voice prefetch on|off | voice test | voice status | voice slot")
     end
   elseif msg == "voices" then
     if C_VoiceChat and C_VoiceChat.GetTtsVoices then
