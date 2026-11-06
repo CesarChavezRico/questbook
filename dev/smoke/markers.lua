@@ -110,7 +110,7 @@ assert(not ready.label:IsShown(), "the others have no label")
 
 -- the label is only on the big minimap (on the small one it ran into the action bars)
 slash("overlay cycle"); __tick(8)      -- zone: no small minimap
-slash("overlay cycle"); __tick(8)      -- off: the small minimap
+slash("overlay off"); __tick(8)        -- off: the small minimap (a cycle from the overland map first stops one region out, v0.20.0)
 C_SuperTrack.SetSuperTrackedQuestID(100); __fire("SUPER_TRACKING_CHANGED"); __tick(12)
 local anyLabel = false
 for _, f in ipairs(markers()) do if f.label:IsShown() then anyLabel = true end end
@@ -149,7 +149,7 @@ slash("markers scale 1"); __tick(12)
 -- off: the frame hides when no host has the minimap; back when it does
 slash("overlay cycle"); __tick(8)        -- zone: no small minimap with the overland map
 assert(not F:IsShown(), "no markers without the small minimap (Map mode)")
-slash("overlay cycle"); __tick(8)        -- off again
+slash("overlay off"); __tick(8)          -- off again (a cycle from the overland map first stops one region out, v0.20.0)
 assert(F:IsShown(), "back with it")
 
 -- the client switching the areas back on (login restore, the magnifier menu) is answered
