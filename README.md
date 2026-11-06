@@ -6,7 +6,7 @@ World of Warcraft: Forever (it targets the Forever client's UI; retail is not te
 It is one addon built from isolated modules, so a fault in one cannot take down the others:
 `/qb modules` shows what is on, `/qb errors` what broke, `/qb disable <module>` switches one off.
 
-> **Status: v0.21.2, in active development.** Everything here was written against Blizzard's UI
+> **Status: v0.21.3, in active development.** Everything here was written against Blizzard's UI
 > source for the Forever client and has been run in the game client only in short sessions by one
 > person. Code that relies on a guess says `UNVERIFIED:` in its comment, with what to check
 > in-game. Treat a feature as working only when this file, `docs/DESIGN.md` or an issue says it was seen working.
@@ -52,7 +52,7 @@ reason when a module is unavailable. The version is printed in chat at login and
 says something else than the Lua files, it says so (a mixed or half-updated install).
 
 - Quest reader: `reader height <0.3-0.95>|auto`, `reader aspect <n>`, `reader size <px>`, `reader scrollbar on|off`, `reader hide minimap|frames|auras on|off`, `size <px>` (body text, 14-40, default 22), `voice`, `rate <n>`, `prosody`, `voices`, `usevoice <id>`, `say`, `debug`,
-  `voice engine game|relay`, `voice prefetch on|off`, `voice test`, `voice slot`, `log replace|blizzard`, `blizzlog`.
+  `voice engine game|relay`, `voice prefetch on|off`, `voice test`, `voice status`, `voice slot`, `log replace|blizzard`, `blizzlog`.
 - Overlay: `/qb overlay cycle | off | local | zone`, `shape`, `size`, `alpha`, `rotate`, `corner on|off|move|lock|reset|size|pos|alpha|rotate|mask soft|wide|stock` (the small minimap bleeds out into the world by default; `stock` is the crisp circle),
   `ground auto|native|hybrid`, `bars actions|all|none`, `icons <n>`, `mask`, `diag`.
 - Experience bar: `/qb xp width <px>|height <px>|gap <px>|text on|off|textsize <px>|rested on|off|blizzard on|off` (no argument: status).
