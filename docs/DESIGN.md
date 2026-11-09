@@ -355,6 +355,24 @@ whether its sound channel is usable, how many presence beats it hears). One thin
 unusable, the idle poll reads a slot whose clock only changes when the bridge publishes (on a reply or a hello), so the light cannot stay
 green by itself there.
 
+### The Play / Stop button on EllesmereUI's tracker (v0.22.0; 4BI-38)
+
+- **Why** (Cesar, 2026-11-09, after leaving our list for EllesmereUI's: "playing the quest text looks painful. Can we integrate the play/stop button into the
+  elle's tracker?"): the list's per-quest Play button went with the list, and the reader needs three steps to read a quest.
+- **How:** EllesmereUI publishes a plugin API (its `PLUGINS_API.md`, `PLUGIN_API_VERSION` 5, "the API only ever grows; existing functions and fields will not
+  change"). `EllesmereUI.RegisterQuestTrackerRow(id, fn, width)` calls `fn(slot, questID, title)` for every quest title row each time its Custom Quest Tracker
+  redraws, with a frame of ours at the right end of the title. `modules/Elle.lua` registers once under our addon's name (34 px reserved), puts a small text
+  button on each slot (created once per slot, set from the questID on every call, never a secure frame), and clicks go to `QuestLog:PlayQuest`. The label is
+  Stop while that quest is the one being read (`QuestLog:SpeakingQuestID`), Play otherwise, and follows the `speech_state` topic through
+  `EllesmereUI.RefreshQuestTrackerRows()`. Written from that document only; none of EllesmereUI's code is used (its repository carries no licence file).
+- **Where it works:** WoW Forever only, and only while EllesmereUI's Custom Quest Tracker is on. TOC: `OptionalDeps: EllesmereUIQuestTracker` so we load after it;
+  if it is still not there, the module tries again at the next `PLAYER_ENTERING_WORLD`. There is no unregister: a disabled module hides its buttons and its callback
+  does nothing. `/qb elle` says whether the hook is available and whether we registered.
+- **Alternative that needs no code from us:** EllesmereUI has its own bridge to the Spoken addon (pre-recorded voices) that puts a Play button on the same rows.
+  If both are installed there will be two buttons; the hook allots each its own width.
+- **Unverified (the client has to say):** that the button shows and takes clicks inside Ellesmere's rows here, how it looks next to Ellesmere's own row icons, and
+  that a click does not also fall through to the row.
+
 ### The quest giver (v0.16.0; 4BI-38 step 1)
 
 - **Why:** the voiceover will pick a voice by who gave the quest (creature type and gender, a per-NPC override, a quick-pick in the
