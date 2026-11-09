@@ -355,6 +355,22 @@ whether its sound channel is usable, how many presence beats it hears). One thin
 unusable, the idle poll reads a slot whose clock only changes when the bridge publishes (on a reply or a hello), so the light cannot stay
 green by itself there.
 
+### QuestBook's settings in EllesmereUI's options panel (v0.23.0; 4BI-38)
+
+- **Why** (Cesar, 2026-11-09, after the Play button: "build the questbook settings into the panel"): about forty settings lived only behind slash commands.
+- **How:** `EllesmereUI.RegisterPlugin("QuestBook", spec)` (its `PLUGINS_API.md`, version 5) gives a section of our own at the bottom of its sidebar: one row,
+  "QuestBook", five tabs. *Voice*: walk-and-listen, the engine (game or ElevenLabs relay), prepare-at-accept, the game voice's speed, a test button, a "why" button.
+  *Reader*: text size, the page's height (same as the map, or its own), width, scroll bar, what it hides, an open button. *Experience bar*: the number, rested,
+  Blizzard's bar, width, height, gap, number size. *Top right*: the strip's coordinates and mail, the Play button's room. *Modules*: a switch for each
+  module, and a reload button. Open with `/qb settings`.
+- **One code path:** a setter runs the same command line as typing it (`QB:Run`, which is `HandleSlash` with the chat output switched off), so clamping and live
+  apply are what the commands already have and the tests already cover; a getter reads the module's saved value. A page for a module that is off says so in its header.
+- **Widgets:** the guide documents the factory's `SectionHeader` and `Toggle`. `Slider`, `Dropdown` and `Button` are what Ellesmere's own pages use; their signatures
+  were read from its source (`EllesmereUIOptions/EllesmereUI_Widgets*.lua`), nothing was copied, and every call is guarded: a widget that is missing or throws is skipped and reported.
+  The guide's other rules are kept: only a section of our own, plain-text labels, no side effects while building (it also runs once in a hidden search pass with a
+  stub factory), protected callbacks. Our section does not take part in Ellesmere's profiles.
+- **Unverified (the client has to say):** how the pages look and behave in the real panel, and the three undocumented widget signatures on the version in use.
+
 ### The Play / Stop button on EllesmereUI's tracker (v0.22.0; 4BI-38)
 
 - **Why** (Cesar, 2026-11-09, after leaving our list for EllesmereUI's: "playing the quest text looks painful. Can we integrate the play/stop button into the

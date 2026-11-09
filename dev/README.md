@@ -15,6 +15,7 @@ Offline checks for when there is no game client at hand.
     node run.js ../.. giver.lua                         # the quest giver: recorded at accept, capped, shown in the reader
     node run.js ../.. xp.lua                            # the experience bar: fill, rested, tooltip, max level, Blizzard's bar, no strip
     node run.js ../.. elle.lua                          # the Play / Stop button on EllesmereUI's tracker rows (a stand-in for its plugin API)
+    node run.js ../.. panel.lua                         # the settings section in EllesmereUI's panel (a stand-in for its plugin API and widget factory)
     node run.js ../.. kit.lua                           # /qb screen, /qb kit, pixel arithmetic, the nine-patch page
     node run.js ../.. version.lua                       # the version line at login
     node run.js ../.. help.lua                          # every help / usage line survives the chat frame (no stray "|")
