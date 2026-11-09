@@ -6,7 +6,7 @@ World of Warcraft: Forever (it targets the Forever client's UI; retail is not te
 It is one addon built from isolated modules, so a fault in one cannot take down the others:
 `/qb modules` shows what is on, `/qb errors` what broke, `/qb disable <module>` switches one off.
 
-> **Status: v0.22.0, in active development.** Everything here was written against Blizzard's UI
+> **Status: v0.23.0, in active development.** Everything here was written against Blizzard's UI
 > source for the Forever client and has been run in the game client only in short sessions by one
 > person. Code that relies on a guess says `UNVERIFIED:` in its comment, with what to check
 > in-game. Treat a feature as working only when this file, `docs/DESIGN.md` or an issue says it was seen working.
@@ -23,6 +23,7 @@ It is one addon built from isolated modules, so a fault in one cannot take down 
 | `plates` | An icon on the nameplate of a mob that one of your quests needs: a sword for a kill objective, a bag for a mob that drops something you need, the counts (3/8) beside it, nothing once the objective is done. It asks the game (`C_QuestLog.UnitIsRelatedToActiveQuest`) and reads the unit's tooltip to tell which objective. `/qb plates on|off|size <px>|side right|left|top|progress on|off`; `/qb plates diag` with a mob targeted prints everything it sees. Works with the default nameplates; other nameplate addons are untested. |
 | `xp` | The experience bar, folded into the top-right strip: a thin bar (3 px) under it, right-aligned, the XP you have in gold on a faint track, the rested part as a lighter blue extension, with "Lv 8  44%  [14%]" above it (the rested part, as a percent of the level, in brackets, only when there is some; the bar and the number are one hover area; the Menu drawer opens below them); hover for level, XP / max, to go and rested. Blizzard's own bottom bar is faded out while it is up (`/qb xp blizzard off` leaves it). At the maximum level, or with XP gain off, it hides and Blizzard's bar comes back (it also carries reputation and honor). |
 | `elle` | A Play / Stop button on the quest rows of EllesmereUI's quest tracker (WoW Forever, Custom Quest Tracker on), through EllesmereUI's documented plugin API (`RegisterQuestTrackerRow`). It reads the quest with the current voice engine, says Stop while that quest is being read, and follows it. `/qb elle` says whether the hook is available. |
+| `panel` | QuestBook's settings as a section of EllesmereUI's own options panel (its documented plugin API): one sidebar row, "QuestBook", with five tabs (Voice, Reader, Experience bar, Top right, Modules). Every control does what the matching `/qb` command does. Open it from the panel's sidebar or with `/qb settings`. |
 | `kit` | A look-at-it preview of the next visual language (a torn paper page, the type ramp, rows, buttons, a dark tracker swatch) laid out in whole screen pixels: `/qb kit`. `/qb screen` prints your screen in real pixels and the UI scale. Changes no real window. |
 | `camera` | Slides the camera sideways and a little back while the overlay is open, so the character sits left of centre. Backs up your camera settings and restores them, also after a crash. Pauses while a quest or gossip dialogue is open, so it does not fight a dialogue addon (Dialogue UI) over the camera. |
 | `strip` | A one-line text strip where the minimap used to be: zone, coordinates, mail. Click it to open Blizzard's full map. |
@@ -57,6 +58,7 @@ says something else than the Lua files, it says so (a mixed or half-updated inst
 - Overlay: `/qb overlay cycle | off | local | zone`, `shape`, `size`, `alpha`, `rotate`, `corner on|off|move|lock|reset|size|pos|alpha|rotate|mask soft|wide|stock` (the small minimap bleeds out into the world by default; `stock` is the crisp circle),
   `ground auto|native|hybrid`, `bars actions|all|none`, `icons <n>`, `mask`, `diag`.
 - Experience bar: `/qb xp width <px>|height <px>|gap <px>|text on|off|textsize <px>|rested on|off|blizzard on|off` (no argument: status).
+- Settings: `/qb settings` opens QuestBook's section in EllesmereUI's options panel (every setting there is also a command).
 - Look: `/qb kit` (sample page), `/qb screen`.
 - Markers: `/qb markers all|tracked|map`, `size <n>`, `scale <n>`, `areas native|hidden` (no argument: status; `map` also draws quest givers, to line the markers up with the client's own "!" blips; `scale` corrects the distance).
 - Tracker: `/qb tracker toggle|show|hide|collapse|expand|level on|off|all|tracked|width <px>|size <px>|alpha <0-1>|lines <n>|perpage <n>|page <n>|max <fraction>|move|lock|pos <x> <y>|reset` (no argument: status).
