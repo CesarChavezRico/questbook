@@ -15,6 +15,7 @@ modules/Tracker.lua    the compact quest list that replaces Blizzard's objective
 modules/Markers.lua    our quest markers on the minimap; switches the client's quest areas off
 modules/Giver.lua      who gave each quest (recorded at accept); feeds the reader and, later, the voice
 modules/Xp.lua         the experience bar under the strip; fades Blizzard's bottom bar while it is up
+modules/Elle.lua        the Play / Stop button on EllesmereUI's quest tracker rows (its plugin API)
 modules/Kit.lua        `/qb kit`, `/qb screen`: the sample page of the paper look, in whole pixels
 modules/Strip.lua      the text strip, the Addons handle
 modules/Drawers.lua    the Menu panel (micro menu + bags)

@@ -74,6 +74,7 @@ end
 function Frame:GetText() return self.__text end
 function Frame:GetStringWidth() return #tostring(self.__text) * 7 end
 function Frame:SetFont(file, size) self.__fsize = size; self.__ffile = file; return true end
+function Frame:GetFont() return self.__ffile, self.__fsize, "" end
 function Frame:SetSpacing(s) self.__spacing = s end
 function Frame:GetStringHeight()
   -- crude but monotone: wrap by width / (0.5 * font size), one line height = size + spacing
