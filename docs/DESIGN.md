@@ -429,6 +429,11 @@ green by itself there.
 
 - **The corner minimap is retired** and its slot reused. In its place, a one-line text strip (zone,
   coordinates, mail) that also opens Blizzard's full map on click.
+- **The server clock** (v0.23.1, *written*; Cesar, 2026-11-09: "add the server clock into our menu"; read as the top-right strip, where the Menu handle lives, and
+  not the Menu drawer panel): the realm time from `GetGameTime()` after the coordinates, refreshed once a second, in 12 or 24 hours as the game's own clock
+  setting says (the `timeMgrUseMilitaryTime` CVar; 24 hours when unset), in a fixed-width slot so its neighbours do not jitter. The tooltip also gives the local time.
+  `/qb strip clock on|off` and a toggle in the settings panel. A dash when the game gives no time or a secret value. *Unverified:* that `GetGameTime()` returns the
+  realm time on this client as it does in Blizzard's own clock code, and how it looks in the strip.
 - **The Addons button is Blizzard's addon compartment**, re-anchored to the strip so retiring the
   minimap cluster does not take it along. Whether the compartment exists in Forever is *unverified*
   (inferred from the TOC). Old-style round minimap buttons from libraries are **not** covered.

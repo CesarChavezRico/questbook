@@ -1,10 +1,12 @@
 -- QuestBook Strip -- the minimal text strip that replaces the corner minimap.
 --
 -- A quiet line at the top of the RIGHT wing of the screen:
---     <zone - sub-zone>   <x, y>   <Mail>   [Addons] [Menu]
+--     <zone - sub-zone>   <x, y>   <server time>   <Mail>   [Addons] [Menu]
 -- * zone / sub-zone (shortened), refreshed on ZONE_CHANGED* and PLAYER_ENTERING_WORLD
 -- * player coordinates, percent of the map with one decimal, refreshed on a 0.2 s
 --   ticker (never per frame); a dash where the map gives no position
+-- * the server (realm) time, from GetGameTime(), in the game's own 12 or 24 hour choice (the timeMgrUseMilitaryTime CVar),
+--   refreshed once a second (Cesar, 2026-11-09: "add the server clock into our menu"); the tooltip also gives the local time
 -- * mail indicator, shown only while HasNewMail() is true (UPDATE_PENDING_MAIL)
 -- * click on the text -> QB:Fire("open_full")   (the overlay module opens the Full map)
 -- * the ADDONS handle is Blizzard's own AddonCompartmentFrame, re-parented here so
@@ -28,6 +30,7 @@ local strip = QB:NewModule("strip", {
   scale = 1,
   showCoords = true,
   showMail = true,
+  showClock = true,       -- the server time, after the coordinates
 })
 
 -- ---------------------------------------------------------------- constants
@@ -124,6 +127,7 @@ local function Relayout()
 
   local list = {}
   if ui.mailFS:IsShown() then list[#list + 1] = ui.mailFS end
+  if ui.clockFS and ui.clockFS:IsShown() then list[#list + 1] = ui.clockFS end
   if ui.coordFS:IsShown() then list[#list + 1] = ui.coordFS end
   list[#list + 1] = ui.zoneFS
 
@@ -131,7 +135,7 @@ local function Relayout()
     el:ClearAllPoints()
     el:SetPoint("RIGHT", prev, "LEFT", -GAP, 0)
     prev = el
-    local w = (el == ui.coordFS) and (ui.coordW or 0) or el:GetStringWidth()
+    local w = (el == ui.coordFS) and (ui.coordW or 0) or (el == ui.clockFS) and (ui.clockW or 0) or el:GetStringWidth()
     width = width + GAP + (w or 0)
   end
 
@@ -198,6 +202,70 @@ local function UpdateMail()
     if has then ui.mailFS:Show() else ui.mailFS:Hide() end
     Relayout()
   end
+end
+
+-- ---------------------------------------------------------------- the clock
+
+-- "21:07" (24 hour) or "9:07 PM" (12 hour), following the game's own choice: the CVar the game's clock settings write. The server
+-- (realm) time is GetGameTime(); the local time is the computer's clock.
+local function Use24h()
+  if type(GetCVar) == "function" then
+    local ok, v = pcall(GetCVar, "timeMgrUseMilitaryTime")
+    if ok and v == "0" then return false end
+  end
+  return true
+end
+
+local function FormatClock(hour, minute, mil)
+  if mil then return string.format("%02d:%02d", hour, minute) end
+  local h12 = hour % 12
+  if h12 == 0 then h12 = 12 end
+  return string.format("%d:%02d %s", h12, minute, hour < 12 and "AM" or "PM")
+end
+
+local function ServerTime()
+  if type(GetGameTime) ~= "function" then return nil end
+  local ok, h, m = pcall(GetGameTime)
+  if not (ok and type(h) == "number" and type(m) == "number") or IsSecret(h) or IsSecret(m) then return nil end
+  return h, m
+end
+
+local function LocalTime()
+  if type(date) ~= "function" then return nil end
+  local ok, d = pcall(date, "*t")
+  if ok and type(d) == "table" and type(d.hour) == "number" then return d.hour, d.min end
+  return nil
+end
+
+local function UpdateClock()
+  if not ui.frame or not ui.clockFS or not strip.db.showClock then return end
+  local h, m = ServerTime()
+  local mil = Use24h()
+  local text = h and FormatClock(h, m, mil) or "-"
+  if text ~= last.clock or mil ~= last.mil then
+    if mil ~= last.mil then
+      -- a fixed-width slot, like the coordinates, so the neighbours do not jitter as the digits change
+      ui.clockFS:SetText(mil and "88:88" or "88:88 AM")
+      ui.clockW = ui.clockFS:GetStringWidth() + 2
+      ui.clockFS:SetWidth(ui.clockW)
+      last.mil = mil
+    end
+    last.clock = text
+    ui.clockFS:SetText(text)
+    Relayout()
+  end
+end
+
+local function ApplyClockVisibility()
+  if not ui.frame or not ui.clockFS then return end
+  if strip.db.showClock then
+    ui.clockFS:Show()
+    last.clock, last.mil = nil, nil
+    UpdateClock()
+  else
+    ui.clockFS:Hide()
+  end
+  Relayout()
 end
 
 local function UpdateAddonsShown()
@@ -291,6 +359,13 @@ local function OnHitEnter(self)
   if last.coords and last.coords ~= "-" then
     GameTooltip:AddLine(last.coords, 0.7, 0.7, 0.7)
   end
+  do
+    local sh, sm = ServerTime()
+    local lh, lm = LocalTime()
+    local mil = Use24h()
+    if sh then GameTooltip:AddLine("Server time  " .. FormatClock(sh, sm, mil), 0.85, 0.82, 0.72) end
+    if lh then GameTooltip:AddLine("Local time  " .. FormatClock(lh, lm, mil), 0.7, 0.7, 0.7) end
+  end
   if last.mail then
     GameTooltip:AddLine("You have new mail", COLOR_MAIL[1], COLOR_MAIL[2], COLOR_MAIL[3])
   end
@@ -357,6 +432,7 @@ local function EnsureBuilt()
 
   ui.zoneFS = MakeText(f, "RIGHT")
   ui.coordFS = MakeText(f, "RIGHT")
+  ui.clockFS = MakeText(f, "RIGHT")
   ui.mailFS = MakeText(f, "RIGHT")
   SetColor(ui.mailFS, COLOR_MAIL)
   ui.mailFS:SetText("Mail")
@@ -408,6 +484,7 @@ local function Tick()
   tickCount = tickCount + 1
   UpdateCoords()
   if tickCount % 5 == 0 then       -- once a second: cheap safety nets
+    UpdateClock()
     UpdateZone()
     UpdateAddonsShown()
   end
@@ -457,6 +534,7 @@ function strip:OnEnable()
   last = {}
   tickCount = 0
   ApplyCoordsVisibility()
+  ApplyClockVisibility()
   UpdateZone()
   UpdateMail()
   UpdateAddonsShown()
@@ -503,8 +581,8 @@ end
 
 local function Status()
   local db = strip.db
-  QB:Say(string.format("strip: coords %s, mail %s, scale %s, anchor %s %s,%s",
-    db.showCoords and "on" or "off", db.showMail and "on" or "off",
+  QB:Say(string.format("strip: coords %s, clock %s, mail %s, scale %s, anchor %s %s,%s",
+    db.showCoords and "on" or "off", db.showClock and "on" or "off", db.showMail and "on" or "off",
     tostring(db.scale), tostring(db.anchor), tostring(db.offsetX), tostring(db.offsetY)))
   QB:Say("strip: Addons handle: " .. addons.note)
   local menuState = QB:Get("drawers") and "drawers module on" or "drawers module off (Menu click only prints a notice)"
@@ -523,6 +601,12 @@ local function OnSlash(rest)
     if v == nil then QB:Usage("usage: /qb strip coords on|off") return end
     db.showCoords = v
     ApplyCoordsVisibility()
+    Status()
+  elseif a == "clock" then
+    local v = OnOff(b)
+    if v == nil then QB:Usage("usage: /qb strip clock on|off   (the server time; 12 or 24 hours as the game's clock setting)") return end
+    db.showClock = v
+    ApplyClockVisibility()
     Status()
   elseif a == "mail" then
     local v = OnOff(b)
@@ -550,10 +634,10 @@ local function OnSlash(rest)
     ApplySettings()
     Status()
   else
-    QB:Usage("usage: /qb strip [status] | coords on|off | mail on|off | scale <n> | pos <x> <y> | anchor <POINT>")
+    QB:Usage("usage: /qb strip [status] | coords on|off | clock on|off | mail on|off | scale <n> | pos <x> <y> | anchor <POINT>")
   end
 end
 
 QB:RegisterSlash(strip, "strip",
   OnSlash,
-  "minimal zone/coords/mail strip: coords on|off, mail on|off, scale <n>, pos <x> <y>, anchor <POINT>")
+  "minimal zone/coords/clock/mail strip: coords on|off, clock on|off, mail on|off, scale <n>, pos <x> <y>, anchor <POINT>")
