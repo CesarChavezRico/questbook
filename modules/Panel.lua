@@ -126,6 +126,8 @@ PAGES["Top right"] = function()
   return {
     Header("THE STRIP" .. OffNote("strip", "the strip")),
     Toggle("Show the coordinates", nil, function() return s().showCoords and true or false end, function(v) Run("strip coords " .. OnOff(v)) end),
+    Toggle("Show the server time", "The realm clock, after the coordinates, in the 12 or 24 hours of the game's own clock setting. The tooltip also gives your local time.",
+      function() return s().showClock and true or false end, function(v) Run("strip clock " .. OnOff(v)) end),
     Toggle("Show the mail icon", nil, function() return s().showMail and true or false end, function(v) Run("strip mail " .. OnOff(v)) end),
     Header("THE PLAY BUTTON ON ELLESMEREUI'S QUEST TRACKER" .. OffNote("elle", "the button")),
     Slider("Room reserved beside each title", "Screen pixels. Applies after a /reload.", 16, 64, 2,

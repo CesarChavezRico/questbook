@@ -116,6 +116,8 @@ h, rows = build("Top right")
 local S, E = QB.modules.strip, QB.modules.elle
 row(rows, "Show the coordinates").set(false); assert(S.db.showCoords == false); row(rows, "Show the coordinates").set(true)
 row(rows, "Show the mail icon").set(false); assert(S.db.showMail == false); row(rows, "Show the mail icon").set(true)
+row(rows, "Show the server time").set(false); assert(S.db.showClock == false and row(rows, "Show the server time").get() == false, "the clock toggle")
+row(rows, "Show the server time").set(true); assert(S.db.showClock == true)
 row(rows, "Room reserved beside each title").set(40); assert(E.db.width == 40, "the Play button's width")
 
 -- 8. Modules: a toggle per module that switches it for real
