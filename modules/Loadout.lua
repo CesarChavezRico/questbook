@@ -14,6 +14,9 @@
 --   { v = 1, slots = { [slot] = { kind = "spell", name = "Claw", id = 1082 } | { kind = "macro", name = "GoFast" }
 --                              | { kind = "item", id = 858, name = "..." } | { kind = "empty" } } }
 -- A spell is found by name first (the highest rank the character knows), then by id. A slot the plan does not mention is left alone.
+-- The plan may also carry macros to create first, so a seat that changes with the druid's form can be one macro instead of a paged
+-- bar:   macros = { { name = "QB Top M", body = "#showtooltip\n/cast [form:1] Bash; [noform] Regrowth" } }
+-- They are made as character macros (18 at most), or rewritten when one of that name exists and its text differs.
 --
 -- Game functions used, and where their use on this client was seen (EllesmereUI's rank-upgrade code, read 2026-11-10, does the same
 -- job for one spell): GetActionInfo, C_Spell.PickupSpell, PlaceAction, ClearCursor, InCombatLockdown, GetCursorInfo, and the
@@ -31,6 +34,7 @@ local mod = QB:NewModule("loadout", {
 })
 
 local MAX_SLOT = 180            -- 15 pages of 12
+local MACRO_ICON = "INV_MISC_QUESTIONMARK"   -- the question mark: with #showtooltip the button shows the spell's own icon
 local MAX_LINES = 24            -- chat lines a report may take before it is summarised
 
 local function Plain(v, kind)
@@ -133,6 +137,40 @@ local function PlanSlots()
   return out
 end
 
+-- The plan's macros: creates the missing ones, rewrites those whose text differs. Returns made, changed, lines of trouble.
+-- dry = true only counts.
+local function SyncMacros(dry)
+  local list = mod.db and mod.db.plan and mod.db.plan.macros
+  local made, changed, lines = 0, 0, {}
+  if type(list) ~= "table" then return made, changed, lines end
+  for _, m in ipairs(list) do
+    if type(m) == "table" and type(m.name) == "string" and m.name ~= "" and type(m.body) == "string" then
+      local okI, index = Try(_G.GetMacroIndexByName, m.name)
+      index = okI and tonumber(index) or 0
+      if index > 0 then
+        local okM, _, _, body = Try(_G.GetMacroInfo, index)
+        if not (okM and Plain(body, "string") == m.body) then
+          changed = changed + 1
+          if not dry and not Try(_G.EditMacro, index, m.name, m.icon or MACRO_ICON, m.body) then
+            changed = changed - 1
+            lines[#lines + 1] = "macro " .. m.name .. ": could not be rewritten"
+          end
+        end
+      else
+        made = made + 1
+        if not dry then
+          local okC, newIndex = Try(_G.CreateMacro, m.name, m.icon or MACRO_ICON, m.body, true)
+          if not okC or not tonumber(newIndex) then
+            made = made - 1
+            lines[#lines + 1] = "macro " .. m.name .. ": could not be created (18 character macros at most)"
+          end
+        end
+      end
+    end
+  end
+  return made, changed, lines
+end
+
 -- Turns a planned entry into the thing to place: { kind, id, name } or nil plus the reason it cannot be placed.
 local function Resolve(want, top)
   if want.kind == "empty" then return { kind = "empty" } end
@@ -206,11 +244,18 @@ function mod:Run(dry)
     if why then QB:Say("bars: " .. why); return false end
   end
   local top, _, noBook = ReadSpells()
-  local lines, placed, same, skipped, failed = {}, 0, 0, 0, 0
+  local madeMacros, changedMacros, lines = SyncMacros(dry)
+  local placed, same, skipped, failed = 0, 0, 0, 0
+  -- a macro the plan is about to create does not exist yet during a check: it will be there when the plan is applied
+  local coming = {}
+  if dry and type(mod.db.plan.macros) == "table" then
+    for _, m in ipairs(mod.db.plan.macros) do if type(m) == "table" and type(m.name) == "string" then coming[m.name] = true end end
+  end
   local before = {}
   for _, e in ipairs(entries) do
     local now = ReadSlot(e.slot)
     local thing, why = Resolve(e.want, top)
+    if not thing and dry and e.want.kind == "macro" and coming[e.want.name] then thing = { kind = "macro", name = e.want.name } end
     if not thing then
       skipped = skipped + 1
       lines[#lines + 1] = string.format("%s: %s skipped (%s)", Where(e.slot), Describe(e.want), why)
@@ -232,8 +277,10 @@ function mod:Run(dry)
   end
   if not dry and next(before) then mod.db.undo = { v = 1, slots = before } end
   local head = dry and "bars check" or "bars apply"
-  QB:Say(string.format("%s: %d to place%s, %d already right, %d skipped%s%s", head, placed, dry and "" or " (done)", same, skipped,
-    failed > 0 and (", " .. failed .. " FAILED") or "", noBook and (" | " .. noBook) or ""))
+  QB:Say(string.format("%s: %d to place%s, %d already right, %d skipped%s%s%s", head, placed, dry and "" or " (done)", same, skipped,
+    failed > 0 and (", " .. failed .. " FAILED") or "",
+    (madeMacros + changedMacros > 0) and string.format(" | macros: %d new, %d rewritten", madeMacros, changedMacros) or "",
+    noBook and (" | " .. noBook) or ""))
   Report(lines, (not dry and next(before)) and "bars: /qb bars undo puts the old buttons back" or nil)
   return failed == 0
 end
