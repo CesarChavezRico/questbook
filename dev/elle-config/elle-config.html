@@ -895,6 +895,8 @@
       bars.push({ bar: 'Bar9', n: 3, dir: 'v', x: xr + 3 * dx, y: y0r - dy - half, pitchPx: dy, seat: 'wheel up, click, down' });
       return { shape: 'hexagon', sizePx: opts.sizePx, bars };
     }
+    // The bottom key row is action bar 1 because it holds the two keys pressed most, and bar 1
+    // is the only bar the game itself swaps between forms.
     // Circles. The player and target frames sit on the map's middle line, left and
     // right of it. Below them the keys wrap the lower half of the map: each key row is
     // a bar whose inner end follows the circle, and the lowest rows run under it. Above
@@ -906,7 +908,7 @@
     const first = Math.round(band + S / 2);
     const inner = (off) => Math.max(centre, Math.abs(off) < rho ? Math.sqrt(rho * rho - off * off) : 0);
     const keys = ['P', 'R', 'M', 'I'];
-    [['Bar2', 'top key row (pinky to index)'], ['MainBar', 'home key row (pinky to index)'], ['Bar4', 'bottom key row (pinky to index)']].forEach((c, r) => {
+    [['Bar2', 'top key row (pinky to index)'], ['Bar4', 'home key row (pinky to index)'], ['MainBar', 'bottom key row (pinky to index): the one row that changes with your form by itself']].forEach((c, r) => {
       const off = first + r * p;
       bars.push({ bar: c[0], n: 4, dir: 'h', x: mx - inner(off) + S / 2 - (3 * p + S), y: my + off - S / 2, pitchPx: p, seat: c[1], labels: keys });
     });
