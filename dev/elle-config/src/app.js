@@ -8,7 +8,7 @@
   const state = {
     vars: null, original: null, fileName: 'EllesmereUI.lua', profile: null,
     physW: 3440, physH: 1440, selected: null, showHidden: false, previewCounts: {}, els: [], scr: null,
-    map: null, empty: {}, labels: {},
+    map: null, empty: {}, labels: {}, planned: [],
   };
 
   function el(tag, attrs, parent) {
@@ -73,6 +73,13 @@
       el('rect', { x: (m.cx - m.side / 2) * u, y: (m.cy - m.side / 2) * u, width: m.side * u, height: m.side * u, class: 'mapbox' }, svg);
       el('circle', { cx: m.cx * u, cy: m.cy * u, r: r * u, class: 'mapdisc' }, svg);
       const t = el('text', { x: m.cx * u, y: m.cy * u, class: 'num', 'font-size': 13 }, svg); t.textContent = 'map';
+    }
+    for (const row of state.planned) {
+      const u = 1 / scr.pxPerUnit;
+      for (const c of row.cells) el('circle', { cx: c.cx * u, cy: c.cy * u, r: c.r * u, class: 'planned' }, svg);
+      const far = row.cells[row.cells.length - 1];
+      const t = el('text', { x: (far.cx + (row.side === 'left' ? -1 : 1) * (far.r + 6)) * u, y: far.cy * u, class: 'plannedText', 'font-size': 12, 'text-anchor': row.side === 'left' ? 'end' : 'start' }, svg);
+      t.textContent = row.label;
     }
     for (const e of state.els) {
       if (!e.placed) continue;
@@ -251,7 +258,7 @@
     if (!state.vars) return;
     const changed = M.diff(state.original.get('EllesmereUIDB'), state.vars.get('EllesmereUIDB')).length;
     if (changed && !confirm('Building a layout starts again from the file you loaded and drops the ' + changed + ' changes made so far. Continue?')) return;
-    state.vars = L.parse(L.serialize(state.original)); state.previewCounts = {}; state.empty = {}; state.labels = {};
+    state.vars = L.parse(L.serialize(state.original)); state.previewCounts = {}; state.empty = {}; state.labels = {}; state.planned = [];
     recompute();
     const ppu = state.scr.pxPerUnit, style = $('hcStyle').value;
     const sizePx = Number($('hcSize').value), gapPx = Number($('hcGap').value), marginPx = Number($('hcMargin').value);
@@ -275,8 +282,9 @@
         if (e.kind === 'actionbar' && /^(MainBar|Bar2|Bar[4-9]|Bar10)$/.test(e.key) && !cells.some((c) => c.bar === e.key) && !e.hidden) M.setField(state.vars, state.profile, e, 'hidden', true);
       }
       if (plan.frames) {
-        const skipped = M.placeAround(state.vars, state.profile, state.scr, plan, map, state.previewCounts);
-        if (skipped.length) err = (err ? err + '\n' : '') + 'Moved but kept square (their Border Style is not Solid): ' + skipped.join(', ');
+        const notes = M.placeAround(state.vars, state.profile, state.scr, plan, map, state.previewCounts);
+        if (notes.length) err = (err ? err + '\n' : '') + 'Cooldown rows: ' + notes.join(', ');
+        state.planned = plan.planned || [];
       } else if ($('hcCrown').checked) {
         const skipped = M.crownCooldowns(state.vars, state.profile, state.scr, map, marginPx, plan.shape, state.previewCounts);
         if (skipped.length) err = (err ? err + '\n' : '') + 'Moved but kept square (their Border Style is not Solid): ' + skipped.join(', ');
@@ -313,7 +321,7 @@
     // Safety: writing the file back must give the same data.
     if (!L.equal(vars, L.parse(L.serialize(vars)))) { alert('This file does not survive a read and write unchanged, so editing it here is not safe. Nothing was loaded.'); return; }
     state.vars = vars; state.original = L.parse(text); state.fileName = name || 'EllesmereUI.lua';
-    state.profile = M.profileName(vars); state.selected = null; state.previewCounts = {}; state.empty = {}; state.labels = {};
+    state.profile = M.profileName(vars); state.selected = null; state.previewCounts = {}; state.empty = {}; state.labels = {}; state.planned = [];
     document.body.classList.add('loaded');
     recompute();
     const mainBar = state.els.find((e) => e.id === 'ab:MainBar');

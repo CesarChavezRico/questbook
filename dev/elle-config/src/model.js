@@ -594,12 +594,28 @@
       { key: 'player', left: mx - reach - fr.player.w, top: my - fr.player.h / 2 },
       { key: 'target', left: mx + reach, top: my - fr.target.h / 2 },
     ];
-    // cooldown rows: Utility ends at the map on the upper left, Cooldowns starts at it on the
-    // upper right (it grows to the right), Buffs sits centred on top
+    // The upper half mirrors the lower one: short rows on levels that step inward as they
+    // go up, and a cap centred on top. Level 0 sits just above the frame names.
+    // Cooldown manager rows are placed by placeAround; the rest are other EllesmereUI
+    // elements this tool cannot move yet, drawn as dashed placeholders.
+    const icon = 36, pitch = icon + 2, rhoI = reach + icon / 2;
+    const levelOff = (k) => bandUp + icon / 2 + k * pitch;
+    const levelDx = (k) => Math.max(icon / 2 + 3, levelOff(k) < rhoI ? Math.sqrt(rhoI * rhoI - levelOff(k) * levelOff(k)) : 0);
+    const capOff = Math.max(rhoI, levelOff(2) + pitch);
+    const dome = { iconPx: icon, levelOff: [0, 1, 2].map(levelOff), levelDx: [0, 1, 2].map(levelDx), capOff };
     const cdm = [
-      { key: 'utility', side: 'left', band: bandUp }, { key: 'cooldowns', side: 'right', band: bandUp }, { key: 'buffs', side: 'top' },
+      { key: 'utility', side: 'left', level: 0 }, { key: 'cooldowns', side: 'right', level: 0 }, { key: 'buffs', side: 'cap' },
     ];
-    return { shape: 'circle', sizePx: opts.sizePx, bars, frames, cdm, reach };
+    const ghostRow = (label, side, level, n) => {
+      const cells = [];
+      for (let i = 0; i < n; i++) cells.push({ cx: mx + (side === 'left' ? -1 : 1) * (levelDx(level) + i * pitch), cy: my - levelOff(level), r: icon / 2 });
+      return { label, side, cells };
+    };
+    const planned = [
+      ghostRow('debuffs on you', 'left', 1, 4), ghostRow('your debuffs on the target', 'right', 1, 4),
+      ghostRow('your combat buffs', 'left', 2, 4), ghostRow('free', 'right', 2, 4),
+    ];
+    return { shape: 'circle', sizePx: opts.sizePx, bars, frames, cdm, reach, dome, planned };
   }
 
   // Makes the player and target frames a thin line with the name floating above it.
@@ -627,18 +643,31 @@
     for (const c of plan.cdm || []) {
       let e = cdmBars(vars, scr, profile, counts).find((x) => x.key === c.key);
       if (!e || !e.placed) continue;
-      if (setShape(vars, profile, e, plan.shape)) skipped.push(e.label);
+      if (setShape(vars, profile, e, plan.shape)) {
+        // shapes need a solid border; switch the style and try again
+        cdmBar(vars, profile, e.index).set('borderTexture', 'solid');
+        e = cdmBars(vars, scr, profile, counts).find((x) => x.key === c.key);
+        if (setShape(vars, profile, e, plan.shape)) skipped.push(e.label); else skipped.push(e.label + ' (border style changed to Solid)');
+      }
       e = cdmBars(vars, scr, profile, counts).find((x) => x.key === c.key);
-      const w = e.w * ppu, h = e.h * ppu, icon = e.cells.length ? e.cells[0].w * ppu : h;
+      const w = e.w * ppu, h = e.h * ppu, icon = e.cells.length ? e.cells[0].w * ppu : h, d = plan.dome;
       let left, top;
-      if (c.side === 'top') { left = map.cx - w / 2; top = map.cy - plan.reach - h; }
+      if (c.side === 'cap') { left = map.cx - w / 2; top = map.cy - d.capOff - h / 2; }
       else {
-        const off = c.band + h / 2, rho = plan.reach + icon / 2;
-        const dxc = off < rho ? Math.sqrt(rho * rho - off * off) : icon / 2 + 3;
-        top = map.cy - off - h / 2;
+        // the first icon's centre sits where a dome icon of this level would
+        const dxc = d.levelDx[c.level] + (icon - d.iconPx) / 2;
+        top = map.cy - d.levelOff[c.level] - h / 2;
         left = c.side === 'right' ? map.cx + dxc - icon / 2 : map.cx - dxc + icon / 2 - w;
       }
       moveTo(vars, profile, e, left / ppu, top / ppu, scr);
+      if (c.side === 'left') {
+        // a row left of the map hangs from its right end and grows away from the map
+        const bar = cdmBar(vars, profile, e.index);
+        bar.set('growDirection', 'LEFT');
+        const o = unplace({ point: 'RIGHT', relPoint: 'CENTER' }, Math.round(left) / ppu, Math.round(top) / ppu, e.w, e.h, scr);
+        L.set(db(vars), 'profiles', profile, 'addons', 'EllesmereUICooldownManager', 'cdmBarPositions', e.key,
+          new Map([['point', 'RIGHT'], ['relPoint', 'CENTER'], ['x', o.x], ['y', o.y]]));
+      }
     }
     return skipped;
   }
