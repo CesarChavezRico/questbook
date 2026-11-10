@@ -52,6 +52,7 @@
   .hiddenEl { opacity:.35; }
   .cell.ghost { fill:none; stroke:#5b6474; stroke-width:1; stroke-dasharray:3 3; }
   .planned { fill:#3d3327; fill-opacity:.6; stroke:#c9a15b; stroke-width:1; stroke-dasharray:3 2; }
+  .pip { stroke:#c9a15b; stroke-width:1; }
   .plannedText { fill:#8b93a1; dominant-baseline:central; }
   .mapbox { fill:none; stroke:#3c5a4c; stroke-width:1; stroke-dasharray:6 5; }
   .mapdisc { fill:#1f3a2e; fill-opacity:.7; stroke:#0cd29f; stroke-opacity:.5; stroke-width:1; }
@@ -94,6 +95,7 @@
     <label class="field"><span>Cooldown rows above the map</span><input type="checkbox" id="hcCrown" checked></label>
     <label class="field"><span>Thin player and target frames (circles only)</span><input type="checkbox" id="hcSlim" checked></label>
     <label class="field"><span>EllesmereUI draws buffs and debuffs (circles only)</span><input type="checkbox" id="hcAuras" checked></label>
+    <label class="field"><span>Combo points, rage or energy and cast bar on top of the map (circles only)</span><input type="checkbox" id="hcRes" checked></label>
     <label class="field"><span>Flip the stagger (blocks only)</span><input type="checkbox" id="hcFlip"></label>
     <label class="field"><span>QuestBook.lua (centre map)</span></label><input type="file" id="qb" accept=".lua">
     <button type="button" id="hcApply" class="small">Build the layout</button>
@@ -931,11 +933,16 @@
     const levelDx = (k) => Math.max(icon / 2 + 3, levelOff(k) < rhoI ? Math.sqrt(rhoI * rhoI - levelOff(k) * levelOff(k)) : 0);
     const capOff = Math.max(rhoI, levelOff(2) + pitch);
     const dome = { iconPx: icon, levelOff: [0, 1, 2].map(levelOff), levelDx: [0, 1, 2].map(levelDx), capOff };
-    // level 0, next to each frame: that unit's debuffs. Level 1: the cooldown rows.
-    // Level 2 on the player's side: combat buffs. The cap: tracked buffs.
+    // Three rows on each side. Left, about you: debuffs on you, tracked buffs, combat
+    // buffs. Right, about the fight: your debuffs on the target, Cooldowns, Utility.
+    // On top of the circle: combo points, then rage or energy, then the cast bar.
     const cdm = [
-      { key: 'utility', side: 'left', level: 1 }, { key: 'cooldowns', side: 'right', level: 1 }, { key: 'buffs', side: 'cap' },
+      { key: 'buffs', side: 'left', level: 1 }, { key: 'cooldowns', side: 'right', level: 1 }, { key: 'utility', side: 'right', level: 2 },
     ];
+    const capW = 200, capBase = levelOff(2) + icon / 2 + 4;    // just above the highest rows
+    const stack = [['secondary', 'combo points', 14], ['primary', 'rage / energy', 12], ['castBar', 'cast bar', 16]];
+    const resources = []; let up = capBase;
+    for (const [key, label, h] of stack) { resources.push({ key, label, w: capW, h, cx: mx, cy: my - up - h / 2 }); up += h + 3; }
     const ghostRow = (label, side, level, n) => {
       const cells = [];
       for (let i = 0; i < n; i++) cells.push({ cx: mx + (side === 'left' ? -1 : 1) * (levelDx(level) + i * pitch), cy: my - levelOff(level), r: icon / 2 });
@@ -954,7 +961,8 @@
       rest: { right: scr.physW - 29, top: 53 + 40, n: 12 },
       targetLift: bandUp - band + 2,
     };
-    return { shape: 'circle', sizePx: opts.sizePx, bars, frames, cdm, reach, dome, planned, auras };
+    for (const r of resources) planned.push({ label: r.label, side: 'right', bar: { x: r.cx - r.w / 2, y: r.cy - r.h / 2, w: r.w, h: r.h, pips: r.key === 'secondary' ? 5 : 0 }, cells: [] });
+    return { shape: 'circle', sizePx: opts.sizePx, bars, frames, cdm, reach, dome, planned, auras, resources };
   }
 
   // Makes the player and target frames a thin line with the name floating above it.
@@ -1028,6 +1036,20 @@
     return notes;
   }
 
+  // Turns on EllesmereUI's resource bars (off by default on this client) and stacks them
+  // with the cast bar on top of the map. Each is stored as a centre-to-centre position.
+  function setupResources(vars, profile, scr, items) {
+    const ppu = scr.pxPerUnit;
+    for (const r of items) {
+      const path = ['profiles', profile, 'addons', 'EllesmereUIResourceBars', r.key];
+      const set = (k, v) => L.set.apply(null, [db(vars)].concat(path, [k, v]));
+      set('enabled', true);
+      if (r.key === 'secondary') { set('pipWidth', r.w / ppu); set('pipHeight', r.h / ppu); }
+      else { set('width', r.w / ppu); set('height', r.h / ppu); }
+      set('unlockPos', new Map([['point', 'CENTER'], ['relPoint', 'CENTER'], ['x', (r.cx - scr.physW / 2) / ppu], ['y', (scr.physH / 2 - r.cy) / ppu]]));
+    }
+  }
+
   // Applies the frame and cooldown-row places of a plan made by hugPlan.
   function placeAround(vars, profile, scr, plan, map, counts) {
     const ppu = scr.pxPerUnit, skipped = [];
@@ -1048,6 +1070,8 @@
         e = cdmBars(vars, scr, profile, counts).find((x) => x.key === c.key);
         if (setShape(vars, profile, e, plan.shape)) skipped.push(e.label); else skipped.push(e.label + ' (border style changed to Solid)');
       }
+      // every row of the dome uses the same icon size and gap
+      { const bar = cdmBar(vars, profile, e.index); bar.set('iconSize', plan.dome.iconPx / ppu); bar.set('spacing', 2 / ppu); }
       e = cdmBars(vars, scr, profile, counts).find((x) => x.key === c.key);
       const w = e.w * ppu, h = e.h * ppu, icon = e.cells.length ? e.cells[0].w * ppu : h, d = plan.dome;
       let left, top;
@@ -1059,13 +1083,14 @@
         left = c.side === 'right' ? map.cx + dxc - icon / 2 : map.cx - dxc + icon / 2 - w;
       }
       moveTo(vars, profile, e, left / ppu, top / ppu, scr);
-      if (c.side === 'left') {
-        // a row left of the map hangs from its right end and grows away from the map
+      if (c.side === 'left' || c.side === 'right') {
+        // a row beside the map hangs from the end nearest it and grows away from it
+        const leftSide = c.side === 'left', pt = leftSide ? 'RIGHT' : 'LEFT';
         const bar = cdmBar(vars, profile, e.index);
-        bar.set('growDirection', 'LEFT');
-        const o = unplace({ point: 'RIGHT', relPoint: 'CENTER' }, Math.round(left) / ppu, Math.round(top) / ppu, e.w, e.h, scr);
+        bar.set('growDirection', leftSide ? 'LEFT' : 'RIGHT');
+        const o = unplace({ point: pt, relPoint: 'CENTER' }, Math.round(left) / ppu, Math.round(top) / ppu, e.w, e.h, scr);
         L.set(db(vars), 'profiles', profile, 'addons', 'EllesmereUICooldownManager', 'cdmBarPositions', e.key,
-          new Map([['point', 'RIGHT'], ['relPoint', 'CENTER'], ['x', o.x], ['y', o.y]]));
+          new Map([['point', pt], ['relPoint', 'CENTER'], ['x', o.x], ['y', o.y]]));
       }
     }
     return skipped;
@@ -1116,7 +1141,7 @@
   const api = {
     SHAPES, SHAPE_LABELS, THICKNESS, isCustomShape, AB_BARS,
     db, profileName, profileNames, screen, place, unplace, elements, actionBars, cdmBars, unitFrames,
-    setShape, setField, moveTo, diff, honeycomb, handsPlan, HEX_HEIGHT, questbookMap, layoutBars, hugPlan, crownCooldowns, placeAround, slimFrames, setupAuras,
+    setShape, setField, moveTo, diff, honeycomb, handsPlan, HEX_HEIGHT, questbookMap, layoutBars, hugPlan, crownCooldowns, placeAround, slimFrames, setupAuras, setupResources,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ElleModel = api;
@@ -1202,6 +1227,14 @@
     }
     for (const row of state.planned) {
       const u = 1 / scr.pxPerUnit;
+      if (row.bar) {
+        const b = row.bar;
+        el('rect', { x: b.x * u, y: b.y * u, width: b.w * u, height: b.h * u, class: 'planned' }, svg);
+        for (let i = 1; i < b.pips; i++) el('line', { x1: (b.x + i * b.w / b.pips) * u, y1: b.y * u, x2: (b.x + i * b.w / b.pips) * u, y2: (b.y + b.h) * u, class: 'pip' }, svg);
+        const t = el('text', { x: (b.x + b.w + 8) * u, y: (b.y + b.h / 2) * u, class: 'plannedText', 'font-size': 12, 'text-anchor': 'start' }, svg);
+        t.textContent = row.label;
+        continue;
+      }
       for (const c of row.cells) el('circle', { cx: c.cx * u, cy: c.cy * u, r: c.r * u, class: 'planned' }, svg);
       const far = row.cells[row.cells.length - 1];
       const t = el('text', { x: (far.cx + (row.side === 'left' ? -1 : 1) * (far.r + 6)) * u, y: far.cy * u, class: 'plannedText', 'font-size': 12, 'text-anchor': row.side === 'left' ? 'end' : 'start' }, svg);
@@ -1414,7 +1447,9 @@
         if (plan.auras && $('hcAuras').checked) {
           const more = M.setupAuras(state.vars, state.profile, state.scr, plan.auras);
           if (more.length) err = (err ? err + '\n' : '') + more.join('\n');
-        } else if (plan.auras) state.planned = [];
+        } else if (plan.auras) state.planned = state.planned.filter((r) => r.bar);
+        if (plan.resources && $('hcRes').checked) M.setupResources(state.vars, state.profile, state.scr, plan.resources);
+        else state.planned = state.planned.filter((r) => !r.bar);
       } else if ($('hcCrown').checked) {
         const skipped = M.crownCooldowns(state.vars, state.profile, state.scr, map, marginPx, plan.shape, state.previewCounts);
         if (skipped.length) err = (err ? err + '\n' : '') + 'Moved but kept square (their Border Style is not Solid): ' + skipped.join(', ');

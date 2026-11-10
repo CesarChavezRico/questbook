@@ -76,6 +76,14 @@
     }
     for (const row of state.planned) {
       const u = 1 / scr.pxPerUnit;
+      if (row.bar) {
+        const b = row.bar;
+        el('rect', { x: b.x * u, y: b.y * u, width: b.w * u, height: b.h * u, class: 'planned' }, svg);
+        for (let i = 1; i < b.pips; i++) el('line', { x1: (b.x + i * b.w / b.pips) * u, y1: b.y * u, x2: (b.x + i * b.w / b.pips) * u, y2: (b.y + b.h) * u, class: 'pip' }, svg);
+        const t = el('text', { x: (b.x + b.w + 8) * u, y: (b.y + b.h / 2) * u, class: 'plannedText', 'font-size': 12, 'text-anchor': 'start' }, svg);
+        t.textContent = row.label;
+        continue;
+      }
       for (const c of row.cells) el('circle', { cx: c.cx * u, cy: c.cy * u, r: c.r * u, class: 'planned' }, svg);
       const far = row.cells[row.cells.length - 1];
       const t = el('text', { x: (far.cx + (row.side === 'left' ? -1 : 1) * (far.r + 6)) * u, y: far.cy * u, class: 'plannedText', 'font-size': 12, 'text-anchor': row.side === 'left' ? 'end' : 'start' }, svg);
@@ -288,7 +296,9 @@
         if (plan.auras && $('hcAuras').checked) {
           const more = M.setupAuras(state.vars, state.profile, state.scr, plan.auras);
           if (more.length) err = (err ? err + '\n' : '') + more.join('\n');
-        } else if (plan.auras) state.planned = [];
+        } else if (plan.auras) state.planned = state.planned.filter((r) => r.bar);
+        if (plan.resources && $('hcRes').checked) M.setupResources(state.vars, state.profile, state.scr, plan.resources);
+        else state.planned = state.planned.filter((r) => !r.bar);
       } else if ($('hcCrown').checked) {
         const skipped = M.crownCooldowns(state.vars, state.profile, state.scr, map, marginPx, plan.shape, state.previewCounts);
         if (skipped.length) err = (err ? err + '\n' : '') + 'Moved but kept square (their Border Style is not Solid): ' + skipped.join(', ');

@@ -52,6 +52,7 @@
   .hiddenEl { opacity:.35; }
   .cell.ghost { fill:none; stroke:#5b6474; stroke-width:1; stroke-dasharray:3 3; }
   .planned { fill:#3d3327; fill-opacity:.6; stroke:#c9a15b; stroke-width:1; stroke-dasharray:3 2; }
+  .pip { stroke:#c9a15b; stroke-width:1; }
   .plannedText { fill:#8b93a1; dominant-baseline:central; }
   .mapbox { fill:none; stroke:#3c5a4c; stroke-width:1; stroke-dasharray:6 5; }
   .mapdisc { fill:#1f3a2e; fill-opacity:.7; stroke:#0cd29f; stroke-opacity:.5; stroke-width:1; }
@@ -94,6 +95,7 @@
     <label class="field"><span>Cooldown rows above the map</span><input type="checkbox" id="hcCrown" checked></label>
     <label class="field"><span>Thin player and target frames (circles only)</span><input type="checkbox" id="hcSlim" checked></label>
     <label class="field"><span>EllesmereUI draws buffs and debuffs (circles only)</span><input type="checkbox" id="hcAuras" checked></label>
+    <label class="field"><span>Combo points, rage or energy and cast bar on top of the map (circles only)</span><input type="checkbox" id="hcRes" checked></label>
     <label class="field"><span>Flip the stagger (blocks only)</span><input type="checkbox" id="hcFlip"></label>
     <label class="field"><span>QuestBook.lua (centre map)</span></label><input type="file" id="qb" accept=".lua">
     <button type="button" id="hcApply" class="small">Build the layout</button>

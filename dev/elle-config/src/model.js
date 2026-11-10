@@ -603,11 +603,16 @@
     const levelDx = (k) => Math.max(icon / 2 + 3, levelOff(k) < rhoI ? Math.sqrt(rhoI * rhoI - levelOff(k) * levelOff(k)) : 0);
     const capOff = Math.max(rhoI, levelOff(2) + pitch);
     const dome = { iconPx: icon, levelOff: [0, 1, 2].map(levelOff), levelDx: [0, 1, 2].map(levelDx), capOff };
-    // level 0, next to each frame: that unit's debuffs. Level 1: the cooldown rows.
-    // Level 2 on the player's side: combat buffs. The cap: tracked buffs.
+    // Three rows on each side. Left, about you: debuffs on you, tracked buffs, combat
+    // buffs. Right, about the fight: your debuffs on the target, Cooldowns, Utility.
+    // On top of the circle: combo points, then rage or energy, then the cast bar.
     const cdm = [
-      { key: 'utility', side: 'left', level: 1 }, { key: 'cooldowns', side: 'right', level: 1 }, { key: 'buffs', side: 'cap' },
+      { key: 'buffs', side: 'left', level: 1 }, { key: 'cooldowns', side: 'right', level: 1 }, { key: 'utility', side: 'right', level: 2 },
     ];
+    const capW = 200, capBase = levelOff(2) + icon / 2 + 4;    // just above the highest rows
+    const stack = [['secondary', 'combo points', 14], ['primary', 'rage / energy', 12], ['castBar', 'cast bar', 16]];
+    const resources = []; let up = capBase;
+    for (const [key, label, h] of stack) { resources.push({ key, label, w: capW, h, cx: mx, cy: my - up - h / 2 }); up += h + 3; }
     const ghostRow = (label, side, level, n) => {
       const cells = [];
       for (let i = 0; i < n; i++) cells.push({ cx: mx + (side === 'left' ? -1 : 1) * (levelDx(level) + i * pitch), cy: my - levelOff(level), r: icon / 2 });
@@ -626,7 +631,8 @@
       rest: { right: scr.physW - 29, top: 53 + 40, n: 12 },
       targetLift: bandUp - band + 2,
     };
-    return { shape: 'circle', sizePx: opts.sizePx, bars, frames, cdm, reach, dome, planned, auras };
+    for (const r of resources) planned.push({ label: r.label, side: 'right', bar: { x: r.cx - r.w / 2, y: r.cy - r.h / 2, w: r.w, h: r.h, pips: r.key === 'secondary' ? 5 : 0 }, cells: [] });
+    return { shape: 'circle', sizePx: opts.sizePx, bars, frames, cdm, reach, dome, planned, auras, resources };
   }
 
   // Makes the player and target frames a thin line with the name floating above it.
@@ -700,6 +706,20 @@
     return notes;
   }
 
+  // Turns on EllesmereUI's resource bars (off by default on this client) and stacks them
+  // with the cast bar on top of the map. Each is stored as a centre-to-centre position.
+  function setupResources(vars, profile, scr, items) {
+    const ppu = scr.pxPerUnit;
+    for (const r of items) {
+      const path = ['profiles', profile, 'addons', 'EllesmereUIResourceBars', r.key];
+      const set = (k, v) => L.set.apply(null, [db(vars)].concat(path, [k, v]));
+      set('enabled', true);
+      if (r.key === 'secondary') { set('pipWidth', r.w / ppu); set('pipHeight', r.h / ppu); }
+      else { set('width', r.w / ppu); set('height', r.h / ppu); }
+      set('unlockPos', new Map([['point', 'CENTER'], ['relPoint', 'CENTER'], ['x', (r.cx - scr.physW / 2) / ppu], ['y', (scr.physH / 2 - r.cy) / ppu]]));
+    }
+  }
+
   // Applies the frame and cooldown-row places of a plan made by hugPlan.
   function placeAround(vars, profile, scr, plan, map, counts) {
     const ppu = scr.pxPerUnit, skipped = [];
@@ -720,6 +740,8 @@
         e = cdmBars(vars, scr, profile, counts).find((x) => x.key === c.key);
         if (setShape(vars, profile, e, plan.shape)) skipped.push(e.label); else skipped.push(e.label + ' (border style changed to Solid)');
       }
+      // every row of the dome uses the same icon size and gap
+      { const bar = cdmBar(vars, profile, e.index); bar.set('iconSize', plan.dome.iconPx / ppu); bar.set('spacing', 2 / ppu); }
       e = cdmBars(vars, scr, profile, counts).find((x) => x.key === c.key);
       const w = e.w * ppu, h = e.h * ppu, icon = e.cells.length ? e.cells[0].w * ppu : h, d = plan.dome;
       let left, top;
@@ -731,13 +753,14 @@
         left = c.side === 'right' ? map.cx + dxc - icon / 2 : map.cx - dxc + icon / 2 - w;
       }
       moveTo(vars, profile, e, left / ppu, top / ppu, scr);
-      if (c.side === 'left') {
-        // a row left of the map hangs from its right end and grows away from the map
+      if (c.side === 'left' || c.side === 'right') {
+        // a row beside the map hangs from the end nearest it and grows away from it
+        const leftSide = c.side === 'left', pt = leftSide ? 'RIGHT' : 'LEFT';
         const bar = cdmBar(vars, profile, e.index);
-        bar.set('growDirection', 'LEFT');
-        const o = unplace({ point: 'RIGHT', relPoint: 'CENTER' }, Math.round(left) / ppu, Math.round(top) / ppu, e.w, e.h, scr);
+        bar.set('growDirection', leftSide ? 'LEFT' : 'RIGHT');
+        const o = unplace({ point: pt, relPoint: 'CENTER' }, Math.round(left) / ppu, Math.round(top) / ppu, e.w, e.h, scr);
         L.set(db(vars), 'profiles', profile, 'addons', 'EllesmereUICooldownManager', 'cdmBarPositions', e.key,
-          new Map([['point', 'RIGHT'], ['relPoint', 'CENTER'], ['x', o.x], ['y', o.y]]));
+          new Map([['point', pt], ['relPoint', 'CENTER'], ['x', o.x], ['y', o.y]]));
       }
     }
     return skipped;
@@ -788,7 +811,7 @@
   const api = {
     SHAPES, SHAPE_LABELS, THICKNESS, isCustomShape, AB_BARS,
     db, profileName, profileNames, screen, place, unplace, elements, actionBars, cdmBars, unitFrames,
-    setShape, setField, moveTo, diff, honeycomb, handsPlan, HEX_HEIGHT, questbookMap, layoutBars, hugPlan, crownCooldowns, placeAround, slimFrames, setupAuras,
+    setShape, setField, moveTo, diff, honeycomb, handsPlan, HEX_HEIGHT, questbookMap, layoutBars, hugPlan, crownCooldowns, placeAround, slimFrames, setupAuras, setupResources,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ElleModel = api;
