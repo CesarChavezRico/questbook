@@ -262,9 +262,11 @@
       cells = [].concat.apply([], plan.blocks.map((b) => b.cells));
     } else {
       const map = mapForPlan();
+      const slim = style === 'crescent' && $('hcSlim').checked;
+      if (slim) { M.slimFrames(state.vars, state.profile, 10 / ppu, 3 / ppu, 14 / ppu); recompute(); }
       const size = (k) => { const f = state.els.find((e) => e.id === 'uf:' + k); return f ? { w: f.w * ppu, h: f.h * ppu } : null; };
       const frames = size('player') && size('target') ? { player: size('player'), target: size('target') } : undefined;
-      const plan = M.hugPlan(state.scr, { style, sizePx, gapPx, map, marginPx, frames });
+      const plan = M.hugPlan(state.scr, { style, sizePx, gapPx, map, marginPx, frames, nameAbovePx: slim ? 18 : 0 });
       err = M.layoutBars(state.vars, state.profile, state.scr, plan);
       cells = plan.bars;
       // bars of the keypad and mouse that this layout does not use are hidden

@@ -571,6 +571,7 @@
     const p = S + gap, rho = reach + S / 2, centre = S / 2 + 3;
     const fr = opts.frames || { player: { w: 298, h: 80 }, target: { w: 217, h: 62 } };
     const band = Math.max(fr.player.h, fr.target.h) / 2 + 6;         // half height kept free for the frames
+    const bandUp = band + (opts.nameAbovePx || 0);                    // above, the name floats over the bar
     const first = Math.round(band + S / 2);
     const inner = (off) => Math.max(centre, Math.abs(off) < rho ? Math.sqrt(rho * rho - off * off) : 0);
     const keys = ['P', 'R', 'M', 'I'];
@@ -596,9 +597,20 @@
     // cooldown rows: Utility ends at the map on the upper left, Cooldowns starts at it on the
     // upper right (it grows to the right), Buffs sits centred on top
     const cdm = [
-      { key: 'utility', side: 'left', band }, { key: 'cooldowns', side: 'right', band }, { key: 'buffs', side: 'top' },
+      { key: 'utility', side: 'left', band: bandUp }, { key: 'cooldowns', side: 'right', band: bandUp }, { key: 'buffs', side: 'top' },
     ];
     return { shape: 'circle', sizePx: opts.sizePx, bars, frames, cdm, reach };
+  }
+
+  // Makes the player and target frames a thin line with the name floating above it.
+  // The in-game slider for the health bar stops at 15; EllesmereUI's own resize code
+  // allows 8. Values are UI units.
+  function slimFrames(vars, profile, healthH, powerH, lift) {
+    for (const k of ['player', 'target']) {
+      const set = (f, v) => L.set(db(vars), 'profiles', profile, 'addons', 'EllesmereUIUnitFrames', k, f, v);
+      set('healthHeight', healthH); set('powerHeight', powerH);
+      set('leftTextY', lift); set('rightTextY', lift);
+    }
   }
 
   // Applies the frame and cooldown-row places of a plan made by hugPlan.
@@ -676,7 +688,7 @@
   const api = {
     SHAPES, SHAPE_LABELS, THICKNESS, isCustomShape, AB_BARS,
     db, profileName, profileNames, screen, place, unplace, elements, actionBars, cdmBars, unitFrames,
-    setShape, setField, moveTo, diff, honeycomb, handsPlan, HEX_HEIGHT, questbookMap, layoutBars, hugPlan, crownCooldowns, placeAround,
+    setShape, setField, moveTo, diff, honeycomb, handsPlan, HEX_HEIGHT, questbookMap, layoutBars, hugPlan, crownCooldowns, placeAround, slimFrames,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ElleModel = api;
