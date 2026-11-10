@@ -444,6 +444,7 @@
         t.set('buttonWidth', sizePx * one); t.set('buttonHeight', sizePx * one);
         t.set('buttonPadding', b.padPx * one);
         t.set('growDirection', 'center'); t.set('alwaysHidden', false); t.set('barVisibility', 'always');
+        if (b.c.hideEmpty) t.set('alwaysShowButtons', false);
         const left = (originX + b.x) * one, top = (originY + b.y) * one, w = b.w * one, h = b.h * one;
         const o = unplace({ point: 'CENTER', relPoint: 'CENTER' }, left, top, w, h, scr);
         L.set(db(vars), 'profiles', profile, 'addons', 'EllesmereUIActionBars', 'barPositions', el.key,
@@ -477,13 +478,121 @@
           { bar: 'Bar6', n: 2, col: 4, row: hi + 2, dir: 'v', seat: 'left thumb keys' },
         ] },
         { anchor: rightAnchor, cells: [
-          { bar: 'Bar7', n: 3, col: 0, row: hi, dir: 'v', seat: 'mouse thumb buttons' },
+          { bar: 'Bar7', n: 4, col: 0, row: hi, dir: 'v', hideEmpty: true, empty: [3], seat: 'mouse thumb buttons: 1 and 2 are the pair, 4 is the single one, 3 stays empty' },
           { bar: 'Bar8', n: 2, col: 1, row: lo, dir: 'v', seat: 'index buttons (front, rear)' },
           { bar: 'Bar10', n: 2, col: 2, row: hi + 1, dir: 'h', step: 2, seat: 'wheel tilt left and right' },
           { bar: 'Bar9', n: 3, col: 3, row: lo, dir: 'v', seat: 'wheel up, click, down' },
         ] },
       ],
     };
+  }
+
+  // ---- layouts around the centre map -----------------------------------------
+  // QuestBook's small minimap (its saved file, QuestBook.lua): a square whose side
+  // is a fraction of the screen height, hung by its top-right corner from the
+  // screen's top-right corner. Returned in screen pixels.
+  function questbookMap(qbVars, scr) {
+    const o = L.get(qbVars.get('QuestBookDB'), 'mod', 'overlay');
+    if (!(o instanceof Map)) return null;
+    const num = (k, d) => (typeof o.get(k) === 'number' ? o.get(k) : d);
+    const side = Math.max(48, Math.min(0.5, Math.max(0.05, num('cornerSize', 0.16))) * scr.uiH);
+    const right = scr.uiW + num('cornerX', -24), top = -num('cornerY', -44);
+    const ppu = scr.pxPerUnit;
+    return { cx: (right - side / 2) * ppu, cy: (top + side / 2) * ppu, side: side * ppu, shown: o.get('corner') !== false };
+  }
+
+  // Writes a list of bars given in whole screen pixels:
+  // spec { sizePx, shape, bars: [{ bar, n, dir: 'v'|'h', x, y, pitchPx, hideEmpty }] }
+  function layoutBars(vars, profile, scr, spec) {
+    const one = scr.onePx, errors = [];
+    const els = actionBars(vars, scr, profile);
+    const drawn = spec.sizePx + (isCustomShape(spec.shape) ? Math.round(AB_SHAPE_EXPAND / one) : 0);
+    for (const b of spec.bars) {
+      const el = els.find((e) => e.key === b.bar);
+      if (!el) { errors.push('No action bar called ' + b.bar); continue; }
+      const err = setShape(vars, profile, el, spec.shape);
+      if (err) { errors.push(el.label + ': ' + err); continue; }
+      const t = abBar(vars, profile, el.key);
+      t.set('overrideNumIcons', b.n); t.set('overrideNumRows', 1);
+      if (b.dir === 'h') t.delete('orientation'); else t.set('orientation', 'vertical');
+      t.set('buttonWidth', spec.sizePx * one); t.set('buttonHeight', spec.sizePx * one);
+      t.set('buttonPadding', (b.pitchPx - drawn) * one);
+      t.set('growDirection', 'center'); t.set('alwaysHidden', false); t.set('barVisibility', 'always');
+      if (b.hideEmpty) t.set('alwaysShowButtons', false);
+      const long = b.n * drawn + (b.n - 1) * (b.pitchPx - drawn);
+      const w = (b.dir === 'h' ? long : drawn) * one, h = (b.dir === 'h' ? drawn : long) * one;
+      const o = unplace({ point: 'CENTER', relPoint: 'CENTER' }, Math.round(b.x) * one, Math.round(b.y) * one, w, h, scr);
+      L.set(db(vars), 'profiles', profile, 'addons', 'EllesmereUIActionBars', 'barPositions', el.key,
+        new Map([['point', 'CENTER'], ['relPoint', 'CENTER'], ['x', o.x], ['y', o.y]]));
+    }
+    return errors.length ? errors.join('\n') : undefined;
+  }
+
+  // Two ways to wrap the keypad and the mouse around a round map in the middle.
+  // opts: { style: 'wings'|'crescent', sizePx, gapPx, map: { cx, cy, r }, marginPx } in screen pixels.
+  function hugPlan(scr, opts) {
+    const one = scr.onePx, exp = Math.round(AB_SHAPE_EXPAND / one);
+    const S = opts.sizePx + exp, gap = opts.gapPx || 0;
+    const mx = Math.round(opts.map.cx), my = Math.round(opts.map.cy), reach = opts.map.r + (opts.marginPx || 0);
+    const bars = [];
+    if (opts.style === 'wings') {
+      // Hexagons. Every finger is a column; each column sits half a row higher than
+      // the one nearer the map, so the two hands rise away from it like wings.
+      const dx = Math.round(S * 0.75) + gap;
+      let dy = Math.round(S * HEX_HEIGHT) + gap; if (dy % 2) dy += 1;
+      const half = dy / 2, colH = (n) => (n - 1) * dy + S;
+      const xi = mx - reach - S, y0 = my - Math.round(colH(3) / 2);
+      [['MainBar', 'index column'], ['Bar2', 'middle column'], ['Bar4', 'ring column'], ['Bar5', 'pinky column']].forEach((c, k) => {
+        bars.push({ bar: c[0], n: 3, dir: 'v', x: xi - k * dx, y: y0 - k * half, pitchPx: dy, seat: c[1] });
+      });
+      // the two thumb keys go under the map, on the first free honeycomb rows
+      const tx = xi + dx, near = mx >= tx && mx <= tx + S ? 0 : Math.min(Math.abs(mx - tx), Math.abs(mx - tx - S));
+      const clear = my + Math.sqrt(Math.max(0, reach * reach - near * near)) - S * (1 - HEX_HEIGHT) / 2;
+      let ty = y0 + half; while (ty < clear - 8) ty += dy;   // 8 px of the margin may be given up to stay one row closer
+      bars.push({ bar: 'Bar6', n: 2, dir: 'v', x: tx, y: ty, pitchPx: dy, seat: 'left thumb keys' });
+      const xr = mx + reach, y0r = my - Math.round(colH(4) / 2);
+      bars.push({ bar: 'Bar7', n: 4, dir: 'v', x: xr, y: y0r, pitchPx: dy, hideEmpty: true, empty: [3], seat: 'mouse thumb buttons: 1 and 2 are the pair, 4 is the single one, 3 stays empty' });
+      bars.push({ bar: 'Bar8', n: 2, dir: 'v', x: xr + dx, y: y0r - half, pitchPx: dy, seat: 'index buttons (front, rear)' });
+      bars.push({ bar: 'Bar10', n: 2, dir: 'h', x: xr + 2 * dx, y: y0r - dy, pitchPx: 2 * dx, seat: 'wheel tilt left and right' });
+      bars.push({ bar: 'Bar9', n: 3, dir: 'v', x: xr + 3 * dx, y: y0r - dy - half, pitchPx: dy, seat: 'wheel up, click, down' });
+      return { shape: 'hexagon', sizePx: opts.sizePx, bars };
+    }
+    // Circles. Each key row is a bar, pushed in or out so its inner end follows the map.
+    const p = S + gap, rho = reach + S / 2;
+    const inner = (off) => (Math.abs(off) < rho ? Math.sqrt(rho * rho - off * off) : 0);
+    [['Bar2', 'top key row (pinky to index)'], ['MainBar', 'home key row (pinky to index)'], ['Bar4', 'bottom key row (pinky to index)']].forEach((c, r) => {
+      const off = (r - 1) * p;
+      bars.push({ bar: c[0], n: 4, dir: 'h', x: mx - inner(off) + S / 2 - (3 * p + S), y: my + off - S / 2, pitchPx: p, seat: c[1] });
+    });
+    bars.push({ bar: 'Bar5', n: 2, dir: 'h', x: mx - inner(2 * p) + S / 2 - (p + S), y: my + 2 * p - S / 2, pitchPx: p, seat: 'left thumb keys' });
+    const xr = mx + reach;
+    bars.push({ bar: 'Bar7', n: 4, dir: 'v', x: xr, y: my - (3 * p + S) / 2, pitchPx: p, hideEmpty: true, empty: [3], seat: 'mouse thumb buttons: 1 and 2 are the pair, 4 is the single one, 3 stays empty' });
+    bars.push({ bar: 'Bar8', n: 2, dir: 'v', x: xr + p, y: my - (p + S) / 2, pitchPx: p, seat: 'index buttons (front, rear)' });
+    bars.push({ bar: 'Bar10', n: 2, dir: 'h', x: xr + 2 * p, y: my - S / 2, pitchPx: 2 * p, seat: 'wheel tilt left and right, either side of the wheel click' });
+    bars.push({ bar: 'Bar9', n: 3, dir: 'v', x: xr + 3 * p, y: my - (2 * p + S) / 2, pitchPx: p, seat: 'wheel up, click, down' });
+    return { shape: 'circle', sizePx: opts.sizePx, bars };
+  }
+
+  // Puts the Cooldowns and Utility rows side by side above the map and Buffs above them.
+  function crownCooldowns(vars, profile, scr, map, marginPx, shape, counts) {
+    const ppu = scr.pxPerUnit, skipped = [];
+    const get = () => cdmBars(vars, scr, profile, counts);
+    for (const k of ['cooldowns', 'utility', 'buffs']) {
+      const e = get().find((x) => x.key === k);
+      if (e && shape && setShape(vars, profile, e, shape)) skipped.push(e.label);
+    }
+    const top = map.cy - map.r - marginPx;
+    const at = (k, leftFn, bottom) => {
+      const e = get().find((x) => x.key === k);
+      if (!e || !e.placed) return bottom;
+      const w = e.w * ppu, h = e.h * ppu;
+      moveTo(vars, profile, e, leftFn(w) / ppu, (bottom - h) / ppu, scr);
+      return bottom - h;
+    };
+    const a = at('cooldowns', (w) => map.cx - 4 - w, top);
+    const b = at('utility', () => map.cx + 4, top);
+    at('buffs', (w) => map.cx - w / 2, Math.min(a, b) - 8);
+    return skipped;
   }
 
   // Lists what differs between two trees, as readable lines.
@@ -509,7 +618,7 @@
   const api = {
     SHAPES, SHAPE_LABELS, THICKNESS, isCustomShape, AB_BARS,
     db, profileName, profileNames, screen, place, unplace, elements, actionBars, cdmBars, unitFrames,
-    setShape, setField, moveTo, diff, honeycomb, handsPlan, HEX_HEIGHT,
+    setShape, setField, moveTo, diff, honeycomb, handsPlan, HEX_HEIGHT, questbookMap, layoutBars, hugPlan, crownCooldowns,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ElleModel = api;

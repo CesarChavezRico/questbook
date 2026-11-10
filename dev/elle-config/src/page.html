@@ -50,6 +50,9 @@
   .context { cursor:default; }
   .context .cell { fill:#26303a; stroke:#55606e; stroke-dasharray:4 3; }
   .hiddenEl { opacity:.35; }
+  .cell.ghost { fill:none; stroke:#5b6474; stroke-width:1; stroke-dasharray:3 3; }
+  .mapbox { fill:none; stroke:#3c5a4c; stroke-width:1; stroke-dasharray:6 5; }
+  .mapdisc { fill:#1f3a2e; fill-opacity:.7; stroke:#0cd29f; stroke-opacity:.5; stroke-width:1; }
   .num { fill:#c9ced8; text-anchor:middle; dominant-baseline:central; pointer-events:none; }
   .label { fill:var(--dim); pointer-events:none; opacity:0; }
   .el:hover .label, .el.sel .label, .context .label { opacity:1; }
@@ -76,14 +79,22 @@
 </div>
 <main>
   <aside><h3>Elements</h3><div id="list"></div>
-    <h3>Honeycomb: keypad and mouse</h3>
-    <p class="hint">Rebuilds action bars 1, 2 and 4 to 10 as two blocks of interlocking hexagons: the 4 × 3 keypad with its two thumb keys, and the mouse. Bar 3 is not touched.</p>
+    <h3>Layouts: keypad and mouse</h3>
+    <p class="hint">Rebuilds action bars 1, 2 and 4 to 10 as the 4 × 3 keypad with its two thumb keys, and the mouse. Bar 3 is not touched. Building starts again from the loaded file.</p>
+    <label class="field"><span>Layout</span><select id="hcStyle">
+      <option value="wings">Hex wings around the map</option>
+      <option value="crescent">Circle crescents around the map</option>
+      <option value="blocks">Honeycomb blocks</option></select></label>
     <label class="field"><span>Button size (pixels)</span><input type="number" id="hcSize" value="43" step="1"></label>
     <label class="field"><span>Gap (pixels)</span><input type="number" id="hcGap" value="0" step="1"></label>
-    <label class="field"><span>Flip the stagger</span><input type="checkbox" id="hcFlip"></label>
-    <button type="button" id="hcApply" class="small">Build the honeycomb</button>
+    <label class="field"><span>Map radius (pixels)</span><input type="number" id="hcRadius" value="120" step="1"></label>
+    <label class="field"><span>Space around the map (pixels)</span><input type="number" id="hcMargin" value="8" step="1"></label>
+    <label class="field"><span>Cooldown rows above the map</span><input type="checkbox" id="hcCrown" checked></label>
+    <label class="field"><span>Flip the stagger (blocks only)</span><input type="checkbox" id="hcFlip"></label>
+    <label class="field"><span>QuestBook.lua (centre map)</span></label><input type="file" id="qb" accept=".lua">
+    <button type="button" id="hcApply" class="small">Build the layout</button>
     <div id="hcSeats"></div>
-    <p class="note">Each column is its own bar. Only action bar 1 changes with your druid form by itself, so in this layout that is the index column only.</p>
+    <p class="note">Each column or row is its own bar. Only action bar 1 changes with your druid form by itself.</p>
   </aside>
   <div id="wrap"><div id="canvas"><img id="under" alt=""><svg id="stage" xmlns="http://www.w3.org/2000/svg"></svg></div><p class="hint" id="info"></p></div>
   <aside class="right"><div id="props"></div><h3 id="count">No changes yet</h3><div id="changes"></div></aside>

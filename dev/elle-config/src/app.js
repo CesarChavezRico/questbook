@@ -8,6 +8,7 @@
   const state = {
     vars: null, original: null, fileName: 'EllesmereUI.lua', profile: null,
     physW: 3440, physH: 1440, selected: null, showHidden: false, previewCounts: {}, els: [], scr: null,
+    map: null, empty: {},
   };
 
   function el(tag, attrs, parent) {
@@ -67,14 +68,22 @@
     el('line', { x1: scr.uiW / 2, y1: 0, x2: scr.uiW / 2, y2: scr.uiH, class: 'guide' }, svg);
     el('line', { x1: 0, y1: scr.uiH / 2, x2: scr.uiW, y2: scr.uiH / 2, class: 'guide' }, svg);
 
+    if (state.map) {
+      const u = 1 / scr.pxPerUnit, m = state.map, r = Number($('hcRadius').value) || m.side * 0.42;
+      el('rect', { x: (m.cx - m.side / 2) * u, y: (m.cy - m.side / 2) * u, width: m.side * u, height: m.side * u, class: 'mapbox' }, svg);
+      el('circle', { cx: m.cx * u, cy: m.cy * u, r: r * u, class: 'mapdisc' }, svg);
+      const t = el('text', { x: m.cx * u, y: m.cy * u, class: 'num', 'font-size': 13 }, svg); t.textContent = 'map';
+    }
     for (const e of state.els) {
       if (!e.placed) continue;
       if (e.hidden && !state.showHidden && e.id !== state.selected) continue;
       const g = el('g', { transform: 'translate(' + e.left + ' ' + e.top + ')', class: 'el ' + e.kind + (e.hidden ? ' hiddenEl' : '') + (e.id === state.selected ? ' sel' : ''), 'data-id': e.id }, svg);
       el('rect', { x: -2, y: -2, width: e.w + 4, height: e.h + 4, class: 'frame' }, g);
       if (!e.cells.length) el('rect', { x: 0, y: 0, width: e.w, height: e.h, class: 'cell' }, g);
+      const empty = state.empty[e.key] || [];
       for (const c of e.cells) {
         const sw = Math.max(e.borderPx, 0) * scr.onePx;
+        if (empty.indexOf(Number(c.label)) >= 0) { el('path', { d: shapePath(e.shape, c.x, c.y, c.w, c.h), class: 'cell ghost' }, g); continue; }
         el('path', { d: shapePath(e.shape, c.x, c.y, c.w, c.h), class: 'cell', 'stroke-width': sw }, g);
         if (c.label && c.w >= 20) {
           const t = el('text', { x: c.x + c.w / 2, y: c.y + c.h / 2, class: 'num', 'font-size': Math.min(c.w, c.h) * 0.36 }, g);
@@ -227,20 +236,66 @@
       ' · one UI unit = ' + (Math.round(s.pxPerUnit * 1000) / 1000) + ' pixels';
   }
 
-  // ---- honeycomb preset -----------------------------------------------------
+  // ---- presets: the keypad and the mouse --------------------------------------
+  function mapForPlan() {
+    const ppu = state.scr.pxPerUnit, els = state.els;
+    const r = Number($('hcRadius').value);
+    if (state.map) return { cx: state.map.cx, cy: state.map.cy, r };
+    const a = els.find((e) => e.id === 'ab:MainBar'), b = els.find((e) => e.id === 'ab:Bar2');
+    const cy = a && a.placed ? (a.top + a.h / 2) * ppu : state.physH * 0.78;
+    const cx = a && a.placed && b && b.placed ? ((a.left + a.w + b.left) / 2) * ppu : state.physW / 2;
+    return { cx, cy, r };
+  }
   $('hcApply').onclick = () => {
     if (!state.vars) return;
+    const changed = M.diff(state.original.get('EllesmereUIDB'), state.vars.get('EllesmereUIDB')).length;
+    if (changed && !confirm('Building a layout starts again from the file you loaded and drops the ' + changed + ' changes made so far. Continue?')) return;
+    state.vars = L.parse(L.serialize(state.original)); state.previewCounts = {}; state.empty = {};
     recompute();
-    const ppu = state.scr.pxPerUnit;
-    const plan = M.handsPlan(state.vars, state.scr, state.profile, {
-      size: Number($('hcSize').value) / ppu, gap: Number($('hcGap').value) / ppu, flip: $('hcFlip').checked,
-    });
-    const err = M.honeycomb(state.vars, state.profile, state.scr, plan);
+    const ppu = state.scr.pxPerUnit, style = $('hcStyle').value;
+    const sizePx = Number($('hcSize').value), gapPx = Number($('hcGap').value), marginPx = Number($('hcMargin').value);
+    let cells, err;
+    if (style === 'blocks') {
+      const plan = M.handsPlan(state.vars, state.scr, state.profile, { size: sizePx / ppu, gap: gapPx / ppu, flip: $('hcFlip').checked });
+      err = M.honeycomb(state.vars, state.profile, state.scr, plan);
+      cells = [].concat.apply([], plan.blocks.map((b) => b.cells));
+    } else {
+      const map = mapForPlan();
+      const plan = M.hugPlan(state.scr, { style, sizePx, gapPx, map, marginPx });
+      err = M.layoutBars(state.vars, state.profile, state.scr, plan);
+      cells = plan.bars;
+      // bars of the keypad and mouse that this layout does not use are hidden
+      recompute();
+      for (const e of state.els) {
+        if (e.kind === 'actionbar' && /^(MainBar|Bar2|Bar[4-9]|Bar10)$/.test(e.key) && !cells.some((c) => c.bar === e.key) && !e.hidden) M.setField(state.vars, state.profile, e, 'hidden', true);
+      }
+      if ($('hcCrown').checked) {
+        const skipped = M.crownCooldowns(state.vars, state.profile, state.scr, map, marginPx, plan.shape, state.previewCounts);
+        if (skipped.length) err = (err ? err + '\n' : '') + 'Moved but kept square (their Border Style is not Solid): ' + skipped.join(', ');
+      }
+    }
     const box = $('hcSeats'); box.textContent = '';
-    for (const b of plan.blocks) for (const c of b.cells) h('div', { className: 'chg', textContent: M.AB_BARS.find((x) => x.key === c.bar).label + ': ' + c.seat }, box);
+    for (const c of cells) {
+      if (c.empty) state.empty[c.bar] = c.empty;
+      h('div', { className: 'chg', textContent: M.AB_BARS.find((x) => x.key === c.bar).label + ': ' + c.seat }, box);
+    }
     if (err) alert(err);
     render();
   };
+  $('qb').onchange = (evt) => {
+    const f = evt.target.files[0]; if (!f || !state.vars) return;
+    const r = new FileReader();
+    r.onload = () => {
+      try {
+        const m = M.questbookMap(L.parse(String(r.result)), state.scr);
+        if (!m) { alert('No QuestBook map settings in that file.'); return; }
+        state.map = m; $('hcRadius').value = Math.round(m.side * 0.42);
+        render();
+      } catch (e) { alert(e.message); }
+    };
+    r.readAsText(f);
+  };
+  $('hcRadius').onchange = () => { if (state.vars) render(); };
 
   // ---- file in, file out ---------------------------------------------------
   function load(text, name) {
@@ -249,7 +304,7 @@
     // Safety: writing the file back must give the same data.
     if (!L.equal(vars, L.parse(L.serialize(vars)))) { alert('This file does not survive a read and write unchanged, so editing it here is not safe. Nothing was loaded.'); return; }
     state.vars = vars; state.original = L.parse(text); state.fileName = name || 'EllesmereUI.lua';
-    state.profile = M.profileName(vars); state.selected = null; state.previewCounts = {};
+    state.profile = M.profileName(vars); state.selected = null; state.previewCounts = {}; state.empty = {};
     document.body.classList.add('loaded');
     recompute();
     const mainBar = state.els.find((e) => e.id === 'ab:MainBar');

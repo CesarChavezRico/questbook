@@ -16,7 +16,12 @@ running (4BI-39). Open `elle-config.html` in a browser; it needs no server and n
 ## What it covers
 
 - Action bars and cooldown manager bars: position, size, spacing, rows, shape, border, hidden.
-- "Honeycomb: keypad and mouse" rebuilds action bars 1, 2 and 4 to 10 as two blocks of
+- "Layouts: keypad and mouse" also has two layouts that wrap around QuestBook's round centre
+  map ("Hex wings" and "Circle crescents"). Load `QuestBook.lua` from the same SavedVariables
+  folder to draw the map where it really is. The mouse thumb bar has four slots with the third
+  left empty, so the pair and the single button read apart; that relies on EllesmereUI hiding
+  empty buttons, which is untested.
+- "Honeycomb blocks" rebuilds action bars 1, 2 and 4 to 10 as two blocks of
   interlocking hexagons, one bar per column (a 4 x 3 keypad with two thumb keys, and a mouse).
   Only action bar 1 pages with druid forms by itself, so the other columns need macros or
   EllesmereUI's per-bar paging. The row of two wheel-tilt buttons uses a gap larger than the

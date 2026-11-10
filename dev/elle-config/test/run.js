@@ -197,6 +197,35 @@ test('honeycomb: bars 9 and 10 are hidden until used', () => {
   assert.strictEqual(M.elements(v, s, 'Default').find((x) => x.key === 'Bar9').hidden, true);
 });
 
+test('map layouts: read the QuestBook map, keep every button off the map, stay on whole pixels', () => {
+  const v = fresh(), s = M.screen(v, 3440, 1440);
+  const qb = L.parse('QuestBookDB = { ["mod"] = { ["overlay"] = { ["cornerSize"] = 0.2, ["cornerX"] = -1314, ["cornerY"] = -784, ["corner"] = true } } }');
+  const m = M.questbookMap(qb, s);
+  near(m.side, 288); assert.ok(Math.abs(m.cx - 1719.2) < 0.1 && Math.abs(m.cy - 1084.8) < 0.1, 'map centre ' + m.cx + ',' + m.cy);
+  for (const style of ['wings', 'crescent']) {
+    const w = fresh();
+    const plan = M.hugPlan(s, { style, sizePx: 43, gapPx: 0, map: { cx: m.cx, cy: m.cy, r: 121 }, marginPx: 8 });
+    assert.strictEqual(M.layoutBars(w, 'Default', s, plan), undefined);
+    const els = M.actionBars(w, s, 'Default');
+    for (const b of plan.bars) {
+      const e = els.find((x) => x.key === b.bar);
+      assert.strictEqual(e.cells.length, b.n); assert.strictEqual(e.hidden, false);
+      assert.strictEqual(e.shape, style === 'wings' ? 'hexagon' : 'circle');
+      const l = e.left * s.pxPerUnit, t = e.top * s.pxPerUnit;
+      assert.ok(Math.abs(l - Math.round(l)) < 0.01 && Math.abs(t - Math.round(t)) < 0.01, style + ' ' + b.bar + ' is not on whole pixels');
+      for (const c of e.cells) {
+        const cx = (e.left + c.x + c.w / 2) * s.pxPerUnit, cy = (e.top + c.y + c.h / 2) * s.pxPerUnit, r = c.w * s.pxPerUnit / 2;
+        const d = Math.hypot(cx - m.cx, cy - m.cy);
+        // a round button of radius r clears the map when its centre is r beyond the map's edge
+        assert.ok(d >= 121 + (style === 'crescent' ? r : r * 0.8) - 1, style + ' ' + b.bar + ' button ' + c.label + ' overlaps the map: ' + d.toFixed(1));
+      }
+    }
+    const thumbs = els.find((x) => x.key === 'Bar7');
+    assert.strictEqual(thumbs.cells.length, 4, 'two, a gap, and one');
+    assert.strictEqual(L.get(M.db(w), 'profiles', 'Default', 'addons', 'EllesmereUIActionBars', 'bars', 'Bar7', 'alwaysShowButtons'), false);
+  }
+});
+
 test('the built page is up to date with src/', () => {
   const b = require('../build.js');
   assert.strictEqual(fs.readFileSync(b.out, 'utf8'), b.build(), 'run: node dev/elle-config/build.js');
