@@ -479,3 +479,8 @@ green by itself there.
   so where it was made.
 - Read Blizzard's UI source (`github.com/Gethe/wow-ui-source`, branch `forever`) before guessing; it
   settled the mask-registration bug and the quest-log entry points.
+- **The action bar plan** (v0.24.0, *written, untested in the client*; Cesar, 2026-11-10: "Can you assign abilities to action bar buttons from the
+  configuration?"; 4BI-41). Which ability sits in which button is kept by the game per character, not in any settings file, so the
+  `loadout` module carries a plan in our saved settings and applies it out of combat: `/qb bars dump | check | apply | undo`. The plan is
+  written by the offline configurator (`dev/elle-config`). Spells are matched by name to the highest rank known. Key bindings and macro
+  creation are the next step; the dump already records both.
