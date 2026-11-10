@@ -113,6 +113,37 @@ GetActionInfo, PlaceAction = nil, nil
 slash("bars apply"); assert(said("no GetActionInfo"), "says the client lacks the functions")
 GetActionInfo, PlaceAction = a, p
 
-slash("bars"); assert(said("bars: plan 7 button"), "status counts the valid plan entries")
+-- 9. macros in the plan: created as character macros, rewritten when the text differs, and placeable in the same apply
+function CreateMacro(name, icon, body, perChar)
+  assert(perChar == true, "character macros")
+  local i = 122; while macros[i] do i = i + 1 end
+  if i > 138 then error("full") end
+  macros[i] = { name, icon, body }; return i
+end
+function EditMacro(i, name, icon, body) macros[i] = { name, icon, body }; return i end
+M.db.plan = { v = 1,
+  macros = { { name = "QB Top M", body = "#showtooltip\n/cast [form:1] Bash; [noform] Regrowth" }, { name = "Panic", body = "/cast Dire Bear Form" } },
+  slots = { [30] = { kind = "macro", name = "QB Top M" }, [31] = { kind = "macro", name = "Panic" } } }
+slash("bars check")
+text = table.concat(__take(), "\n")
+assert(text:find("bars check: 2 to place, 0 already right, 0 skipped | macros: 1 new, 1 rewritten", 1, true), "check counts the macros and trusts the one to come: " .. text)
+assert(GetMacroIndexByName("QB Top M") == 0 and macros[121][3] == "/cast Bear Form", "check created and rewrote nothing")
+slash("bars apply")
+text = table.concat(__take(), "\n")
+assert(text:find("2 to place (done)", 1, true) and text:find("macros: 1 new, 1 rewritten", 1, true) and not text:find("FAILED"), "apply with macros: " .. text)
+local qi = GetMacroIndexByName("QB Top M")
+assert(qi > 121 and macros[qi][3]:find("Bash") and macros[121][3] == "/cast Dire Bear Form", "created one, rewrote the other")
+assert(slots[30][1] == "macro" and slots[30][2] == qi and slots[31][2] == 121, "and both are on their buttons")
+slash("bars apply"); assert(said("0 to place %(done%), 2 already right, 0 skipped$"), "a second apply touches no macro")
+-- a client that cannot create macros: reported, and the button is skipped
+M.db.plan.macros[3] = { name = "QB New", body = "/cast Wrath" }; M.db.plan.slots[32] = { kind = "macro", name = "QB New" }
+local realCreate = CreateMacro; CreateMacro = function() error("no") end
+slash("bars apply")
+text = table.concat(__take(), "\n")
+assert(text:find("macro QB New: could not be created") and text:find("no macro with that name"), "a failed creation is reported: " .. text)
+CreateMacro = realCreate
+M.db.plan.macros = nil; M.db.plan.slots = { [1] = { kind = "spell", name = "Wrath" } }
+
+slash("bars"); assert(said("bars: plan 1 button"), "status counts the valid plan entries")
 slash("bars what"); assert(said("/qb bars .*dump.*check.*apply.*undo"), "usage")
 print("loadout: ok")
