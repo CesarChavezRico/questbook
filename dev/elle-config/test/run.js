@@ -170,6 +170,33 @@ test('edit: an untouched file has no changes', () => {
   assert.strictEqual(M.diff(fresh().get('EllesmereUIDB'), fresh().get('EllesmereUIDB')).length, 0);
 });
 
+test('honeycomb: columns nest 3/4 of a button to the side and half a row down', () => {
+  const v = fresh();
+  const s = M.screen(v, 3440, 1440);
+  const plan = M.handsPlan(v, s, 'Default', { size: 43 / s.pxPerUnit, gap: 0 });
+  assert.strictEqual(M.honeycomb(v, 'Default', s, plan), undefined);
+  const els = M.elements(v, s, 'Default');
+  const P = (k) => { const e = els.find((x) => x.key === k); return { e, l: e.left * s.pxPerUnit, t: e.top * s.pxPerUnit, w: e.w * s.pxPerUnit, h: e.h * s.pxPerUnit }; };
+  const idx = P('MainBar'), mid = P('Bar2'), ring = P('Bar4'), pinky = P('Bar5'), thumb = P('Bar6');
+  // 43 px buttons become 55 px hexagons: columns 41 px apart, rows 46 px apart
+  for (const b of [idx, mid, ring, pinky]) { assert.strictEqual(b.e.shape, 'hexagon'); assert.strictEqual(b.e.cells.length, 3); near(b.w, 55); near(b.h, 55 + 2 * 46); assert.strictEqual(b.e.hidden, false); }
+  near(idx.l - mid.l, 41); near(mid.l - ring.l, 41); near(ring.l - pinky.l, 41);
+  near(idx.t - mid.t, 23); near(ring.t - mid.t, 23); near(pinky.t, mid.t);
+  near(thumb.l - idx.l, 41); near(thumb.t - mid.t, 2 * 46); assert.strictEqual(thumb.e.cells.length, 2);
+  near(pinky.l, 1387, 'the block keeps the old left edge');
+  // the two wheel tilts are one bar: a row of two, two columns apart, around the wheel column
+  const tilt = P('Bar10'), wheel = P('Bar9');
+  near(tilt.w, 55 + 82); near(wheel.l - tilt.l, 41); assert.strictEqual(tilt.e.hidden, false);
+  for (const k of ['MainBar', 'Bar2', 'Bar4', 'Bar5', 'Bar6', 'Bar7', 'Bar8', 'Bar9', 'Bar10']) {
+    const b = P(k); assert.ok(Math.abs(b.l - Math.round(b.l)) < 0.01 && Math.abs(b.t - Math.round(b.t)) < 0.01, k + ' is not on whole pixels');
+  }
+  assert.strictEqual(P('Bar3').e.shape, 'none', 'bar 3 is not touched');
+});
+test('honeycomb: bars 9 and 10 are hidden until used', () => {
+  const v = fresh(), s = M.screen(v, 3440, 1440);
+  assert.strictEqual(M.elements(v, s, 'Default').find((x) => x.key === 'Bar9').hidden, true);
+});
+
 test('the built page is up to date with src/', () => {
   const b = require('../build.js');
   assert.strictEqual(fs.readFileSync(b.out, 'utf8'), b.build(), 'run: node dev/elle-config/build.js');

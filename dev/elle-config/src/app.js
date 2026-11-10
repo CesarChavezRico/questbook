@@ -29,8 +29,8 @@
     const pts = (a) => 'M' + a.map((p) => p[0].toFixed(2) + ' ' + p[1].toFixed(2)).join('L') + 'Z';
     if (shape === 'circle') return 'M' + (cx - r) + ' ' + cy + 'a' + r + ' ' + r + ' 0 1 0 ' + 2 * r + ' 0a' + r + ' ' + r + ' 0 1 0 ' + -2 * r + ' 0Z';
     if (shape === 'hexagon') {
-      const q = w * 0.25;
-      return pts([[x + q, y], [x + w - q, y], [x + w, cy], [x + w - q, y + hh], [x + q, y + hh], [x, cy]]);
+      const q = w * 0.25, v = hh * (1 - M.HEX_HEIGHT) / 2;   // the art leaves a margin above and below
+      return pts([[x + q, y + v], [x + w - q, y + v], [x + w, cy], [x + w - q, y + hh - v], [x + q, y + hh - v], [x, cy]]);
     }
     if (shape === 'diamond') return pts([[cx, y], [x + w, cy], [cx, y + hh], [x, cy]]);
     if (shape === 'shield') {
@@ -227,6 +227,21 @@
       ' · one UI unit = ' + (Math.round(s.pxPerUnit * 1000) / 1000) + ' pixels';
   }
 
+  // ---- honeycomb preset -----------------------------------------------------
+  $('hcApply').onclick = () => {
+    if (!state.vars) return;
+    recompute();
+    const ppu = state.scr.pxPerUnit;
+    const plan = M.handsPlan(state.vars, state.scr, state.profile, {
+      size: Number($('hcSize').value) / ppu, gap: Number($('hcGap').value) / ppu, flip: $('hcFlip').checked,
+    });
+    const err = M.honeycomb(state.vars, state.profile, state.scr, plan);
+    const box = $('hcSeats'); box.textContent = '';
+    for (const b of plan.blocks) for (const c of b.cells) h('div', { className: 'chg', textContent: M.AB_BARS.find((x) => x.key === c.bar).label + ': ' + c.seat }, box);
+    if (err) alert(err);
+    render();
+  };
+
   // ---- file in, file out ---------------------------------------------------
   function load(text, name) {
     let vars;
@@ -236,6 +251,9 @@
     state.vars = vars; state.original = L.parse(text); state.fileName = name || 'EllesmereUI.lua';
     state.profile = M.profileName(vars); state.selected = null; state.previewCounts = {};
     document.body.classList.add('loaded');
+    recompute();
+    const mainBar = state.els.find((e) => e.id === 'ab:MainBar');
+    if (mainBar) $('hcSize').value = Math.round(mainBar.settings.buttonWidth * state.scr.pxPerUnit);
     render();
   }
   $('file').onchange = (evt) => {

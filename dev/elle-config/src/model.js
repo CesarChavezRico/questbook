@@ -29,6 +29,8 @@
     { key: 'Bar6', label: 'Action Bar 6', count: 12 },
     { key: 'Bar7', label: 'Action Bar 7', count: 12 },
     { key: 'Bar8', label: 'Action Bar 8', count: 12 },
+    { key: 'Bar9', label: 'Action Bar 9', count: 12, hiddenByDefault: true },
+    { key: 'Bar10', label: 'Action Bar 10', count: 12, hiddenByDefault: true },
     { key: 'StanceBar', label: 'Stance Bar', count: 10, stance: true },
     { key: 'PetBar', label: 'Pet Bar', count: 10 },
   ];
@@ -132,7 +134,7 @@
     const out = [];
     for (const info of AB_BARS) {
       const stored = L.get(ab, 'bars', info.key);
-      const s = merged(AB_DEFAULTS, stored);
+      const s = merged(Object.assign({}, AB_DEFAULTS, info.hiddenByDefault ? { alwaysHidden: true, barVisibility: 'never' } : {}), stored);
       const pos = plainPos(L.get(ab, 'barPositions', info.key));
       const notes = [];
 
@@ -358,7 +360,7 @@
       else if (field === 'buttonWidth' || field === 'buttonHeight' || field === 'buttonPadding') b.set(field, Math.max(0, Number(value)));
       else if (field === 'hidden') {
         if (value) { b.set('alwaysHidden', true); b.set('barVisibility', 'never'); }
-        else { b.delete('alwaysHidden'); b.set('barVisibility', 'always'); }
+        else { b.set('alwaysHidden', false); b.set('barVisibility', 'always'); }
       } else if (field === 'borderThickness') {
         if (THICKNESS.indexOf(value) < 0) return 'Unknown thickness';
         b.set('borderThickness', value);
@@ -396,6 +398,94 @@
     t.set('x', o.x); t.set('y', o.y);
   }
 
+  // ---- honeycomb -----------------------------------------------------------
+  // EllesmereUI's hexagon has flat tops and points at the sides: the art spans
+  // the full width of its button and about 84% of its height (measured on the
+  // mask). Hexagons in one column touch along their flat edges; a neighbouring
+  // column nests when it sits 3/4 of a button to the side and half a row down.
+  // One bar can only be one column (or one spaced-out row), so a honeycomb is
+  // built from several bars.
+  const HEX_HEIGHT = 0.844;
+
+  // plan: { size, gap (UI units), blocks: [{ anchor: {left|right, cy} in UI units from the
+  //   screen's top-left, cells: [{ bar, n, col, row, dir: 'v'|'h', step }] }] }
+  // 'v' is a column of n buttons; 'h' is a row of n buttons `step` columns apart.
+  function honeycomb(vars, profile, scr, plan) {
+    const one = scr.onePx;
+    const sizePx = Math.max(8, Math.round(plan.size / one));
+    const shapePx = sizePx + Math.round(AB_SHAPE_EXPAND / one);
+    const gapPx = Math.round((plan.gap || 0) / one);
+    const dxPx = Math.round(shapePx * 0.75) + gapPx;
+    let dyPx = Math.round(shapePx * HEX_HEIGHT) + gapPx;
+    if (dyPx % 2) dyPx += 1;                       // half rows must land on whole pixels
+    const errors = [];
+    const els = actionBars(vars, scr, profile);
+    for (const block of plan.blocks) {
+      const boxes = block.cells.map((c) => {
+        const horizontal = c.dir === 'h';
+        const pitch = horizontal ? (c.step || 2) * dxPx : dyPx;
+        const padPx = pitch - shapePx;
+        const long = c.n * shapePx + (c.n - 1) * padPx;
+        return { c, horizontal, padPx, x: c.col * dxPx, y: Math.round(c.row * dyPx), w: horizontal ? long : shapePx, h: horizontal ? shapePx : long };
+      });
+      const minX = Math.min.apply(null, boxes.map((b) => b.x)), maxX = Math.max.apply(null, boxes.map((b) => b.x + b.w));
+      const minY = Math.min.apply(null, boxes.map((b) => b.y)), maxY = Math.max.apply(null, boxes.map((b) => b.y + b.h));
+      const a = block.anchor;
+      const originX = a.right != null ? Math.round(a.right / one) - maxX : Math.round(a.left / one) - minX;
+      const originY = Math.round(a.cy / one) - Math.round((minY + maxY) / 2);
+      for (const b of boxes) {
+        const el = els.find((e) => e.key === b.c.bar);
+        if (!el) { errors.push('No action bar called ' + b.c.bar); continue; }
+        const err = setShape(vars, profile, el, 'hexagon');
+        if (err) { errors.push(el.label + ': ' + err); continue; }
+        const t = abBar(vars, profile, el.key);
+        t.set('overrideNumIcons', b.c.n); t.set('overrideNumRows', 1);
+        if (b.horizontal) t.delete('orientation'); else t.set('orientation', 'vertical');
+        t.set('buttonWidth', sizePx * one); t.set('buttonHeight', sizePx * one);
+        t.set('buttonPadding', b.padPx * one);
+        t.set('growDirection', 'center'); t.set('alwaysHidden', false); t.set('barVisibility', 'always');
+        const left = (originX + b.x) * one, top = (originY + b.y) * one, w = b.w * one, h = b.h * one;
+        const o = unplace({ point: 'CENTER', relPoint: 'CENTER' }, left, top, w, h, scr);
+        L.set(db(vars), 'profiles', profile, 'addons', 'EllesmereUIActionBars', 'barPositions', el.key,
+          new Map([['point', 'CENTER'], ['relPoint', 'CENTER'], ['x', o.x], ['y', o.y]]));
+      }
+    }
+    return errors.length ? errors.join('\n') : undefined;
+  }
+
+  // Cesar's two devices as honeycomb blocks. Left hand: a 4 x 3 key grid (pinky to
+  // index, left to right) plus two thumb keys at the lower right. Right hand, a
+  // G502 seen from above: three thumb buttons, the two index buttons beside the
+  // left click, then the wheel (up, click, down) with a tilt on each side.
+  // Bar 3 is left alone.
+  function handsPlan(vars, scr, profile, opts) {
+    const els = actionBars(vars, scr, profile);
+    const find = (k) => els.find((e) => e.key === k);
+    const main = find('MainBar'), bar2 = find('Bar2');
+    const mid = scr.uiW / 2;
+    const leftAnchor = main && main.placed ? { left: main.left, cy: main.top + main.h / 2 } : { left: mid - 320, cy: scr.uiH * 0.8 };
+    const rightAnchor = bar2 && bar2.placed ? { right: bar2.left + bar2.w, cy: bar2.top + bar2.h / 2 } : { right: mid + 320, cy: scr.uiH * 0.8 };
+    const hi = opts.flip ? 0.5 : 0, lo = opts.flip ? 0 : 0.5;
+    return {
+      size: opts.size, gap: opts.gap,
+      blocks: [
+        { anchor: leftAnchor, cells: [
+          { bar: 'Bar5', n: 3, col: 0, row: hi, dir: 'v', seat: 'pinky column' },
+          { bar: 'Bar4', n: 3, col: 1, row: lo, dir: 'v', seat: 'ring column' },
+          { bar: 'Bar2', n: 3, col: 2, row: hi, dir: 'v', seat: 'middle column' },
+          { bar: 'MainBar', n: 3, col: 3, row: lo, dir: 'v', seat: 'index column' },
+          { bar: 'Bar6', n: 2, col: 4, row: hi + 2, dir: 'v', seat: 'left thumb keys' },
+        ] },
+        { anchor: rightAnchor, cells: [
+          { bar: 'Bar7', n: 3, col: 0, row: hi, dir: 'v', seat: 'mouse thumb buttons' },
+          { bar: 'Bar8', n: 2, col: 1, row: lo, dir: 'v', seat: 'index buttons (front, rear)' },
+          { bar: 'Bar10', n: 2, col: 2, row: hi + 1, dir: 'h', step: 2, seat: 'wheel tilt left and right' },
+          { bar: 'Bar9', n: 3, col: 3, row: lo, dir: 'v', seat: 'wheel up, click, down' },
+        ] },
+      ],
+    };
+  }
+
   // Lists what differs between two trees, as readable lines.
   function diff(a, b, path, out) {
     out = out || []; path = path || '';
@@ -419,7 +509,7 @@
   const api = {
     SHAPES, SHAPE_LABELS, THICKNESS, isCustomShape, AB_BARS,
     db, profileName, profileNames, screen, place, unplace, elements, actionBars, cdmBars, unitFrames,
-    setShape, setField, moveTo, diff,
+    setShape, setField, moveTo, diff, honeycomb, handsPlan, HEX_HEIGHT,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ElleModel = api;

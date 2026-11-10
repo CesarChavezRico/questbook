@@ -16,6 +16,11 @@ running (4BI-39). Open `elle-config.html` in a browser; it needs no server and n
 ## What it covers
 
 - Action bars and cooldown manager bars: position, size, spacing, rows, shape, border, hidden.
+- "Honeycomb: keypad and mouse" rebuilds action bars 1, 2 and 4 to 10 as two blocks of
+  interlocking hexagons, one bar per column (a 4 x 3 keypad with two thumb keys, and a mouse).
+  Only action bar 1 pages with druid forms by itself, so the other columns need macros or
+  EllesmereUI's per-bar paging. The row of two wheel-tilt buttons uses a gap larger than the
+  in-game slider allows (20 pixels); whether the game keeps it is untested.
 - Unit frames are drawn as dashed boxes for orientation only. Their size is rough and they
   cannot be edited.
 
