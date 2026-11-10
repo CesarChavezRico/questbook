@@ -1,0 +1,999 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>EllesmereUI offline configurator</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: dark; --bg:#14161a; --panel:#1d2026; --line:#2e333c; --text:#e6e8ec; --dim:#8b93a1; --accent:#0cd29f; --warn:#e8b34b; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.4 system-ui, sans-serif; background:var(--bg); color:var(--text); }
+  header { display:flex; flex-wrap:wrap; gap:10px 18px; align-items:center; padding:10px 14px; background:var(--panel); border-bottom:1px solid var(--line); }
+  header h1 { font-size:15px; margin:0 8px 0 0; }
+  header label { color:var(--dim); display:flex; gap:6px; align-items:center; }
+  input, select, button { font:inherit; color:var(--text); background:#262a32; border:1px solid var(--line); border-radius:4px; padding:4px 6px; }
+  input[type=number] { width:86px; }
+  button { cursor:pointer; }
+  button:disabled { opacity:.45; cursor:default; }
+  #save { background:var(--accent); color:#04261d; border-color:var(--accent); font-weight:600; }
+  main { display:none; grid-template-columns: 230px 1fr 290px; gap:0; height:calc(100vh - 54px); }
+  body.loaded main { display:grid; }
+  body.loaded #intro { display:none; }
+  #intro { max-width:720px; margin:40px auto; padding:0 20px; color:var(--dim); }
+  #intro li { margin:6px 0; }
+  aside { background:var(--panel); overflow:auto; padding:10px; border-right:1px solid var(--line); }
+  aside.right { border-right:0; border-left:1px solid var(--line); }
+  aside h2 { font-size:14px; margin:4px 0 10px; }
+  aside h3 { font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--dim); margin:16px 0 6px; }
+  .row { display:block; width:100%; text-align:left; margin:2px 0; border-color:transparent; background:transparent; }
+  .row:hover { background:#262a32; }
+  .row.on { background:#0cd29f22; border-color:var(--accent); }
+  .row.dim { color:var(--dim); }
+  .field { display:flex; justify-content:space-between; align-items:center; gap:8px; margin:6px 0; }
+  .field span { color:var(--dim); }
+  .hint, .note { color:var(--dim); font-size:12.5px; margin:8px 0; }
+  .note { border-left:2px solid var(--warn); padding-left:8px; }
+  .small { font-size:12.5px; margin:2px 0 8px; }
+  .chg { font:12px/1.35 ui-monospace, monospace; color:var(--dim); margin:3px 0; overflow-wrap:anywhere; }
+  #wrap { overflow:auto; padding:14px; }
+  #canvas { position:relative; width:100%; }
+  #under { position:absolute; inset:0; width:100%; height:100%; display:none; opacity:.5; pointer-events:none; }
+  #stage { position:relative; display:block; width:100%; touch-action:none; user-select:none; }
+  .screen { fill:#0b0c0f; fill-opacity:.55; stroke:var(--line); stroke-width:1; }
+  .guide { stroke:#2e333c; stroke-width:.6; stroke-dasharray:4 6; }
+  .el { cursor:grab; }
+  .el .frame { fill:transparent; stroke:transparent; stroke-width:1; }
+  .el:hover .frame { stroke:#5b6474; }
+  .el.sel .frame { stroke:var(--accent); stroke-width:1.4; }
+  .cell { fill:#3a4252; stroke:#000; }
+  .cdm .cell { fill:#4a3f5e; }
+  .context { cursor:default; }
+  .context .cell { fill:#26303a; stroke:#55606e; stroke-dasharray:4 3; }
+  .hiddenEl { opacity:.35; }
+  .num { fill:#c9ced8; text-anchor:middle; dominant-baseline:central; pointer-events:none; }
+  .label { fill:var(--dim); pointer-events:none; opacity:0; }
+  .el:hover .label, .el.sel .label, .context .label { opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>EllesmereUI offline configurator</h1>
+  <label>Settings file <input type="file" id="file" accept=".lua"></label>
+  <label>Screen <input type="number" id="physW" value="3440"> × <input type="number" id="physH" value="1440"></label>
+  <label><input type="checkbox" id="showHidden"> Show hidden bars</label>
+  <label>Screenshot behind <input type="file" id="shot" accept="image/*"> <input type="range" id="shotAlpha" min="0" max="1" step="0.05" value="0.5"></label>
+  <button type="button" id="reset">Undo all</button>
+  <button type="button" id="save" disabled>Download edited file</button>
+</header>
+<div id="intro">
+  <p>Load <code>EllesmereUI.lua</code> from <code>WTF/Account/&lt;account&gt;/SavedVariables/</code>. Nothing leaves this page: the file is read and edited in the browser.</p>
+  <ol>
+    <li>Keep a copy of the original file.</li>
+    <li>Edit here and press "Download edited file".</li>
+    <li>With the game fully closed, replace the file in SavedVariables with the downloaded one.</li>
+  </ol>
+  <p>The drawing is a layout mockup: position, size, spacing, shape and border. Fonts, textures, glows and spell icons are not drawn.</p>
+</div>
+<main>
+  <aside><h3>Elements</h3><div id="list"></div></aside>
+  <div id="wrap"><div id="canvas"><img id="under" alt=""><svg id="stage" xmlns="http://www.w3.org/2000/svg"></svg></div><p class="hint" id="info"></p></div>
+  <aside class="right"><div id="props"></div><h3 id="count">No changes yet</h3><div id="changes"></div></aside>
+</main>
+<script>
+// Reads and writes WoW SavedVariables files (a subset of Lua: assignments of
+// literal tables). Tables become Map objects so that number keys and string
+// keys stay distinct and the order of entries is kept.
+(function (root) {
+  'use strict';
+
+  function parse(text) {
+    let i = 0;
+    const n = text.length;
+
+    function fail(msg) {
+      const line = text.slice(0, i).split('\n').length;
+      throw new Error('Lua parse error at line ' + line + ': ' + msg);
+    }
+    function skip() {
+      for (;;) {
+        const c = text[i];
+        if (c === ' ' || c === '\t' || c === '\r' || c === '\n') { i++; continue; }
+        if (c === '-' && text[i + 1] === '-') {
+          if (text[i + 2] === '[' && text[i + 3] === '[') {
+            const e = text.indexOf(']]', i + 4);
+            if (e < 0) fail('unterminated comment');
+            i = e + 2;
+          } else {
+            while (i < n && text[i] !== '\n') i++;
+          }
+          continue;
+        }
+        return;
+      }
+    }
+    function str() {
+      const q = text[i++];
+      let out = '';
+      for (;;) {
+        if (i >= n) fail('unterminated string');
+        const c = text[i++];
+        if (c === q) return out;
+        if (c !== '\\') { out += c; continue; }
+        const e = text[i++];
+        if (e === 'n') out += '\n';
+        else if (e === 'r') out += '\r';
+        else if (e === 't') out += '\t';
+        else if (e === 'a') out += '\x07';
+        else if (e === 'b') out += '\b';
+        else if (e === 'f') out += '\f';
+        else if (e === 'v') out += '\v';
+        else if (e === '\n') out += '\n';
+        else if (e >= '0' && e <= '9') {
+          let d = e;
+          while (d.length < 3 && text[i] >= '0' && text[i] <= '9') d += text[i++];
+          out += String.fromCharCode(parseInt(d, 10));
+        } else out += e; // \\ \" \'
+      }
+    }
+    function num() {
+      const m = /^-?(0[xX][0-9a-fA-F]+|(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?)/.exec(text.slice(i, i + 64));
+      if (!m) fail('bad number');
+      i += m[0].length;
+      return Number(m[0]);
+    }
+    function word() {
+      const m = /^[A-Za-z_][A-Za-z0-9_]*/.exec(text.slice(i, i + 128));
+      if (!m) fail('unexpected character ' + JSON.stringify(text[i]));
+      i += m[0].length;
+      return m[0];
+    }
+    function value() {
+      skip();
+      const c = text[i];
+      if (c === '{') return table();
+      if (c === '"' || c === "'") return str();
+      if (c === '-' || c === '.' || (c >= '0' && c <= '9')) {
+        if (text.startsWith('-inf', i) || text.startsWith('-nan', i)) fail('inf/nan not supported');
+        return num();
+      }
+      const w = word();
+      if (w === 'true') return true;
+      if (w === 'false') return false;
+      if (w === 'nil') return null;
+      fail('unexpected word ' + w);
+    }
+    function table() {
+      i++; // {
+      const t = new Map();
+      let next = 1;
+      for (;;) {
+        skip();
+        if (text[i] === '}') { i++; return t; }
+        if (text[i] === '[') {
+          i++;
+          const k = value();
+          skip();
+          if (text[i] !== ']') fail('expected ]');
+          i++;
+          skip();
+          if (text[i] !== '=') fail('expected =');
+          i++;
+          const v = value();
+          if (v !== null) t.set(k, v);
+        } else if (/[A-Za-z_]/.test(text[i]) && /^[A-Za-z_][A-Za-z0-9_]*\s*=/.test(text.slice(i, i + 128))) {
+          const k = word();
+          skip();
+          i++; // =
+          const v = value();
+          if (v !== null) t.set(k, v);
+        } else {
+          const v = value();
+          if (v !== null) t.set(next, v);
+          next++;
+        }
+        skip();
+        if (text[i] === ',' || text[i] === ';') i++;
+      }
+    }
+
+    const vars = new Map();
+    for (;;) {
+      skip();
+      if (i >= n) break;
+      const name = word();
+      skip();
+      if (text[i] !== '=') fail('expected = after ' + name);
+      i++;
+      vars.set(name, value());
+    }
+    return vars;
+  }
+
+  function quote(s) {
+    let out = '"';
+    for (let k = 0; k < s.length; k++) {
+      const c = s[k];
+      const code = s.charCodeAt(k);
+      if (c === '"') out += '\\"';
+      else if (c === '\\') out += '\\\\';
+      else if (c === '\n') out += '\\n';
+      else if (c === '\r') out += '\\r';
+      else if (code < 32 || code === 127) out += '\\' + String(code).padStart(3, '0');
+      else out += c;
+    }
+    return out + '"';
+  }
+
+  function numText(v) {
+    if (!isFinite(v)) throw new Error('cannot write a non-finite number');
+    if (Object.is(v, -0)) return '-0';
+    return String(v); // shortest text that reads back as the same double
+  }
+
+  function writeValue(v, out) {
+    if (v instanceof Map) {
+      out.push('{\n');
+      for (const [k, val] of v) {
+        if (val === null || val === undefined) continue;
+        out.push('[', typeof k === 'number' ? numText(k) : typeof k === 'boolean' ? String(k) : quote(k), '] = ');
+        writeValue(val, out);
+        out.push(',\n');
+      }
+      out.push('}');
+    } else if (typeof v === 'string') out.push(quote(v));
+    else if (typeof v === 'number') out.push(numText(v));
+    else if (typeof v === 'boolean') out.push(String(v));
+    else throw new Error('cannot write value of type ' + typeof v);
+  }
+
+  function serialize(vars) {
+    const out = [];
+    for (const [name, v] of vars) {
+      out.push('\n', name, ' = ');
+      if (v === null || v === undefined) out.push('nil');
+      else writeValue(v, out);
+      out.push('\n');
+    }
+    return out.join('');
+  }
+
+  // get(t, 'a', 'b') walks nested Maps; undefined when any step is missing.
+  function get(t) {
+    for (let k = 1; k < arguments.length; k++) {
+      if (!(t instanceof Map)) return undefined;
+      t = t.get(arguments[k]);
+    }
+    return t;
+  }
+
+  // set(t, 'a', 'b', value) creates the tables on the way.
+  function set(t) {
+    const last = arguments.length - 2;
+    for (let k = 1; k < last; k++) {
+      let nx = t.get(arguments[k]);
+      if (!(nx instanceof Map)) { nx = new Map(); t.set(arguments[k], nx); }
+      t = nx;
+    }
+    const v = arguments[last + 1];
+    if (v === null || v === undefined) t.delete(arguments[last]);
+    else t.set(arguments[last], v);
+  }
+
+  function equal(a, b) {
+    if (a instanceof Map && b instanceof Map) {
+      if (a.size !== b.size) return false;
+      for (const [k, v] of a) if (!b.has(k) || !equal(v, b.get(k))) return false;
+      return true;
+    }
+    return Object.is(a, b);
+  }
+
+  function toPlain(v) {
+    if (!(v instanceof Map)) return v;
+    const o = {};
+    for (const [k, val] of v) o[String(k)] = toPlain(val);
+    return o;
+  }
+
+  const api = { parse, serialize, get, set, equal, toPlain };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.LuaTable = api;
+})(typeof self !== 'undefined' ? self : this);
+
+</script>
+<script>
+// Turns an EllesmereUI settings tree (see luatable.js) into rectangles to draw,
+// and writes edits back into the tree.
+//
+// The arithmetic follows what EllesmereUI does with these settings (learned by
+// reading its source, v9.8.4, 2026-11-10). Nothing is copied from it: the
+// default values below are the plain values its settings fall back to when a
+// key is absent from the file, which is the only way to read a file that stores
+// changed values only.
+(function (root) {
+  'use strict';
+  const L = typeof require !== 'undefined' ? require('./luatable.js') : root.LuaTable;
+
+  const SHAPES = ['none', 'cropped', 'square', 'circle', 'csquare', 'diamond', 'hexagon', 'portrait', 'shield'];
+  const SHAPE_LABELS = {
+    none: 'None', cropped: 'Cropped', square: 'Square', circle: 'Circle', csquare: 'Curved square',
+    diamond: 'Diamond', hexagon: 'Hexagon', portrait: 'Portrait', shield: 'Shield',
+  };
+  const THICKNESS = ['none', 'thin', 'normal', 'heavy', 'strong'];
+  const THICKNESS_PX = { none: 0, thin: 1, normal: 2, heavy: 3, strong: 4 };
+  const isCustomShape = (s) => s !== 'none' && s !== 'cropped';
+
+  // ---- action bars ---------------------------------------------------------
+  const AB_BARS = [
+    { key: 'MainBar', label: 'Action Bar 1 (Main)', count: 12 },
+    { key: 'Bar2', label: 'Action Bar 2', count: 12 },
+    { key: 'Bar3', label: 'Action Bar 3', count: 12 },
+    { key: 'Bar4', label: 'Action Bar 4', count: 12 },
+    { key: 'Bar5', label: 'Action Bar 5', count: 12 },
+    { key: 'Bar6', label: 'Action Bar 6', count: 12 },
+    { key: 'Bar7', label: 'Action Bar 7', count: 12 },
+    { key: 'Bar8', label: 'Action Bar 8', count: 12 },
+    { key: 'StanceBar', label: 'Stance Bar', count: 10, stance: true },
+    { key: 'PetBar', label: 'Pet Bar', count: 10 },
+  ];
+  const AB_DEFAULTS = {
+    buttonPadding: 2, buttonWidth: 0, buttonHeight: 0, growDirection: 'up',
+    borderEnabled: true, borderSize: 1, borderThickness: 'thin', borderTexture: 'solid',
+    buttonShape: 'none', shapeBorderEnabled: true, shapeBorderSize: 7,
+    alwaysHidden: false, barVisibility: 'always', enabled: true,
+  };
+  const AB_BASE = 45;            // button size when buttonWidth/Height is 0
+  const AB_SHAPE_EXPAND = 10;    // a custom shape makes each button this much larger
+  const AB_ZOOM = { none: 5.5, cropped: 2, square: 6, circle: 6, csquare: 6, diamond: 6, hexagon: 6, portrait: 6, shield: 6 };
+
+  // ---- cooldown manager ----------------------------------------------------
+  const CDM_DEFAULT_BARS = [
+    { key: 'cooldowns', name: 'Cooldowns', iconSize: 42, y: -275 },
+    { key: 'utility', name: 'Utility', iconSize: 36, y: -320 },
+    { key: 'buffs', name: 'Buffs', iconSize: 32, y: -365 },
+  ];
+  const CDM_DEFAULTS = {
+    iconSize: 36, numRows: 1, spacing: 2, borderSize: 1, borderThickness: 'thin', borderTexture: 'solid',
+    iconShape: 'none', iconZoom: 0.08, verticalOrientation: false, growDirection: 'CENTER',
+    barVisibility: 'always', enabled: true,
+  };
+  const CDM_ZOOM = { none: 0.08, cropped: 0.04, square: 0.06, circle: 0.06, csquare: 0.06, diamond: 0.06, hexagon: 0.06, portrait: 0.06, shield: 0.06 };
+
+  // ---- unit frames (context only, sizes are rough) ------------------------
+  const UF_FRAMES = [
+    { key: 'player', label: 'Player', w: 181, hh: 46, ph: 6 },
+    { key: 'target', label: 'Target', w: 181, hh: 46, ph: 6 },
+    { key: 'focus', label: 'Focus', w: 160, hh: 34, ph: 6 },
+    { key: 'targettarget', label: 'Target of target', w: 101, hh: 25, ph: 0 },
+    { key: 'pet', label: 'Pet', w: 101, hh: 25, ph: 0 },
+  ];
+
+  function db(vars) {
+    const d = vars.get('EllesmereUIDB');
+    if (!(d instanceof Map)) throw new Error('This file has no EllesmereUIDB table. Load EllesmereUI.lua from SavedVariables.');
+    return d;
+  }
+  function profileName(vars) { return L.get(db(vars), 'activeProfile') || 'Default'; }
+  function profileNames(vars) {
+    const p = L.get(db(vars), 'profiles');
+    return p instanceof Map ? [...p.keys()] : [];
+  }
+  function addon(vars, profile, name) { return L.get(db(vars), 'profiles', profile, 'addons', name); }
+  function addonPath(profile, name) { return ['profiles', profile, 'addons', name]; }
+
+  // Screen in UI units. WoW's UI is 768 units high at scale 1.
+  function screen(vars, physW, physH) {
+    const scale = L.get(db(vars), 'ppUIScale');
+    const s = typeof scale === 'number' && scale > 0 ? scale : 1;
+    const uiH = 768 / s;
+    const pxPerUnit = physH / uiH;
+    return { physW, physH, scale: s, scaleFromFile: typeof scale === 'number', uiH, uiW: physW / pxPerUnit, pxPerUnit, onePx: 1 / pxPerUnit };
+  }
+
+  // Where a frame of size w x h sits. `pos` holds the frame's own anchor point,
+  // the screen point it hangs from, and the offset (y grows upward).
+  // Returns the frame's top-left corner, measured from the screen's top-left.
+  function place(pos, w, h, scr) {
+    const pt = (pos && pos.point) || 'CENTER';
+    const rel = (pos && pos.relPoint) || pt;
+    let ax = scr.uiW / 2, ay = scr.uiH / 2;         // screen anchor, y up from bottom
+    if (rel.includes('LEFT')) ax = 0; else if (rel.includes('RIGHT')) ax = scr.uiW;
+    if (rel.includes('BOTTOM')) ay = 0; else if (rel.includes('TOP')) ay = scr.uiH;
+    const px = ax + ((pos && pos.x) || 0), py = ay + ((pos && pos.y) || 0);
+    let left = px - w / 2, bottom = py - h / 2;
+    if (pt.includes('LEFT')) left = px; else if (pt.includes('RIGHT')) left = px - w;
+    if (pt.includes('BOTTOM')) bottom = py; else if (pt.includes('TOP')) bottom = py - h;
+    return { left, top: scr.uiH - bottom - h };
+  }
+
+  // The inverse: the offset to store so that the frame's top-left lands at left/top.
+  function unplace(pos, left, top, w, h, scr) {
+    const pt = (pos && pos.point) || 'CENTER';
+    const rel = (pos && pos.relPoint) || pt;
+    let ax = scr.uiW / 2, ay = scr.uiH / 2;
+    if (rel.includes('LEFT')) ax = 0; else if (rel.includes('RIGHT')) ax = scr.uiW;
+    if (rel.includes('BOTTOM')) ay = 0; else if (rel.includes('TOP')) ay = scr.uiH;
+    const bottom = scr.uiH - top - h;
+    let px = left + w / 2, py = bottom + h / 2;
+    if (pt.includes('LEFT')) px = left; else if (pt.includes('RIGHT')) px = left + w;
+    if (pt.includes('BOTTOM')) py = bottom; else if (pt.includes('TOP')) py = bottom + h;
+    return { x: px - ax, y: py - ay };
+  }
+
+  function plainPos(m) {
+    if (!(m instanceof Map)) return null;
+    return { point: m.get('point'), relPoint: m.get('relPoint'), x: m.get('x') || 0, y: m.get('y') || 0 };
+  }
+  function merged(defaults, stored) {
+    const o = Object.assign({}, defaults);
+    if (stored instanceof Map) for (const [k, v] of stored) if (typeof k === 'string' && !(v instanceof Map)) o[k] = v;
+    return o;
+  }
+  const snap = (v, onePx) => Math.floor(v / onePx + 0.5);
+
+  function actionBars(vars, scr, profile) {
+    const ab = addon(vars, profile, 'EllesmereUIActionBars');
+    const out = [];
+    for (const info of AB_BARS) {
+      const stored = L.get(ab, 'bars', info.key);
+      const s = merged(AB_DEFAULTS, stored);
+      const pos = plainPos(L.get(ab, 'barPositions', info.key));
+      const notes = [];
+
+      let numIcons = s.overrideNumIcons || s.numIcons || info.count;
+      if (numIcons < 1 || numIcons > info.count) numIcons = info.count;
+      if (info.stance) notes.push('The game shows one button per stance or form you have; the preview uses the count set here.');
+      let numRows = Math.max(1, s.overrideNumRows || s.numRows || 1);
+      const stride = Math.ceil(numIcons / numRows);
+      numRows = Math.ceil(numIcons / stride);
+      const vertical = s.orientation === 'vertical';
+      const grow = String(s.growDirection || 'up').toUpperCase();
+      const shape = s.buttonShape || 'none';
+
+      const sized = s.buttonWidth > 0 && s.buttonHeight > 0;
+      if (!sized) notes.push('Button size is not in the file; the preview assumes ' + AB_BASE + '.');
+      let bw = s.buttonWidth > 0 ? s.buttonWidth : AB_BASE;
+      let bh = s.buttonHeight > 0 ? s.buttonHeight : AB_BASE;
+      if (isCustomShape(shape)) { bw += AB_SHAPE_EXPAND; bh += AB_SHAPE_EXPAND; }
+      if (shape === 'cropped') bh *= 0.8;
+      const bwPx = snap(bw, scr.onePx), bhPx = snap(bh, scr.onePx), padPx = snap(s.buttonPadding, scr.onePx);
+      bw = bwPx * scr.onePx; bh = bhPx * scr.onePx;
+      const pad = padPx * scr.onePx;
+
+      const cols = vertical ? numRows : stride;
+      const rows = vertical ? stride : numRows;
+      const w = Math.max((cols * bwPx + (cols - 1) * padPx) * scr.onePx, 1);
+      const h = Math.max((rows * bhPx + (rows - 1) * padPx) * scr.onePx, 1);
+      const rowsUpward = !vertical && (grow === 'UP' || grow === 'CENTER');
+
+      const cells = [];
+      for (let i = 0; i < numIcons; i++) {
+        const col = vertical ? Math.floor(i / stride) : i % stride;
+        const row = vertical ? i % stride : Math.floor(i / stride);
+        const x = col * (bw + pad);
+        const y = rowsUpward ? h - bh - row * (bh + pad) : row * (bh + pad);
+        cells.push({ x, y, w: bw, h: bh, label: String(i + 1) });
+      }
+
+      const hidden = s.alwaysHidden === true || s.barVisibility === 'never' || s.enabled === false;
+      const custom = isCustomShape(shape);
+      const borderPx = custom
+        ? (s.shapeBorderEnabled === false ? 0 : THICKNESS_PX[s.borderThickness] != null ? THICKNESS_PX[s.borderThickness] : 4)
+        : (s.borderEnabled === false ? 0 : s.borderSize);
+      let frame = null;
+      if (pos) frame = place(pos, w, h, scr);
+      else notes.push('This bar has no saved position (it was never moved), so the preview cannot place it.');
+
+      out.push({
+        id: 'ab:' + info.key, kind: 'actionbar', key: info.key, label: info.label, maxIcons: info.count,
+        hidden, placed: !!frame, left: frame ? frame.left : 0, top: frame ? frame.top : 0, w, h, cells,
+        shape, borderPx, pos, notes,
+        settings: {
+          numIcons, numRows: Math.max(1, s.overrideNumRows || s.numRows || 1), vertical,
+          buttonWidth: s.buttonWidth > 0 ? s.buttonWidth : AB_BASE, buttonHeight: s.buttonHeight > 0 ? s.buttonHeight : AB_BASE,
+          buttonPadding: s.buttonPadding, shape, borderThickness: s.borderThickness, borderSize: s.borderSize,
+          borderTexture: s.borderTexture,
+        },
+      });
+    }
+    return out;
+  }
+
+  function cdmCount(vars, key) {
+    const cache = L.get(db(vars), 'cdmCachedBarSizes');
+    if (cache instanceof Map) {
+      for (const perChar of cache.values()) {
+        if (!(perChar instanceof Map)) continue;
+        for (const perSpec of perChar.values()) {
+          const n = perSpec instanceof Map ? perSpec.get(key) : undefined;
+          if (typeof n === 'number' && n > 0) return n;
+        }
+      }
+    }
+    return undefined;
+  }
+
+  // previewCounts: { barKey: number } chosen in the page; never written to the file.
+  function cdmBars(vars, scr, profile, previewCounts) {
+    const cdm = addon(vars, profile, 'EllesmereUICooldownManager');
+    const bars = L.get(cdm, 'cdmBars', 'bars');
+    const out = [];
+    const n = Math.max(CDM_DEFAULT_BARS.length, bars instanceof Map ? bars.size : 0);
+    for (let idx = 1; idx <= n; idx++) {
+      const stored = bars instanceof Map ? bars.get(idx) : undefined;
+      const dflt = CDM_DEFAULT_BARS[idx - 1];
+      if (!dflt && !(stored instanceof Map)) continue;
+      const s = merged(Object.assign({}, CDM_DEFAULTS, dflt ? { key: dflt.key, name: dflt.name, iconSize: dflt.iconSize } : {}), stored);
+      if (s.isGhostBar) continue;
+      const notes = [];
+      const key = s.key;
+      const fromGame = cdmCount(vars, key);
+      const count = Math.max(1, (previewCounts && previewCounts[key]) || fromGame || 6);
+      notes.push(fromGame
+        ? 'The number of icons depends on your spells. The file remembers ' + fromGame + ' for this bar.'
+        : 'The number of icons depends on your spells; the file does not say how many. The preview count is a guess.');
+
+      const grow = String(s.growDirection || 'CENTER').toUpperCase();
+      const horiz = grow === 'RIGHT' || grow === 'LEFT' || (grow === 'CENTER' && !s.verticalOrientation);
+      const numRows = Math.max(1, s.numRows || 1);
+      const stride = Math.ceil(count / numRows);
+      const effRows = Math.ceil(count / stride);
+      const shape = s.iconShape || 'none';
+
+      let iw = s.iconSize, ih = s.iconSize;
+      const iwPx = snap(iw, scr.onePx);
+      if (shape === 'cropped') {
+        const pct = Math.min(25, Math.max(5, Number(s.iconCropPercent) || 10));
+        ih = Math.floor(iwPx * (1 - 2 * pct / 100) + 0.5) * scr.onePx;
+      }
+      const ihPx = snap(ih, scr.onePx), spPx = snap(s.spacing, scr.onePx);
+      iw = iwPx * scr.onePx; ih = ihPx * scr.onePx;
+      const sp = spPx * scr.onePx;
+      const cols = horiz ? stride : effRows, rows = horiz ? effRows : stride;
+      const w = (cols * iwPx + (cols - 1) * spPx) * scr.onePx;
+      const h = (rows * ihPx + (rows - 1) * spPx) * scr.onePx;
+
+      const cells = [];
+      for (let i = 0; i < count; i++) {
+        const a = i % stride, b = Math.floor(i / stride);
+        const inRow = Math.min(stride, count - b * stride);
+        const centre = Math.floor((stride - inRow) * ((horiz ? iw : ih) + sp) / 2 + 0.5);
+        const col = horiz ? a : b, row = horiz ? b : a;
+        cells.push({
+          x: col * (iw + sp) + (horiz ? centre : 0), y: row * (ih + sp) + (horiz ? 0 : centre), w: iw, h: ih, label: '',
+        });
+      }
+
+      let pos = plainPos(L.get(cdm, 'cdmBarPositions', key));
+      let attached = false;
+      if (key === 'focuskick') { attached = true; notes.push('This bar follows the focus target\'s nameplate, so it has no fixed place on screen.'); }
+      else if (s.anchorTo && s.anchorTo !== 'none') { attached = true; notes.push('This bar is attached to "' + s.anchorTo + '", so it has no position of its own.'); }
+      if (!pos && !attached) {
+        pos = { point: 'CENTER', relPoint: 'CENTER', x: 0, y: dflt ? dflt.y : 0 };
+        notes.push('No saved position; the preview uses the default place.');
+      }
+      const frame = attached ? null : place(pos, w, h, scr);
+      const hidden = s.barVisibility === 'never' || s.enabled === false;
+      out.push({
+        id: 'cdm:' + key, kind: 'cdm', key, index: idx, label: 'Cooldowns: ' + (s.name || key),
+        hidden, placed: !!frame, left: frame ? frame.left : 0, top: frame ? frame.top : 0, w, h, cells,
+        shape, borderPx: THICKNESS_PX[s.borderThickness] != null && isCustomShape(shape) ? THICKNESS_PX[s.borderThickness] : s.borderSize,
+        pos, notes, previewCount: count,
+        settings: {
+          iconSize: s.iconSize, spacing: s.spacing, numRows, vertical: !!s.verticalOrientation, growDirection: grow,
+          shape, borderThickness: s.borderThickness, borderSize: s.borderSize, borderTexture: s.borderTexture,
+        },
+      });
+    }
+    return out;
+  }
+
+  function unitFrames(vars, scr, profile) {
+    const uf = addon(vars, profile, 'EllesmereUIUnitFrames');
+    const out = [];
+    for (const f of UF_FRAMES) {
+      const pos = plainPos(L.get(uf, 'positions', f.key));
+      if (!pos) continue;
+      const st = L.get(uf, f.key);
+      const num = (k, d) => (st instanceof Map && typeof st.get(k) === 'number' ? st.get(k) : d);
+      const w = num('frameWidth', f.w), h = num('healthHeight', f.hh) + num('powerHeight', f.ph);
+      const p = place({ point: pos.point || 'CENTER', relPoint: pos.relPoint || 'CENTER', x: pos.x, y: pos.y }, w, h, scr);
+      out.push({
+        id: 'uf:' + f.key, kind: 'context', key: f.key, label: f.label + ' frame', hidden: false, placed: true,
+        left: p.left, top: p.top, w, h, cells: [], shape: 'none', borderPx: 1, pos,
+        notes: ['Shown for orientation only. Size and anchor are rough, and it cannot be edited here yet.'],
+      });
+    }
+    return out;
+  }
+
+  function elements(vars, scr, profile, previewCounts) {
+    return [].concat(actionBars(vars, scr, profile), cdmBars(vars, scr, profile, previewCounts), unitFrames(vars, scr, profile));
+  }
+
+  // ---- edits ---------------------------------------------------------------
+  function abBar(vars, profile, key) {
+    const p = addonPath(profile, 'EllesmereUIActionBars').concat(['bars', key]);
+    let t = L.get.apply(null, [db(vars)].concat(p));
+    if (!(t instanceof Map)) { t = new Map(); L.set.apply(null, [db(vars)].concat(p, [t])); }
+    return t;
+  }
+  function cdmBar(vars, profile, index) {
+    const p = addonPath(profile, 'EllesmereUICooldownManager').concat(['cdmBars', 'bars', index]);
+    let t = L.get.apply(null, [db(vars)].concat(p));
+    if (!(t instanceof Map)) { t = new Map(); L.set.apply(null, [db(vars)].concat(p, [t])); }
+    return t;
+  }
+
+  // Returns an error string when the edit is not allowed, otherwise undefined.
+  function setShape(vars, profile, el, shape) {
+    if (SHAPES.indexOf(shape) < 0) return 'Unknown shape ' + shape;
+    if (isCustomShape(shape) && (el.settings.borderTexture || 'solid') !== 'solid') {
+      return 'EllesmereUI only allows this shape when Border Style is Solid. This bar uses "' + el.settings.borderTexture + '". Change it in game first.';
+    }
+    if (el.kind === 'actionbar') {
+      const b = abBar(vars, profile, el.key);
+      b.set('iconZoom', AB_ZOOM[shape]);
+      b.set('buttonShape', shape);
+      if (isCustomShape(shape)) { b.set('borderThickness', 'strong'); b.set('shapeBorderSize', 7); b.set('shapeBorderEnabled', true); }
+      else { b.set('borderThickness', 'thin'); b.set('borderSize', 1); b.set('borderEnabled', true); }
+      const size = shape === 'cropped' ? 11 : 12;
+      b.set('keybindFontSize', size); b.set('countFontSize', size);
+      // Text offsets: only the plain case is mirrored. With a custom text anchor
+      // EllesmereUI adds its own corner spacing, so those are left as they are.
+      if (!b.get('keybindAnchor')) { b.set('keybindOffsetX', 0); b.set('keybindOffsetY', shape === 'cropped' ? 1 : 0); }
+      if (!b.get('countAnchor')) { b.set('countOffsetX', 0); b.set('countOffsetY', shape === 'cropped' ? -1 : 0); }
+    } else if (el.kind === 'cdm') {
+      const b = cdmBar(vars, profile, el.index);
+      b.set('iconShape', shape);
+      b.set('iconZoom', CDM_ZOOM[shape]);
+      if (isCustomShape(shape)) { b.set('borderThickness', 'strong'); b.set('borderSize', 4); b.set('activeStateAnim', 'blizzard'); }
+      else { b.set('borderThickness', 'thin'); b.set('borderSize', 1); }
+      for (const k of ['_matchIconPhys', '_matchExtraPixels', '_matchStride', '_matchExtraPixelsH', '_matchStrideH']) b.delete(k);
+    } else return 'This element cannot be edited.';
+  }
+
+  function setField(vars, profile, el, field, value) {
+    if (el.kind === 'actionbar') {
+      const b = abBar(vars, profile, el.key);
+      if (field === 'numIcons') b.set('overrideNumIcons', Math.min(el.maxIcons, Math.max(1, Math.round(value))));
+      else if (field === 'numRows') b.set('overrideNumRows', Math.max(1, Math.round(value)));
+      else if (field === 'vertical') { if (value) b.set('orientation', 'vertical'); else b.delete('orientation'); }
+      else if (field === 'buttonWidth' || field === 'buttonHeight' || field === 'buttonPadding') b.set(field, Math.max(0, Number(value)));
+      else if (field === 'hidden') {
+        if (value) { b.set('alwaysHidden', true); b.set('barVisibility', 'never'); }
+        else { b.delete('alwaysHidden'); b.set('barVisibility', 'always'); }
+      } else if (field === 'borderThickness') {
+        if (THICKNESS.indexOf(value) < 0) return 'Unknown thickness';
+        b.set('borderThickness', value);
+        if (!isCustomShape(el.shape)) { b.set('borderSize', THICKNESS_PX[value]); b.set('borderEnabled', value !== 'none'); }
+        else b.set('shapeBorderEnabled', value !== 'none');
+      } else return 'Unknown field ' + field;
+    } else if (el.kind === 'cdm') {
+      const b = cdmBar(vars, profile, el.index);
+      if (field === 'iconSize') b.set('iconSize', Math.max(1, Number(value)));
+      else if (field === 'spacing') b.set('spacing', Math.max(0, Number(value)));
+      else if (field === 'numRows') b.set('numRows', Math.max(1, Math.round(value)));
+      else if (field === 'vertical') b.set('verticalOrientation', !!value);
+      else if (field === 'hidden') b.set('barVisibility', value ? 'never' : 'always');
+      else if (field === 'borderThickness') {
+        if (THICKNESS.indexOf(value) < 0) return 'Unknown thickness';
+        b.set('borderThickness', value); b.set('borderSize', THICKNESS_PX[value]);
+      } else return 'Unknown field ' + field;
+    } else return 'This element cannot be edited.';
+  }
+
+  // Moves an element so its top-left corner lands at left/top (UI units).
+  function moveTo(vars, profile, el, left, top, scr) {
+    if (!el.placed || (el.kind !== 'actionbar' && el.kind !== 'cdm')) return 'This element cannot be moved here.';
+    const pos = el.pos || { point: 'CENTER', relPoint: 'CENTER' };
+    const lp = Math.round(left / scr.onePx) * scr.onePx, tp = Math.round(top / scr.onePx) * scr.onePx;
+    const o = unplace(pos, lp, tp, el.w, el.h, scr);
+    const path = el.kind === 'actionbar'
+      ? addonPath(profile, 'EllesmereUIActionBars').concat(['barPositions', el.key])
+      : addonPath(profile, 'EllesmereUICooldownManager').concat(['cdmBarPositions', el.key]);
+    let t = L.get.apply(null, [db(vars)].concat(path));
+    if (!(t instanceof Map)) {
+      t = new Map([['point', pos.point || 'CENTER'], ['relPoint', pos.relPoint || 'CENTER']]);
+      L.set.apply(null, [db(vars)].concat(path, [t]));
+    }
+    t.set('x', o.x); t.set('y', o.y);
+  }
+
+  // Lists what differs between two trees, as readable lines.
+  function diff(a, b, path, out) {
+    out = out || []; path = path || '';
+    const keys = new Set();
+    if (a instanceof Map) for (const k of a.keys()) keys.add(k);
+    if (b instanceof Map) for (const k of b.keys()) keys.add(k);
+    for (const k of keys) {
+      const va = a instanceof Map ? a.get(k) : undefined, vb = b instanceof Map ? b.get(k) : undefined;
+      const p = path ? path + '.' + k : String(k);
+      if (va instanceof Map || vb instanceof Map) {
+        if (va instanceof Map && vb instanceof Map) diff(va, vb, p, out);
+        else if (vb instanceof Map) diff(new Map(), vb, p, out);
+        else out.push({ path: p, from: '(table)', to: vb === undefined ? '(removed)' : vb });
+      } else if (!Object.is(va, vb)) {
+        out.push({ path: p, from: va === undefined ? '(not set)' : va, to: vb === undefined ? '(removed)' : vb });
+      }
+    }
+    return out;
+  }
+
+  const api = {
+    SHAPES, SHAPE_LABELS, THICKNESS, isCustomShape, AB_BARS,
+    db, profileName, profileNames, screen, place, unplace, elements, actionBars, cdmBars, unitFrames,
+    setShape, setField, moveTo, diff,
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.ElleModel = api;
+})(typeof self !== 'undefined' ? self : this);
+
+</script>
+<script>
+// The page: loads a settings file, draws it, edits it, saves it.
+(function () {
+  'use strict';
+  const L = self.LuaTable, M = self.ElleModel;
+  const $ = (id) => document.getElementById(id);
+  const SVG = 'http://www.w3.org/2000/svg';
+
+  const state = {
+    vars: null, original: null, fileName: 'EllesmereUI.lua', profile: null,
+    physW: 3440, physH: 1440, selected: null, showHidden: false, previewCounts: {}, els: [], scr: null,
+  };
+
+  function el(tag, attrs, parent) {
+    const e = document.createElementNS(SVG, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function h(tag, props, parent) {
+    const e = document.createElement(tag);
+    Object.assign(e, props || {});
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+
+  // Outline of one button or icon, in a box x,y,w,h.
+  function shapePath(shape, x, y, w, hh) {
+    const cx = x + w / 2, cy = y + hh / 2, r = Math.min(w, hh) / 2;
+    const pts = (a) => 'M' + a.map((p) => p[0].toFixed(2) + ' ' + p[1].toFixed(2)).join('L') + 'Z';
+    if (shape === 'circle') return 'M' + (cx - r) + ' ' + cy + 'a' + r + ' ' + r + ' 0 1 0 ' + 2 * r + ' 0a' + r + ' ' + r + ' 0 1 0 ' + -2 * r + ' 0Z';
+    if (shape === 'hexagon') {
+      const q = w * 0.25;
+      return pts([[x + q, y], [x + w - q, y], [x + w, cy], [x + w - q, y + hh], [x + q, y + hh], [x, cy]]);
+    }
+    if (shape === 'diamond') return pts([[cx, y], [x + w, cy], [cx, y + hh], [x, cy]]);
+    if (shape === 'shield') {
+      return 'M' + x + ' ' + (y + hh * 0.12) + 'Q' + cx + ' ' + (y - hh * 0.06) + ' ' + (x + w) + ' ' + (y + hh * 0.12) +
+        'L' + (x + w) + ' ' + (y + hh * 0.5) + 'Q' + (x + w) + ' ' + (y + hh * 0.82) + ' ' + cx + ' ' + (y + hh) +
+        'Q' + x + ' ' + (y + hh * 0.82) + ' ' + x + ' ' + (y + hh * 0.5) + 'Z';
+    }
+    if (shape === 'portrait') {
+      return 'M' + cx + ' ' + y + 'A' + r + ' ' + r + ' 0 0 1 ' + (x + w) + ' ' + cy + 'L' + (x + w) + ' ' + (y + hh) +
+        'L' + cx + ' ' + (y + hh) + 'A' + r + ' ' + r + ' 0 0 1 ' + x + ' ' + cy + 'A' + r + ' ' + r + ' 0 0 1 ' + cx + ' ' + y + 'Z';
+    }
+    if (shape === 'csquare') {
+      const c = Math.min(w, hh) * 0.22;
+      return 'M' + (x + c) + ' ' + y + 'H' + (x + w - c) + 'Q' + (x + w) + ' ' + y + ' ' + (x + w) + ' ' + (y + c) + 'V' + (y + hh - c) +
+        'Q' + (x + w) + ' ' + (y + hh) + ' ' + (x + w - c) + ' ' + (y + hh) + 'H' + (x + c) + 'Q' + x + ' ' + (y + hh) + ' ' + x + ' ' + (y + hh - c) +
+        'V' + (y + c) + 'Q' + x + ' ' + y + ' ' + (x + c) + ' ' + y + 'Z';
+    }
+    return pts([[x, y], [x + w, y], [x + w, y + hh], [x, y + hh]]);
+  }
+
+  function recompute() {
+    state.scr = M.screen(state.vars, state.physW, state.physH);
+    state.els = M.elements(state.vars, state.scr, state.profile, state.previewCounts);
+  }
+  function selectedEl() { return state.els.find((e) => e.id === state.selected) || null; }
+
+  function draw() {
+    const svg = $('stage');
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    const scr = state.scr;
+    svg.setAttribute('viewBox', '0 0 ' + scr.uiW + ' ' + scr.uiH);
+    svg.style.aspectRatio = scr.uiW + ' / ' + scr.uiH;
+    el('rect', { x: 0, y: 0, width: scr.uiW, height: scr.uiH, class: 'screen' }, svg);
+    el('line', { x1: scr.uiW / 2, y1: 0, x2: scr.uiW / 2, y2: scr.uiH, class: 'guide' }, svg);
+    el('line', { x1: 0, y1: scr.uiH / 2, x2: scr.uiW, y2: scr.uiH / 2, class: 'guide' }, svg);
+
+    for (const e of state.els) {
+      if (!e.placed) continue;
+      if (e.hidden && !state.showHidden && e.id !== state.selected) continue;
+      const g = el('g', { transform: 'translate(' + e.left + ' ' + e.top + ')', class: 'el ' + e.kind + (e.hidden ? ' hiddenEl' : '') + (e.id === state.selected ? ' sel' : ''), 'data-id': e.id }, svg);
+      el('rect', { x: -2, y: -2, width: e.w + 4, height: e.h + 4, class: 'frame' }, g);
+      if (!e.cells.length) el('rect', { x: 0, y: 0, width: e.w, height: e.h, class: 'cell' }, g);
+      for (const c of e.cells) {
+        const sw = Math.max(e.borderPx, 0) * scr.onePx;
+        el('path', { d: shapePath(e.shape, c.x, c.y, c.w, c.h), class: 'cell', 'stroke-width': sw }, g);
+        if (c.label && c.w >= 20) {
+          const t = el('text', { x: c.x + c.w / 2, y: c.y + c.h / 2, class: 'num', 'font-size': Math.min(c.w, c.h) * 0.36 }, g);
+          t.textContent = c.label;
+        }
+      }
+      const lab = el('text', { x: 0, y: -6, class: 'label', 'font-size': 13 }, g);
+      lab.textContent = e.label + (e.hidden ? ' (hidden in game)' : '');
+    }
+    svg.querySelectorAll('g.el').forEach((g) => g.addEventListener('pointerdown', startDrag));
+  }
+
+  // ---- dragging ------------------------------------------------------------
+  let drag = null;
+  function toUi(evt) {
+    const svg = $('stage'), r = svg.getBoundingClientRect();
+    return { x: (evt.clientX - r.left) * state.scr.uiW / r.width, y: (evt.clientY - r.top) * state.scr.uiH / r.height };
+  }
+  function startDrag(evt) {
+    const id = evt.currentTarget.getAttribute('data-id');
+    state.selected = id;
+    const e = selectedEl();
+    if (e && (e.kind === 'actionbar' || e.kind === 'cdm')) {
+      const p = toUi(evt);
+      drag = { id, dx: p.x - e.left, dy: p.y - e.top, moved: false };
+      evt.currentTarget.setPointerCapture(evt.pointerId);
+    }
+    render();
+    evt.preventDefault();
+  }
+  window.addEventListener('pointermove', (evt) => {
+    if (!drag) return;
+    const e = selectedEl(); if (!e) return;
+    const p = toUi(evt);
+    drag.moved = true;
+    M.moveTo(state.vars, state.profile, e, p.x - drag.dx, p.y - drag.dy, state.scr);
+    recompute(); draw(); renderProps(true);
+  });
+  window.addEventListener('pointerup', () => { if (drag) { const moved = drag.moved; drag = null; if (moved) render(); } });
+  window.addEventListener('keydown', (evt) => {
+    const e = selectedEl();
+    if (!e || !e.placed || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+    const step = (evt.shiftKey ? 10 : 1) * state.scr.onePx;
+    const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[evt.key];
+    if (!d) return;
+    if (!M.moveTo(state.vars, state.profile, e, e.left + d[0], e.top + d[1], state.scr)) { evt.preventDefault(); render(); }
+  });
+
+  // ---- side panels ---------------------------------------------------------
+  function renderList() {
+    const box = $('list'); box.textContent = '';
+    for (const e of state.els) {
+      const row = h('button', { className: 'row' + (e.id === state.selected ? ' on' : '') + (e.hidden ? ' dim' : ''), type: 'button' }, box);
+      row.textContent = e.label + (e.hidden ? ' · hidden' : '') + (!e.placed ? ' · not drawn' : '');
+      row.onclick = () => { state.selected = e.id; render(); };
+    }
+  }
+
+  function field(parent, label, input) {
+    const w = h('label', { className: 'field' }, parent);
+    h('span', { textContent: label }, w);
+    w.appendChild(input);
+    return input;
+  }
+  function numInput(value, step, onChange) {
+    const i = h('input', { type: 'number', value: String(Math.round(value * 1000) / 1000), step: String(step) });
+    i.onchange = () => { const v = Number(i.value); if (isFinite(v)) onChange(v); };
+    return i;
+  }
+  function select(options, value, onChange) {
+    const s = h('select');
+    for (const [v, t] of options) h('option', { value: v, textContent: t, selected: v === value }, s);
+    s.onchange = () => onChange(s.value);
+    return s;
+  }
+  function check(value, onChange) {
+    const c = h('input', { type: 'checkbox', checked: !!value });
+    c.onchange = () => onChange(c.checked);
+    return c;
+  }
+  function apply(err) { if (err) alert(err); render(); }
+
+  function renderProps(positionOnly) {
+    const box = $('props');
+    const e = selectedEl();
+    if (positionOnly && e) {
+      const px = $('posx'), py = $('posy');
+      if (px && py) { px.value = Math.round(e.left * state.scr.pxPerUnit); py.value = Math.round(e.top * state.scr.pxPerUnit); }
+      return;
+    }
+    box.textContent = '';
+    if (!e) { h('p', { className: 'hint', textContent: 'Click a bar in the drawing or in the list.' }, box); return; }
+    h('h2', { textContent: e.label }, box);
+    const editable = e.kind === 'actionbar' || e.kind === 'cdm';
+    const ppu = state.scr.pxPerUnit;
+    const set = (f) => (v) => apply(M.setField(state.vars, state.profile, e, f, v));
+
+    if (e.placed) {
+      const px = field(box, 'Left edge (screen pixels)', numInput(e.left * ppu, 1, (v) => apply(M.moveTo(state.vars, state.profile, e, v / ppu, e.top, state.scr))));
+      const py = field(box, 'Top edge (screen pixels)', numInput(e.top * ppu, 1, (v) => apply(M.moveTo(state.vars, state.profile, e, e.left, v / ppu, state.scr))));
+      px.id = 'posx'; py.id = 'posy'; px.disabled = py.disabled = !editable;
+      h('p', { className: 'hint', textContent: 'Size on screen: ' + Math.round(e.w * ppu) + ' × ' + Math.round(e.h * ppu) + ' pixels.' + (editable ? ' Drag it, or use the arrow keys (Shift for 10 pixels).' : '') }, box);
+    }
+    if (editable) {
+      const s = e.settings;
+      field(box, 'Hidden in game', check(e.hidden, set('hidden')));
+      field(box, 'Shape', select(M.SHAPES.map((v) => [v, M.SHAPE_LABELS[v]]), s.shape, (v) => apply(M.setShape(state.vars, state.profile, e, v))));
+      const all = h('button', { type: 'button', className: 'small', textContent: 'Use this shape on all ' + (e.kind === 'actionbar' ? 'action bars' : 'cooldown bars') }, box);
+      all.onclick = () => {
+        const errs = [];
+        for (const o of state.els) if (o.kind === e.kind && o.id !== e.id) { const r = M.setShape(state.vars, state.profile, o, s.shape); if (r) errs.push(o.label + ': ' + r); }
+        apply(errs.join('\n'));
+      };
+      field(box, 'Border', select(M.THICKNESS.map((v) => [v, v[0].toUpperCase() + v.slice(1)]), s.borderThickness, set('borderThickness')));
+      if (e.kind === 'actionbar') {
+        field(box, 'Buttons', numInput(s.numIcons, 1, set('numIcons')));
+        field(box, s.vertical ? 'Columns' : 'Rows', numInput(s.numRows, 1, set('numRows')));
+        field(box, 'Vertical', check(s.vertical, set('vertical')));
+        field(box, 'Button width (pixels)', numInput(s.buttonWidth * ppu, 1, (v) => set('buttonWidth')(v / ppu)));
+        field(box, 'Button height (pixels)', numInput(s.buttonHeight * ppu, 1, (v) => set('buttonHeight')(v / ppu)));
+        field(box, 'Gap between buttons (pixels)', numInput(s.buttonPadding * ppu, 1, (v) => set('buttonPadding')(v / ppu)));
+      } else {
+        field(box, 'Icon size (pixels)', numInput(s.iconSize * ppu, 1, (v) => set('iconSize')(v / ppu)));
+        field(box, 'Gap between icons (pixels)', numInput(s.spacing * ppu, 1, (v) => set('spacing')(v / ppu)));
+        field(box, 'Rows', numInput(s.numRows, 1, set('numRows')));
+        field(box, 'Vertical', check(s.vertical, set('vertical')));
+        field(box, 'Icons shown in this preview (not saved)', numInput(e.previewCount, 1, (v) => { state.previewCounts[e.key] = Math.max(1, Math.round(v)); render(); }));
+      }
+    }
+    for (const n of e.notes) h('p', { className: 'note', textContent: n }, box);
+  }
+
+  function renderChanges() {
+    const box = $('changes'); box.textContent = '';
+    const d = M.diff(state.original.get('EllesmereUIDB'), state.vars.get('EllesmereUIDB'));
+    $('save').disabled = d.length === 0;
+    $('count').textContent = d.length ? d.length + ' value' + (d.length === 1 ? '' : 's') + ' changed' : 'No changes yet';
+    const strip = 'profiles.' + state.profile + '.addons.';
+    for (const c of d) {
+      const row = h('div', { className: 'chg' }, box);
+      const fmt = (v) => (typeof v === 'number' ? String(Math.round(v * 1000) / 1000) : String(v));
+      row.textContent = c.path.replace(strip, '').replace('EllesmereUI', '') + ': ' + fmt(c.from) + ' → ' + fmt(c.to);
+    }
+  }
+
+  function render() {
+    recompute(); draw(); renderList(); renderProps(); renderChanges();
+    const s = state.scr;
+    $('info').textContent = 'Profile "' + state.profile + '" · UI scale ' + (Math.round(s.scale * 1000) / 1000) + (s.scaleFromFile ? '' : ' (not in file, assumed)') +
+      ' · one UI unit = ' + (Math.round(s.pxPerUnit * 1000) / 1000) + ' pixels';
+  }
+
+  // ---- file in, file out ---------------------------------------------------
+  function load(text, name) {
+    let vars;
+    try { vars = L.parse(text); M.db(vars); } catch (err) { alert(err.message); return; }
+    // Safety: writing the file back must give the same data.
+    if (!L.equal(vars, L.parse(L.serialize(vars)))) { alert('This file does not survive a read and write unchanged, so editing it here is not safe. Nothing was loaded.'); return; }
+    state.vars = vars; state.original = L.parse(text); state.fileName = name || 'EllesmereUI.lua';
+    state.profile = M.profileName(vars); state.selected = null; state.previewCounts = {};
+    document.body.classList.add('loaded');
+    render();
+  }
+  $('file').onchange = (evt) => {
+    const f = evt.target.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = () => load(String(r.result), f.name);
+    r.readAsText(f);
+  };
+  $('save').onclick = () => {
+    const blob = new Blob([L.serialize(state.vars)], { type: 'text/plain' });
+    const a = h('a', { href: URL.createObjectURL(blob), download: state.fileName }, document.body);
+    a.click(); a.remove();
+  };
+  $('reset').onclick = () => { if (state.original && confirm('Drop every change and go back to the loaded file?')) load(L.serialize(state.original), state.fileName); };
+  $('showHidden').onchange = (evt) => { state.showHidden = evt.target.checked; render(); };
+  for (const id of ['physW', 'physH']) {
+    $(id).onchange = () => { const v = Number($(id).value); if (v >= 320) { state[id] = v; if (state.vars) render(); } };
+  }
+  $('shot').onchange = (evt) => {
+    const f = evt.target.files[0]; if (!f) return;
+    $('under').src = URL.createObjectURL(f); $('under').style.display = 'block';
+  };
+  $('shotAlpha').oninput = (evt) => { $('under').style.opacity = evt.target.value; };
+})();
+
+</script>
+</body>
+</html>
