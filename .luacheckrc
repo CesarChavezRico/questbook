@@ -28,6 +28,9 @@ read_globals = {
   "GetZoneText", "GetSubZoneText", "HasNewMail", "CursorHasItem", "GetMouseFoci", "GetMouseFocus",
   "ShowUIPanel", "HideUIPanel", "ToggleWorldMap", "PlayerMovementFrameFader",
   "HybridMinimap_LoadUI", "IsIndoors",
+  -- loadout: action buttons, spellbook, macros, bindings
+  "C_SpellBook", "C_Spell", "C_Item", "GetActionInfo", "PlaceAction", "PickupAction", "PickupMacro", "PickupItem", "ClearCursor",
+  "GetCursorInfo", "GetMacroIndexByName", "GetNumMacros", "GetMacroInfo", "GetBindingKey",
   "Minimap", "MinimapCluster", "WorldMapFrame", "AddonCompartmentFrame", "MicroMenu",
   "MicroMenuContainer",
   -- shift-click on a quest puts its link into the chat box
