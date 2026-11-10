@@ -48,14 +48,14 @@
   .cell { fill:#3a4252; stroke:#000; }
   .cdm .cell { fill:#4a3f5e; }
   .context { cursor:default; }
-  .context .cell { fill:#26303a; stroke:#55606e; stroke-dasharray:4 3; }
+  .context .cell, .unitframe .cell { fill:#26303a; stroke:#55606e; stroke-dasharray:4 3; }
   .hiddenEl { opacity:.35; }
   .cell.ghost { fill:none; stroke:#5b6474; stroke-width:1; stroke-dasharray:3 3; }
   .mapbox { fill:none; stroke:#3c5a4c; stroke-width:1; stroke-dasharray:6 5; }
   .mapdisc { fill:#1f3a2e; fill-opacity:.7; stroke:#0cd29f; stroke-opacity:.5; stroke-width:1; }
   .num { fill:#c9ced8; text-anchor:middle; dominant-baseline:central; pointer-events:none; }
   .label { fill:var(--dim); pointer-events:none; opacity:0; }
-  .el:hover .label, .el.sel .label, .context .label { opacity:1; }
+  .el:hover .label, .el.sel .label, .context .label, .unitframe .label { opacity:1; }
 </style>
 </head>
 <body>
@@ -83,7 +83,7 @@
     <p class="hint">Rebuilds action bars 1, 2 and 4 to 10 as the 4 × 3 keypad with its two thumb keys, and the mouse. Bar 3 is not touched. Building starts again from the loaded file.</p>
     <label class="field"><span>Layout</span><select id="hcStyle">
       <option value="wings">Hex wings around the map</option>
-      <option value="crescent">Circle crescents around the map</option>
+      <option value="crescent">Circles around the map, frames on its middle line</option>
       <option value="blocks">Honeycomb blocks</option></select></label>
     <label class="field"><span>Button size (pixels)</span><input type="number" id="hcSize" value="43" step="1"></label>
     <label class="field"><span>Gap (pixels)</span><input type="number" id="hcGap" value="0" step="1"></label>

@@ -8,7 +8,7 @@
   const state = {
     vars: null, original: null, fileName: 'EllesmereUI.lua', profile: null,
     physW: 3440, physH: 1440, selected: null, showHidden: false, previewCounts: {}, els: [], scr: null,
-    map: null, empty: {},
+    map: null, empty: {}, labels: {},
   };
 
   function el(tag, attrs, parent) {
@@ -80,14 +80,15 @@
       const g = el('g', { transform: 'translate(' + e.left + ' ' + e.top + ')', class: 'el ' + e.kind + (e.hidden ? ' hiddenEl' : '') + (e.id === state.selected ? ' sel' : ''), 'data-id': e.id }, svg);
       el('rect', { x: -2, y: -2, width: e.w + 4, height: e.h + 4, class: 'frame' }, g);
       if (!e.cells.length) el('rect', { x: 0, y: 0, width: e.w, height: e.h, class: 'cell' }, g);
-      const empty = state.empty[e.key] || [];
+      const empty = state.empty[e.key] || [], names = state.labels[e.key];
       for (const c of e.cells) {
         const sw = Math.max(e.borderPx, 0) * scr.onePx;
         if (empty.indexOf(Number(c.label)) >= 0) { el('path', { d: shapePath(e.shape, c.x, c.y, c.w, c.h), class: 'cell ghost' }, g); continue; }
         el('path', { d: shapePath(e.shape, c.x, c.y, c.w, c.h), class: 'cell', 'stroke-width': sw }, g);
-        if (c.label && c.w >= 20) {
-          const t = el('text', { x: c.x + c.w / 2, y: c.y + c.h / 2, class: 'num', 'font-size': Math.min(c.w, c.h) * 0.36 }, g);
-          t.textContent = c.label;
+        const text = names ? names[Number(c.label) - 1] : c.label;
+        if (text && c.w >= 20) {
+          const t = el('text', { x: c.x + c.w / 2, y: c.y + c.h / 2, class: 'num', 'font-size': Math.min(c.w, c.h) * (text.length > 2 ? 0.28 : 0.36) }, g);
+          t.textContent = text;
         }
       }
       const lab = el('text', { x: 0, y: -6, class: 'label', 'font-size': 13 }, g);
@@ -106,7 +107,7 @@
     const id = evt.currentTarget.getAttribute('data-id');
     state.selected = id;
     const e = selectedEl();
-    if (e && (e.kind === 'actionbar' || e.kind === 'cdm')) {
+    if (e && (e.kind === 'actionbar' || e.kind === 'cdm' || e.kind === 'unitframe')) {
       const p = toUi(evt);
       drag = { id, dx: p.x - e.left, dy: p.y - e.top, moved: false };
       evt.currentTarget.setPointerCapture(evt.pointerId);
@@ -184,8 +185,8 @@
     if (e.placed) {
       const px = field(box, 'Left edge (screen pixels)', numInput(e.left * ppu, 1, (v) => apply(M.moveTo(state.vars, state.profile, e, v / ppu, e.top, state.scr))));
       const py = field(box, 'Top edge (screen pixels)', numInput(e.top * ppu, 1, (v) => apply(M.moveTo(state.vars, state.profile, e, e.left, v / ppu, state.scr))));
-      px.id = 'posx'; py.id = 'posy'; px.disabled = py.disabled = !editable;
-      h('p', { className: 'hint', textContent: 'Size on screen: ' + Math.round(e.w * ppu) + ' × ' + Math.round(e.h * ppu) + ' pixels.' + (editable ? ' Drag it, or use the arrow keys (Shift for 10 pixels).' : '') }, box);
+      px.id = 'posx'; py.id = 'posy'; px.disabled = py.disabled = !(editable || e.kind === 'unitframe');
+      h('p', { className: 'hint', textContent: 'Size on screen: ' + Math.round(e.w * ppu) + ' × ' + Math.round(e.h * ppu) + ' pixels.' + (editable || e.kind === 'unitframe' ? ' Drag it, or use the arrow keys (Shift for 10 pixels).' : '') }, box);
     }
     if (editable) {
       const s = e.settings;
@@ -250,7 +251,7 @@
     if (!state.vars) return;
     const changed = M.diff(state.original.get('EllesmereUIDB'), state.vars.get('EllesmereUIDB')).length;
     if (changed && !confirm('Building a layout starts again from the file you loaded and drops the ' + changed + ' changes made so far. Continue?')) return;
-    state.vars = L.parse(L.serialize(state.original)); state.previewCounts = {}; state.empty = {};
+    state.vars = L.parse(L.serialize(state.original)); state.previewCounts = {}; state.empty = {}; state.labels = {};
     recompute();
     const ppu = state.scr.pxPerUnit, style = $('hcStyle').value;
     const sizePx = Number($('hcSize').value), gapPx = Number($('hcGap').value), marginPx = Number($('hcMargin').value);
@@ -261,7 +262,9 @@
       cells = [].concat.apply([], plan.blocks.map((b) => b.cells));
     } else {
       const map = mapForPlan();
-      const plan = M.hugPlan(state.scr, { style, sizePx, gapPx, map, marginPx });
+      const size = (k) => { const f = state.els.find((e) => e.id === 'uf:' + k); return f ? { w: f.w * ppu, h: f.h * ppu } : null; };
+      const frames = size('player') && size('target') ? { player: size('player'), target: size('target') } : undefined;
+      const plan = M.hugPlan(state.scr, { style, sizePx, gapPx, map, marginPx, frames });
       err = M.layoutBars(state.vars, state.profile, state.scr, plan);
       cells = plan.bars;
       // bars of the keypad and mouse that this layout does not use are hidden
@@ -269,7 +272,10 @@
       for (const e of state.els) {
         if (e.kind === 'actionbar' && /^(MainBar|Bar2|Bar[4-9]|Bar10)$/.test(e.key) && !cells.some((c) => c.bar === e.key) && !e.hidden) M.setField(state.vars, state.profile, e, 'hidden', true);
       }
-      if ($('hcCrown').checked) {
+      if (plan.frames) {
+        const skipped = M.placeAround(state.vars, state.profile, state.scr, plan, map, state.previewCounts);
+        if (skipped.length) err = (err ? err + '\n' : '') + 'Moved but kept square (their Border Style is not Solid): ' + skipped.join(', ');
+      } else if ($('hcCrown').checked) {
         const skipped = M.crownCooldowns(state.vars, state.profile, state.scr, map, marginPx, plan.shape, state.previewCounts);
         if (skipped.length) err = (err ? err + '\n' : '') + 'Moved but kept square (their Border Style is not Solid): ' + skipped.join(', ');
       }
@@ -277,6 +283,7 @@
     const box = $('hcSeats'); box.textContent = '';
     for (const c of cells) {
       if (c.empty) state.empty[c.bar] = c.empty;
+      if (c.labels) state.labels[c.bar] = c.labels;
       h('div', { className: 'chg', textContent: M.AB_BARS.find((x) => x.key === c.bar).label + ': ' + c.seat }, box);
     }
     if (err) alert(err);
@@ -304,7 +311,7 @@
     // Safety: writing the file back must give the same data.
     if (!L.equal(vars, L.parse(L.serialize(vars)))) { alert('This file does not survive a read and write unchanged, so editing it here is not safe. Nothing was loaded.'); return; }
     state.vars = vars; state.original = L.parse(text); state.fileName = name || 'EllesmereUI.lua';
-    state.profile = M.profileName(vars); state.selected = null; state.previewCounts = {}; state.empty = {};
+    state.profile = M.profileName(vars); state.selected = null; state.previewCounts = {}; state.empty = {}; state.labels = {};
     document.body.classList.add('loaded');
     recompute();
     const mainBar = state.els.find((e) => e.id === 'ab:MainBar');

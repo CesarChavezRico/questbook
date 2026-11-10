@@ -48,14 +48,14 @@
   .cell { fill:#3a4252; stroke:#000; }
   .cdm .cell { fill:#4a3f5e; }
   .context { cursor:default; }
-  .context .cell { fill:#26303a; stroke:#55606e; stroke-dasharray:4 3; }
+  .context .cell, .unitframe .cell { fill:#26303a; stroke:#55606e; stroke-dasharray:4 3; }
   .hiddenEl { opacity:.35; }
   .cell.ghost { fill:none; stroke:#5b6474; stroke-width:1; stroke-dasharray:3 3; }
   .mapbox { fill:none; stroke:#3c5a4c; stroke-width:1; stroke-dasharray:6 5; }
   .mapdisc { fill:#1f3a2e; fill-opacity:.7; stroke:#0cd29f; stroke-opacity:.5; stroke-width:1; }
   .num { fill:#c9ced8; text-anchor:middle; dominant-baseline:central; pointer-events:none; }
   .label { fill:var(--dim); pointer-events:none; opacity:0; }
-  .el:hover .label, .el.sel .label, .context .label { opacity:1; }
+  .el:hover .label, .el.sel .label, .context .label, .unitframe .label { opacity:1; }
 </style>
 </head>
 <body>
@@ -83,7 +83,7 @@
     <p class="hint">Rebuilds action bars 1, 2 and 4 to 10 as the 4 × 3 keypad with its two thumb keys, and the mouse. Bar 3 is not touched. Building starts again from the loaded file.</p>
     <label class="field"><span>Layout</span><select id="hcStyle">
       <option value="wings">Hex wings around the map</option>
-      <option value="crescent">Circle crescents around the map</option>
+      <option value="crescent">Circles around the map, frames on its middle line</option>
       <option value="blocks">Honeycomb blocks</option></select></label>
     <label class="field"><span>Button size (pixels)</span><input type="number" id="hcSize" value="43" step="1"></label>
     <label class="field"><span>Gap (pixels)</span><input type="number" id="hcGap" value="0" step="1"></label>
@@ -621,9 +621,9 @@
       const w = num('frameWidth', f.w), h = num('healthHeight', f.hh) + num('powerHeight', f.ph);
       const p = place({ point: pos.point || 'CENTER', relPoint: pos.relPoint || 'CENTER', x: pos.x, y: pos.y }, w, h, scr);
       out.push({
-        id: 'uf:' + f.key, kind: 'context', key: f.key, label: f.label + ' frame', hidden: false, placed: true,
+        id: 'uf:' + f.key, kind: 'unitframe', key: f.key, label: f.label + ' frame', hidden: false, placed: true,
         left: p.left, top: p.top, w, h, cells: [], shape: 'none', borderPx: 1, pos,
-        notes: ['Shown for orientation only. Size and anchor are rough, and it cannot be edited here yet.'],
+        notes: ['The size drawn is rough (a portrait or extra bars are not counted). It can be moved, nothing else.'],
       });
     }
     return out;
@@ -707,6 +707,13 @@
 
   // Moves an element so its top-left corner lands at left/top (UI units).
   function moveTo(vars, profile, el, left, top, scr) {
+    if (el.kind === 'unitframe') {
+      const lp = Math.round(left / scr.onePx) * scr.onePx, tp = Math.round(top / scr.onePx) * scr.onePx;
+      const o = unplace({ point: 'CENTER', relPoint: 'CENTER' }, lp, tp, el.w, el.h, scr);
+      // a position without an anchor is read by EllesmereUI as centre to centre
+      L.set(db(vars), 'profiles', profile, 'addons', 'EllesmereUIUnitFrames', 'positions', el.key, new Map([['y', o.y], ['x', o.x]]));
+      return undefined;
+    }
     if (!el.placed || (el.kind !== 'actionbar' && el.kind !== 'cdm')) return 'This element cannot be moved here.';
     const pos = el.pos || { point: 'CENTER', relPoint: 'CENTER' };
     const lp = Math.round(left / scr.onePx) * scr.onePx, tp = Math.round(top / scr.onePx) * scr.onePx;
@@ -881,20 +888,71 @@
       bars.push({ bar: 'Bar9', n: 3, dir: 'v', x: xr + 3 * dx, y: y0r - dy - half, pitchPx: dy, seat: 'wheel up, click, down' });
       return { shape: 'hexagon', sizePx: opts.sizePx, bars };
     }
-    // Circles. Each key row is a bar, pushed in or out so its inner end follows the map.
-    const p = S + gap, rho = reach + S / 2;
-    const inner = (off) => (Math.abs(off) < rho ? Math.sqrt(rho * rho - off * off) : 0);
+    // Circles. The player and target frames sit on the map's middle line, left and
+    // right of it. Below them the keys wrap the lower half of the map: each key row is
+    // a bar whose inner end follows the circle, and the lowest rows run under it. Above
+    // the frames the cooldown rows do the same around the upper half.
+    const p = S + gap, rho = reach + S / 2, centre = S / 2 + 3;
+    const fr = opts.frames || { player: { w: 298, h: 80 }, target: { w: 217, h: 62 } };
+    const band = Math.max(fr.player.h, fr.target.h) / 2 + 6;         // half height kept free for the frames
+    const first = Math.round(band + S / 2);
+    const inner = (off) => Math.max(centre, Math.abs(off) < rho ? Math.sqrt(rho * rho - off * off) : 0);
+    const keys = ['P', 'R', 'M', 'I'];
     [['Bar2', 'top key row (pinky to index)'], ['MainBar', 'home key row (pinky to index)'], ['Bar4', 'bottom key row (pinky to index)']].forEach((c, r) => {
-      const off = (r - 1) * p;
-      bars.push({ bar: c[0], n: 4, dir: 'h', x: mx - inner(off) + S / 2 - (3 * p + S), y: my + off - S / 2, pitchPx: p, seat: c[1] });
+      const off = first + r * p;
+      bars.push({ bar: c[0], n: 4, dir: 'h', x: mx - inner(off) + S / 2 - (3 * p + S), y: my + off - S / 2, pitchPx: p, seat: c[1], labels: keys });
     });
-    bars.push({ bar: 'Bar5', n: 2, dir: 'h', x: mx - inner(2 * p) + S / 2 - (p + S), y: my + 2 * p - S / 2, pitchPx: p, seat: 'left thumb keys' });
-    const xr = mx + reach;
-    bars.push({ bar: 'Bar7', n: 4, dir: 'v', x: xr, y: my - (3 * p + S) / 2, pitchPx: p, hideEmpty: true, empty: [3], seat: 'mouse thumb buttons: 1 and 2 are the pair, 4 is the single one, 3 stays empty' });
-    bars.push({ bar: 'Bar8', n: 2, dir: 'v', x: xr + p, y: my - (p + S) / 2, pitchPx: p, seat: 'index buttons (front, rear)' });
-    bars.push({ bar: 'Bar10', n: 2, dir: 'h', x: xr + 2 * p, y: my - S / 2, pitchPx: 2 * p, seat: 'wheel tilt left and right, either side of the wheel click' });
-    bars.push({ bar: 'Bar9', n: 3, dir: 'v', x: xr + 3 * p, y: my - (2 * p + S) / 2, pitchPx: p, seat: 'wheel up, click, down' });
-    return { shape: 'circle', sizePx: opts.sizePx, bars };
+    const tOff = first + 3 * p;
+    bars.push({ bar: 'Bar5', n: 2, dir: 'h', x: mx - inner(tOff) + S / 2 - (p + S), y: my + tOff - S / 2, pitchPx: p, seat: 'left thumb keys', labels: ['Th', 'Th'] });
+    // the mouse mirrors the keypad: the wheel cross under the target frame with its left
+    // tilt on the circle, the index pair under the map beside the wheel's down button, and
+    // the thumb buttons on the lowest row (the pair, a gap, the single one)
+    const wheelX = inner(first + p) + p;
+    bars.push({ bar: 'Bar9', n: 3, dir: 'v', x: mx + wheelX - S / 2, y: my + first - S / 2, pitchPx: p, seat: 'wheel up, click, down', labels: ['Up', 'Clk', 'Dn'] });
+    bars.push({ bar: 'Bar10', n: 2, dir: 'h', x: mx + wheelX - p - S / 2, y: my + first + p - S / 2, pitchPx: 2 * p, seat: 'wheel tilt left and right, either side of the wheel click', labels: ['<', '>'] });
+    const idxX = Math.min(inner(first + 2 * p), wheelX - 2 * p);
+    bars.push({ bar: 'Bar8', n: 2, dir: 'h', x: mx + idxX - S / 2, y: my + first + 2 * p - S / 2, pitchPx: p, seat: 'index buttons (front, rear)', labels: ['IF', 'IR'] });
+    bars.push({ bar: 'Bar7', n: 4, dir: 'h', x: mx + inner(tOff) - S / 2, y: my + tOff - S / 2, pitchPx: p, hideEmpty: true, empty: [3], seat: 'mouse thumb buttons: 1 and 2 are the pair, 4 is the single one, 3 stays empty', labels: ['Th1', 'Th2', '', 'Th3'] });
+    const frames = [
+      { key: 'player', left: mx - reach - fr.player.w, top: my - fr.player.h / 2 },
+      { key: 'target', left: mx + reach, top: my - fr.target.h / 2 },
+    ];
+    // cooldown rows: Utility ends at the map on the upper left, Cooldowns starts at it on the
+    // upper right (it grows to the right), Buffs sits centred on top
+    const cdm = [
+      { key: 'utility', side: 'left', band }, { key: 'cooldowns', side: 'right', band }, { key: 'buffs', side: 'top' },
+    ];
+    return { shape: 'circle', sizePx: opts.sizePx, bars, frames, cdm, reach };
+  }
+
+  // Applies the frame and cooldown-row places of a plan made by hugPlan.
+  function placeAround(vars, profile, scr, plan, map, counts) {
+    const ppu = scr.pxPerUnit, skipped = [];
+    for (const f of plan.frames || []) {
+      const e = unitFrames(vars, scr, profile).find((x) => x.key === f.key);
+      if (!e) continue;
+      const tot = f.key === 'target' ? unitFrames(vars, scr, profile).find((x) => x.key === 'targettarget') : null;
+      moveTo(vars, profile, e, f.left / ppu, f.top / ppu, scr);
+      // the target of target goes to the far side of the target, out of the keys' way
+      if (tot) moveTo(vars, profile, tot, f.left / ppu + e.w + 6 / ppu, f.top / ppu, scr);
+    }
+    for (const c of plan.cdm || []) {
+      let e = cdmBars(vars, scr, profile, counts).find((x) => x.key === c.key);
+      if (!e || !e.placed) continue;
+      if (setShape(vars, profile, e, plan.shape)) skipped.push(e.label);
+      e = cdmBars(vars, scr, profile, counts).find((x) => x.key === c.key);
+      const w = e.w * ppu, h = e.h * ppu, icon = e.cells.length ? e.cells[0].w * ppu : h;
+      let left, top;
+      if (c.side === 'top') { left = map.cx - w / 2; top = map.cy - plan.reach - h; }
+      else {
+        const off = c.band + h / 2, rho = plan.reach + icon / 2;
+        const dxc = off < rho ? Math.sqrt(rho * rho - off * off) : icon / 2 + 3;
+        top = map.cy - off - h / 2;
+        left = c.side === 'right' ? map.cx + dxc - icon / 2 : map.cx - dxc + icon / 2 - w;
+      }
+      moveTo(vars, profile, e, left / ppu, top / ppu, scr);
+    }
+    return skipped;
   }
 
   // Puts the Cooldowns and Utility rows side by side above the map and Buffs above them.
@@ -942,7 +1000,7 @@
   const api = {
     SHAPES, SHAPE_LABELS, THICKNESS, isCustomShape, AB_BARS,
     db, profileName, profileNames, screen, place, unplace, elements, actionBars, cdmBars, unitFrames,
-    setShape, setField, moveTo, diff, honeycomb, handsPlan, HEX_HEIGHT, questbookMap, layoutBars, hugPlan, crownCooldowns,
+    setShape, setField, moveTo, diff, honeycomb, handsPlan, HEX_HEIGHT, questbookMap, layoutBars, hugPlan, crownCooldowns, placeAround,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ElleModel = api;
@@ -960,7 +1018,7 @@
   const state = {
     vars: null, original: null, fileName: 'EllesmereUI.lua', profile: null,
     physW: 3440, physH: 1440, selected: null, showHidden: false, previewCounts: {}, els: [], scr: null,
-    map: null, empty: {},
+    map: null, empty: {}, labels: {},
   };
 
   function el(tag, attrs, parent) {
@@ -1032,14 +1090,15 @@
       const g = el('g', { transform: 'translate(' + e.left + ' ' + e.top + ')', class: 'el ' + e.kind + (e.hidden ? ' hiddenEl' : '') + (e.id === state.selected ? ' sel' : ''), 'data-id': e.id }, svg);
       el('rect', { x: -2, y: -2, width: e.w + 4, height: e.h + 4, class: 'frame' }, g);
       if (!e.cells.length) el('rect', { x: 0, y: 0, width: e.w, height: e.h, class: 'cell' }, g);
-      const empty = state.empty[e.key] || [];
+      const empty = state.empty[e.key] || [], names = state.labels[e.key];
       for (const c of e.cells) {
         const sw = Math.max(e.borderPx, 0) * scr.onePx;
         if (empty.indexOf(Number(c.label)) >= 0) { el('path', { d: shapePath(e.shape, c.x, c.y, c.w, c.h), class: 'cell ghost' }, g); continue; }
         el('path', { d: shapePath(e.shape, c.x, c.y, c.w, c.h), class: 'cell', 'stroke-width': sw }, g);
-        if (c.label && c.w >= 20) {
-          const t = el('text', { x: c.x + c.w / 2, y: c.y + c.h / 2, class: 'num', 'font-size': Math.min(c.w, c.h) * 0.36 }, g);
-          t.textContent = c.label;
+        const text = names ? names[Number(c.label) - 1] : c.label;
+        if (text && c.w >= 20) {
+          const t = el('text', { x: c.x + c.w / 2, y: c.y + c.h / 2, class: 'num', 'font-size': Math.min(c.w, c.h) * (text.length > 2 ? 0.28 : 0.36) }, g);
+          t.textContent = text;
         }
       }
       const lab = el('text', { x: 0, y: -6, class: 'label', 'font-size': 13 }, g);
@@ -1058,7 +1117,7 @@
     const id = evt.currentTarget.getAttribute('data-id');
     state.selected = id;
     const e = selectedEl();
-    if (e && (e.kind === 'actionbar' || e.kind === 'cdm')) {
+    if (e && (e.kind === 'actionbar' || e.kind === 'cdm' || e.kind === 'unitframe')) {
       const p = toUi(evt);
       drag = { id, dx: p.x - e.left, dy: p.y - e.top, moved: false };
       evt.currentTarget.setPointerCapture(evt.pointerId);
@@ -1136,8 +1195,8 @@
     if (e.placed) {
       const px = field(box, 'Left edge (screen pixels)', numInput(e.left * ppu, 1, (v) => apply(M.moveTo(state.vars, state.profile, e, v / ppu, e.top, state.scr))));
       const py = field(box, 'Top edge (screen pixels)', numInput(e.top * ppu, 1, (v) => apply(M.moveTo(state.vars, state.profile, e, e.left, v / ppu, state.scr))));
-      px.id = 'posx'; py.id = 'posy'; px.disabled = py.disabled = !editable;
-      h('p', { className: 'hint', textContent: 'Size on screen: ' + Math.round(e.w * ppu) + ' × ' + Math.round(e.h * ppu) + ' pixels.' + (editable ? ' Drag it, or use the arrow keys (Shift for 10 pixels).' : '') }, box);
+      px.id = 'posx'; py.id = 'posy'; px.disabled = py.disabled = !(editable || e.kind === 'unitframe');
+      h('p', { className: 'hint', textContent: 'Size on screen: ' + Math.round(e.w * ppu) + ' × ' + Math.round(e.h * ppu) + ' pixels.' + (editable || e.kind === 'unitframe' ? ' Drag it, or use the arrow keys (Shift for 10 pixels).' : '') }, box);
     }
     if (editable) {
       const s = e.settings;
@@ -1202,7 +1261,7 @@
     if (!state.vars) return;
     const changed = M.diff(state.original.get('EllesmereUIDB'), state.vars.get('EllesmereUIDB')).length;
     if (changed && !confirm('Building a layout starts again from the file you loaded and drops the ' + changed + ' changes made so far. Continue?')) return;
-    state.vars = L.parse(L.serialize(state.original)); state.previewCounts = {}; state.empty = {};
+    state.vars = L.parse(L.serialize(state.original)); state.previewCounts = {}; state.empty = {}; state.labels = {};
     recompute();
     const ppu = state.scr.pxPerUnit, style = $('hcStyle').value;
     const sizePx = Number($('hcSize').value), gapPx = Number($('hcGap').value), marginPx = Number($('hcMargin').value);
@@ -1213,7 +1272,9 @@
       cells = [].concat.apply([], plan.blocks.map((b) => b.cells));
     } else {
       const map = mapForPlan();
-      const plan = M.hugPlan(state.scr, { style, sizePx, gapPx, map, marginPx });
+      const size = (k) => { const f = state.els.find((e) => e.id === 'uf:' + k); return f ? { w: f.w * ppu, h: f.h * ppu } : null; };
+      const frames = size('player') && size('target') ? { player: size('player'), target: size('target') } : undefined;
+      const plan = M.hugPlan(state.scr, { style, sizePx, gapPx, map, marginPx, frames });
       err = M.layoutBars(state.vars, state.profile, state.scr, plan);
       cells = plan.bars;
       // bars of the keypad and mouse that this layout does not use are hidden
@@ -1221,7 +1282,10 @@
       for (const e of state.els) {
         if (e.kind === 'actionbar' && /^(MainBar|Bar2|Bar[4-9]|Bar10)$/.test(e.key) && !cells.some((c) => c.bar === e.key) && !e.hidden) M.setField(state.vars, state.profile, e, 'hidden', true);
       }
-      if ($('hcCrown').checked) {
+      if (plan.frames) {
+        const skipped = M.placeAround(state.vars, state.profile, state.scr, plan, map, state.previewCounts);
+        if (skipped.length) err = (err ? err + '\n' : '') + 'Moved but kept square (their Border Style is not Solid): ' + skipped.join(', ');
+      } else if ($('hcCrown').checked) {
         const skipped = M.crownCooldowns(state.vars, state.profile, state.scr, map, marginPx, plan.shape, state.previewCounts);
         if (skipped.length) err = (err ? err + '\n' : '') + 'Moved but kept square (their Border Style is not Solid): ' + skipped.join(', ');
       }
@@ -1229,6 +1293,7 @@
     const box = $('hcSeats'); box.textContent = '';
     for (const c of cells) {
       if (c.empty) state.empty[c.bar] = c.empty;
+      if (c.labels) state.labels[c.bar] = c.labels;
       h('div', { className: 'chg', textContent: M.AB_BARS.find((x) => x.key === c.bar).label + ': ' + c.seat }, box);
     }
     if (err) alert(err);
@@ -1256,7 +1321,7 @@
     // Safety: writing the file back must give the same data.
     if (!L.equal(vars, L.parse(L.serialize(vars)))) { alert('This file does not survive a read and write unchanged, so editing it here is not safe. Nothing was loaded.'); return; }
     state.vars = vars; state.original = L.parse(text); state.fileName = name || 'EllesmereUI.lua';
-    state.profile = M.profileName(vars); state.selected = null; state.previewCounts = {}; state.empty = {};
+    state.profile = M.profileName(vars); state.selected = null; state.previewCounts = {}; state.empty = {}; state.labels = {};
     document.body.classList.add('loaded');
     recompute();
     const mainBar = state.els.find((e) => e.id === 'ab:MainBar');

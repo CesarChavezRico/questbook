@@ -239,7 +239,7 @@ if (real) {
   test('real file: every drawn element is on screen and on whole pixels', () => {
     const v = L.parse(t), s = M.screen(v, 3440, 1440);
     for (const e of M.elements(v, s, M.profileName(v))) {
-      if (!e.placed || e.kind === 'context') continue;
+      if (!e.placed || e.kind === 'context' || e.kind === 'unitframe') continue; // frame sizes are rough
       const l = e.left * s.pxPerUnit, tp = e.top * s.pxPerUnit;
       assert.ok(l >= 0 && tp >= 0 && l + e.w * s.pxPerUnit <= 3440 && tp + e.h * s.pxPerUnit <= 1440, e.id + ' is off screen');
       assert.ok(Math.abs(l - Math.round(l)) < 0.01 && Math.abs(tp - Math.round(tp)) < 0.01, e.id + ' is not on whole pixels: ' + l + ',' + tp);

@@ -297,9 +297,9 @@
       const w = num('frameWidth', f.w), h = num('healthHeight', f.hh) + num('powerHeight', f.ph);
       const p = place({ point: pos.point || 'CENTER', relPoint: pos.relPoint || 'CENTER', x: pos.x, y: pos.y }, w, h, scr);
       out.push({
-        id: 'uf:' + f.key, kind: 'context', key: f.key, label: f.label + ' frame', hidden: false, placed: true,
+        id: 'uf:' + f.key, kind: 'unitframe', key: f.key, label: f.label + ' frame', hidden: false, placed: true,
         left: p.left, top: p.top, w, h, cells: [], shape: 'none', borderPx: 1, pos,
-        notes: ['Shown for orientation only. Size and anchor are rough, and it cannot be edited here yet.'],
+        notes: ['The size drawn is rough (a portrait or extra bars are not counted). It can be moved, nothing else.'],
       });
     }
     return out;
@@ -383,6 +383,13 @@
 
   // Moves an element so its top-left corner lands at left/top (UI units).
   function moveTo(vars, profile, el, left, top, scr) {
+    if (el.kind === 'unitframe') {
+      const lp = Math.round(left / scr.onePx) * scr.onePx, tp = Math.round(top / scr.onePx) * scr.onePx;
+      const o = unplace({ point: 'CENTER', relPoint: 'CENTER' }, lp, tp, el.w, el.h, scr);
+      // a position without an anchor is read by EllesmereUI as centre to centre
+      L.set(db(vars), 'profiles', profile, 'addons', 'EllesmereUIUnitFrames', 'positions', el.key, new Map([['y', o.y], ['x', o.x]]));
+      return undefined;
+    }
     if (!el.placed || (el.kind !== 'actionbar' && el.kind !== 'cdm')) return 'This element cannot be moved here.';
     const pos = el.pos || { point: 'CENTER', relPoint: 'CENTER' };
     const lp = Math.round(left / scr.onePx) * scr.onePx, tp = Math.round(top / scr.onePx) * scr.onePx;
@@ -557,20 +564,71 @@
       bars.push({ bar: 'Bar9', n: 3, dir: 'v', x: xr + 3 * dx, y: y0r - dy - half, pitchPx: dy, seat: 'wheel up, click, down' });
       return { shape: 'hexagon', sizePx: opts.sizePx, bars };
     }
-    // Circles. Each key row is a bar, pushed in or out so its inner end follows the map.
-    const p = S + gap, rho = reach + S / 2;
-    const inner = (off) => (Math.abs(off) < rho ? Math.sqrt(rho * rho - off * off) : 0);
+    // Circles. The player and target frames sit on the map's middle line, left and
+    // right of it. Below them the keys wrap the lower half of the map: each key row is
+    // a bar whose inner end follows the circle, and the lowest rows run under it. Above
+    // the frames the cooldown rows do the same around the upper half.
+    const p = S + gap, rho = reach + S / 2, centre = S / 2 + 3;
+    const fr = opts.frames || { player: { w: 298, h: 80 }, target: { w: 217, h: 62 } };
+    const band = Math.max(fr.player.h, fr.target.h) / 2 + 6;         // half height kept free for the frames
+    const first = Math.round(band + S / 2);
+    const inner = (off) => Math.max(centre, Math.abs(off) < rho ? Math.sqrt(rho * rho - off * off) : 0);
+    const keys = ['P', 'R', 'M', 'I'];
     [['Bar2', 'top key row (pinky to index)'], ['MainBar', 'home key row (pinky to index)'], ['Bar4', 'bottom key row (pinky to index)']].forEach((c, r) => {
-      const off = (r - 1) * p;
-      bars.push({ bar: c[0], n: 4, dir: 'h', x: mx - inner(off) + S / 2 - (3 * p + S), y: my + off - S / 2, pitchPx: p, seat: c[1] });
+      const off = first + r * p;
+      bars.push({ bar: c[0], n: 4, dir: 'h', x: mx - inner(off) + S / 2 - (3 * p + S), y: my + off - S / 2, pitchPx: p, seat: c[1], labels: keys });
     });
-    bars.push({ bar: 'Bar5', n: 2, dir: 'h', x: mx - inner(2 * p) + S / 2 - (p + S), y: my + 2 * p - S / 2, pitchPx: p, seat: 'left thumb keys' });
-    const xr = mx + reach;
-    bars.push({ bar: 'Bar7', n: 4, dir: 'v', x: xr, y: my - (3 * p + S) / 2, pitchPx: p, hideEmpty: true, empty: [3], seat: 'mouse thumb buttons: 1 and 2 are the pair, 4 is the single one, 3 stays empty' });
-    bars.push({ bar: 'Bar8', n: 2, dir: 'v', x: xr + p, y: my - (p + S) / 2, pitchPx: p, seat: 'index buttons (front, rear)' });
-    bars.push({ bar: 'Bar10', n: 2, dir: 'h', x: xr + 2 * p, y: my - S / 2, pitchPx: 2 * p, seat: 'wheel tilt left and right, either side of the wheel click' });
-    bars.push({ bar: 'Bar9', n: 3, dir: 'v', x: xr + 3 * p, y: my - (2 * p + S) / 2, pitchPx: p, seat: 'wheel up, click, down' });
-    return { shape: 'circle', sizePx: opts.sizePx, bars };
+    const tOff = first + 3 * p;
+    bars.push({ bar: 'Bar5', n: 2, dir: 'h', x: mx - inner(tOff) + S / 2 - (p + S), y: my + tOff - S / 2, pitchPx: p, seat: 'left thumb keys', labels: ['Th', 'Th'] });
+    // the mouse mirrors the keypad: the wheel cross under the target frame with its left
+    // tilt on the circle, the index pair under the map beside the wheel's down button, and
+    // the thumb buttons on the lowest row (the pair, a gap, the single one)
+    const wheelX = inner(first + p) + p;
+    bars.push({ bar: 'Bar9', n: 3, dir: 'v', x: mx + wheelX - S / 2, y: my + first - S / 2, pitchPx: p, seat: 'wheel up, click, down', labels: ['Up', 'Clk', 'Dn'] });
+    bars.push({ bar: 'Bar10', n: 2, dir: 'h', x: mx + wheelX - p - S / 2, y: my + first + p - S / 2, pitchPx: 2 * p, seat: 'wheel tilt left and right, either side of the wheel click', labels: ['<', '>'] });
+    const idxX = Math.min(inner(first + 2 * p), wheelX - 2 * p);
+    bars.push({ bar: 'Bar8', n: 2, dir: 'h', x: mx + idxX - S / 2, y: my + first + 2 * p - S / 2, pitchPx: p, seat: 'index buttons (front, rear)', labels: ['IF', 'IR'] });
+    bars.push({ bar: 'Bar7', n: 4, dir: 'h', x: mx + inner(tOff) - S / 2, y: my + tOff - S / 2, pitchPx: p, hideEmpty: true, empty: [3], seat: 'mouse thumb buttons: 1 and 2 are the pair, 4 is the single one, 3 stays empty', labels: ['Th1', 'Th2', '', 'Th3'] });
+    const frames = [
+      { key: 'player', left: mx - reach - fr.player.w, top: my - fr.player.h / 2 },
+      { key: 'target', left: mx + reach, top: my - fr.target.h / 2 },
+    ];
+    // cooldown rows: Utility ends at the map on the upper left, Cooldowns starts at it on the
+    // upper right (it grows to the right), Buffs sits centred on top
+    const cdm = [
+      { key: 'utility', side: 'left', band }, { key: 'cooldowns', side: 'right', band }, { key: 'buffs', side: 'top' },
+    ];
+    return { shape: 'circle', sizePx: opts.sizePx, bars, frames, cdm, reach };
+  }
+
+  // Applies the frame and cooldown-row places of a plan made by hugPlan.
+  function placeAround(vars, profile, scr, plan, map, counts) {
+    const ppu = scr.pxPerUnit, skipped = [];
+    for (const f of plan.frames || []) {
+      const e = unitFrames(vars, scr, profile).find((x) => x.key === f.key);
+      if (!e) continue;
+      const tot = f.key === 'target' ? unitFrames(vars, scr, profile).find((x) => x.key === 'targettarget') : null;
+      moveTo(vars, profile, e, f.left / ppu, f.top / ppu, scr);
+      // the target of target goes to the far side of the target, out of the keys' way
+      if (tot) moveTo(vars, profile, tot, f.left / ppu + e.w + 6 / ppu, f.top / ppu, scr);
+    }
+    for (const c of plan.cdm || []) {
+      let e = cdmBars(vars, scr, profile, counts).find((x) => x.key === c.key);
+      if (!e || !e.placed) continue;
+      if (setShape(vars, profile, e, plan.shape)) skipped.push(e.label);
+      e = cdmBars(vars, scr, profile, counts).find((x) => x.key === c.key);
+      const w = e.w * ppu, h = e.h * ppu, icon = e.cells.length ? e.cells[0].w * ppu : h;
+      let left, top;
+      if (c.side === 'top') { left = map.cx - w / 2; top = map.cy - plan.reach - h; }
+      else {
+        const off = c.band + h / 2, rho = plan.reach + icon / 2;
+        const dxc = off < rho ? Math.sqrt(rho * rho - off * off) : icon / 2 + 3;
+        top = map.cy - off - h / 2;
+        left = c.side === 'right' ? map.cx + dxc - icon / 2 : map.cx - dxc + icon / 2 - w;
+      }
+      moveTo(vars, profile, e, left / ppu, top / ppu, scr);
+    }
+    return skipped;
   }
 
   // Puts the Cooldowns and Utility rows side by side above the map and Buffs above them.
@@ -618,7 +676,7 @@
   const api = {
     SHAPES, SHAPE_LABELS, THICKNESS, isCustomShape, AB_BARS,
     db, profileName, profileNames, screen, place, unplace, elements, actionBars, cdmBars, unitFrames,
-    setShape, setField, moveTo, diff, honeycomb, handsPlan, HEX_HEIGHT, questbookMap, layoutBars, hugPlan, crownCooldowns,
+    setShape, setField, moveTo, diff, honeycomb, handsPlan, HEX_HEIGHT, questbookMap, layoutBars, hugPlan, crownCooldowns, placeAround,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ElleModel = api;
