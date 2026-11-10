@@ -51,7 +51,7 @@
   .context .cell, .unitframe .cell { fill:#26303a; stroke:#55606e; stroke-dasharray:4 3; }
   .hiddenEl { opacity:.35; }
   .cell.ghost { fill:none; stroke:#5b6474; stroke-width:1; stroke-dasharray:3 3; }
-  .planned { fill:none; stroke:#8b93a1; stroke-width:1; stroke-dasharray:3 3; }
+  .planned { fill:#3d3327; fill-opacity:.6; stroke:#c9a15b; stroke-width:1; stroke-dasharray:3 2; }
   .plannedText { fill:#8b93a1; dominant-baseline:central; }
   .mapbox { fill:none; stroke:#3c5a4c; stroke-width:1; stroke-dasharray:6 5; }
   .mapdisc { fill:#1f3a2e; fill-opacity:.7; stroke:#0cd29f; stroke-opacity:.5; stroke-width:1; }
@@ -93,6 +93,7 @@
     <label class="field"><span>Space around the map (pixels)</span><input type="number" id="hcMargin" value="8" step="1"></label>
     <label class="field"><span>Cooldown rows above the map</span><input type="checkbox" id="hcCrown" checked></label>
     <label class="field"><span>Thin player and target frames (circles only)</span><input type="checkbox" id="hcSlim" checked></label>
+    <label class="field"><span>EllesmereUI draws buffs and debuffs (circles only)</span><input type="checkbox" id="hcAuras" checked></label>
     <label class="field"><span>Flip the stagger (blocks only)</span><input type="checkbox" id="hcFlip"></label>
     <label class="field"><span>QuestBook.lua (centre map)</span></label><input type="file" id="qb" accept=".lua">
     <button type="button" id="hcApply" class="small">Build the layout</button>
@@ -930,19 +931,30 @@
     const levelDx = (k) => Math.max(icon / 2 + 3, levelOff(k) < rhoI ? Math.sqrt(rhoI * rhoI - levelOff(k) * levelOff(k)) : 0);
     const capOff = Math.max(rhoI, levelOff(2) + pitch);
     const dome = { iconPx: icon, levelOff: [0, 1, 2].map(levelOff), levelDx: [0, 1, 2].map(levelDx), capOff };
+    // level 0, next to each frame: that unit's debuffs. Level 1: the cooldown rows.
+    // Level 2 on the player's side: combat buffs. The cap: tracked buffs.
     const cdm = [
-      { key: 'utility', side: 'left', level: 0 }, { key: 'cooldowns', side: 'right', level: 0 }, { key: 'buffs', side: 'cap' },
+      { key: 'utility', side: 'left', level: 1 }, { key: 'cooldowns', side: 'right', level: 1 }, { key: 'buffs', side: 'cap' },
     ];
     const ghostRow = (label, side, level, n) => {
       const cells = [];
       for (let i = 0; i < n; i++) cells.push({ cx: mx + (side === 'left' ? -1 : 1) * (levelDx(level) + i * pitch), cy: my - levelOff(level), r: icon / 2 });
       return { label, side, cells };
     };
+    const corner = { label: 'all other buffs (long-term)', side: 'left', cells: [] };
+    for (let i = 0; i < 8; i++) corner.cells.push({ cx: scr.physW - 29 - icon / 2 - i * pitch, cy: 53 + 40 + icon / 2, r: icon / 2 });
     const planned = [
-      ghostRow('debuffs on you', 'left', 1, 4), ghostRow('your debuffs on the target', 'right', 1, 4),
-      ghostRow('your combat buffs', 'left', 2, 4), ghostRow('free', 'right', 2, 4),
+      ghostRow('debuffs on you', 'left', 0, 5), ghostRow('your debuffs on the target', 'right', 0, 5),
+      ghostRow('your combat buffs', 'left', 2, 5), corner,
     ];
-    return { shape: 'circle', sizePx: opts.sizePx, bars, frames, cdm, reach, dome, planned };
+    const auras = {
+      iconPx: icon, pitchPx: pitch,
+      debuffs: { right: mx - levelDx(0) + icon / 2, cy: my - levelOff(0), n: 6 },
+      combat: { right: mx - levelDx(2) + icon / 2, cy: my - levelOff(2), n: 6 },
+      rest: { right: scr.physW - 29, top: 53 + 40, n: 12 },
+      targetLift: bandUp - band + 2,
+    };
+    return { shape: 'circle', sizePx: opts.sizePx, bars, frames, cdm, reach, dome, planned, auras };
   }
 
   // Makes the player and target frames a thin line with the name floating above it.
@@ -954,6 +966,66 @@
       set('healthHeight', healthH); set('powerHeight', powerH);
       set('leftTextY', lift); set('rightTextY', lift);
     }
+  }
+
+  // Hands the player's buffs and debuffs to EllesmereUI's Player Aura Bars (off by
+  // default, so the game's own buff frames were drawing them) and places them:
+  //  - Debuffs: a row next to the player frame, growing away from the map.
+  //  - "Combat buffs": a new bar showing only the Defensives, Offensive CDs and Movement lists.
+  //  - Buffs: everything except those lists, in the top-right corner.
+  // On the target frame, only your own debuffs, above the frame. All sizes in screen pixels.
+  function setupAuras(vars, profile, scr, a) {
+    const ppu = scr.pxPerUnit, notes = [];
+    const uf = ['profiles', profile, 'addons', 'EllesmereUIUnitFrames'];
+    const at = (path) => {
+      let t = db(vars);
+      for (const k of uf.concat(path)) { let nx = t.get(k); if (!(nx instanceof Map)) { nx = new Map(); t.set(k, nx); } t = nx; }
+      return t;
+    };
+    const pab = at(['playerAuraBars']);
+    pab.set('enabled', true);
+    pab.set('pabEditModeSeeded', true);       // otherwise the first run copies the game's own buff frame places over these
+    const SHAPE_GROW = 8;                     // a shaped aura icon is drawn this many units larger
+    const size = a.iconPx / ppu - SHAPE_GROW, pad = (a.pitchPx - a.iconPx) / ppu;
+    const row = (t, n, rows) => {
+      t.set('iconSize', size); t.set('padding', pad); t.set('iconShape', 'circle');
+      t.set('iconsPerRow', n); t.set('maxRows', rows); t.set('maxTotal', n * rows); t.set('growDirection', 'LEFT');
+    };
+    // a position that hangs the row's right end at a screen point; design = the row's nominal size is meant
+    const hang = (rightPx, cyPx) => new Map([['point', 'RIGHT'], ['relPoint', 'CENTER'], ['x', (rightPx - scr.physW / 2) / ppu], ['y', (scr.physH / 2 - cyPx) / ppu], ['design', true]]);
+
+    const lists = [];
+    const reg = L.get(pab, 'pabFilters', 'list');
+    if (reg instanceof Map) for (const f of reg.values()) if (f instanceof Map && ['Defensives', 'Offensive CDs', 'Movement'].indexOf(f.get('name')) >= 0) lists.push(f.get('id'));
+    if (lists.length < 3) notes.push('Only ' + lists.length + ' of the 3 buff lists (Defensives, Offensive CDs, Movement) exist in the file, so the combat bar may be thin.');
+
+    row(at(['playerAuraBars', 'defaultDebuffs']), a.debuffs.n, 1);
+    pab.set('debuffsPos', hang(a.debuffs.right, a.debuffs.cy));
+
+    const rest = at(['playerAuraBars', 'defaultBuffs']);
+    row(rest, a.rest.n, 2);
+    rest.set('negFilters', new Map(lists.map((id) => [id, true])));
+    pab.set('buffsPos', new Map([['point', 'TOPRIGHT'], ['relPoint', 'TOPRIGHT'], ['x', (a.rest.right - scr.physW) / ppu], ['y', -a.rest.top / ppu], ['design', true]]));
+
+    let bars = pab.get('customBuffBars');
+    if (!(bars instanceof Map)) { bars = new Map(); pab.set('customBuffBars', bars); }
+    let combat = [...bars.values()].find((b) => b instanceof Map && b.get('name') === 'Combat buffs');
+    if (!combat) {
+      const id = typeof pab.get('nextBarId') === 'number' ? pab.get('nextBarId') : 1;
+      pab.set('nextBarId', id + 1);
+      combat = new Map([['id', id], ['name', 'Combat buffs'], ['enabled', true], ['spells', new Map()], ['ownOnlySpells', new Map()]]);
+      bars.set(bars.size + 1, combat);
+    }
+    combat.set('showAllBuffs', false);        // show only the lists below
+    combat.set('filters', new Map(lists.map((id) => [id, true])));
+    row(combat, a.combat.n, 1);
+    combat.set('pos', hang(a.combat.right, a.combat.cy));
+
+    const target = at(['target']);
+    target.set('onlyPlayerDebuffs', true); target.set('debuffAnchor', 'topleft'); target.set('debuffOffsetY', a.targetLift / ppu);
+    target.set('debuffSize', a.iconPx / ppu); target.set('maxDebuffs', 6);
+    target.set('buffAnchor', 'topright'); target.set('buffOffsetY', a.targetLift / ppu);
+    return notes;
   }
 
   // Applies the frame and cooldown-row places of a plan made by hugPlan.
@@ -1044,7 +1116,7 @@
   const api = {
     SHAPES, SHAPE_LABELS, THICKNESS, isCustomShape, AB_BARS,
     db, profileName, profileNames, screen, place, unplace, elements, actionBars, cdmBars, unitFrames,
-    setShape, setField, moveTo, diff, honeycomb, handsPlan, HEX_HEIGHT, questbookMap, layoutBars, hugPlan, crownCooldowns, placeAround, slimFrames,
+    setShape, setField, moveTo, diff, honeycomb, handsPlan, HEX_HEIGHT, questbookMap, layoutBars, hugPlan, crownCooldowns, placeAround, slimFrames, setupAuras,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ElleModel = api;
@@ -1339,6 +1411,10 @@
         const notes = M.placeAround(state.vars, state.profile, state.scr, plan, map, state.previewCounts);
         if (notes.length) err = (err ? err + '\n' : '') + 'Cooldown rows: ' + notes.join(', ');
         state.planned = plan.planned || [];
+        if (plan.auras && $('hcAuras').checked) {
+          const more = M.setupAuras(state.vars, state.profile, state.scr, plan.auras);
+          if (more.length) err = (err ? err + '\n' : '') + more.join('\n');
+        } else if (plan.auras) state.planned = [];
       } else if ($('hcCrown').checked) {
         const skipped = M.crownCooldowns(state.vars, state.profile, state.scr, map, marginPx, plan.shape, state.previewCounts);
         if (skipped.length) err = (err ? err + '\n' : '') + 'Moved but kept square (their Border Style is not Solid): ' + skipped.join(', ');

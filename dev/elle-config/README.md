@@ -21,6 +21,11 @@ running (4BI-39). Open `elle-config.html` in a browser; it needs no server and n
   folder to draw the map where it really is. The mouse thumb bar has four slots with the third
   left empty, so the pair and the single button read apart; that relies on EllesmereUI hiding
   empty buttons, which is untested.
+- The circles layout can also hand buffs and debuffs to EllesmereUI: it turns on Player Aura
+  Bars, puts your debuffs next to the player frame, adds a "Combat buffs" bar (the Defensives,
+  Offensive CDs and Movement lists), sends every other buff to the top-right corner, and shows
+  only your own debuffs above the target frame. These rows are drawn as amber placeholders,
+  not from a model of EllesmereUI's aura layout, and none of it has been tried in the game.
 - "Honeycomb blocks" rebuilds action bars 1, 2 and 4 to 10 as two blocks of
   interlocking hexagons, one bar per column (a 4 x 3 keypad with two thumb keys, and a mouse).
   Only action bar 1 pages with druid forms by itself, so the other columns need macros or

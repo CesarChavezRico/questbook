@@ -285,6 +285,10 @@
         const notes = M.placeAround(state.vars, state.profile, state.scr, plan, map, state.previewCounts);
         if (notes.length) err = (err ? err + '\n' : '') + 'Cooldown rows: ' + notes.join(', ');
         state.planned = plan.planned || [];
+        if (plan.auras && $('hcAuras').checked) {
+          const more = M.setupAuras(state.vars, state.profile, state.scr, plan.auras);
+          if (more.length) err = (err ? err + '\n' : '') + more.join('\n');
+        } else if (plan.auras) state.planned = [];
       } else if ($('hcCrown').checked) {
         const skipped = M.crownCooldowns(state.vars, state.profile, state.scr, map, marginPx, plan.shape, state.previewCounts);
         if (skipped.length) err = (err ? err + '\n' : '') + 'Moved but kept square (their Border Style is not Solid): ' + skipped.join(', ');

@@ -226,6 +226,28 @@ test('map layouts: read the QuestBook map, keep every button off the map, stay o
   }
 });
 
+test('auras: EllesmereUI takes over buffs and debuffs, with a combat bar built from the lists in the file', () => {
+  const v = fresh(), s = M.screen(v, 3440, 1440);
+  const pab = new Map([['pabFilters', new Map([['list', new Map([
+    [1, new Map([['id', 1], ['name', 'Defensives']])], [2, new Map([['id', 5], ['name', 'Offensive CDs']])], [3, new Map([['id', 6], ['name', 'Movement']])], [4, new Map([['id', 7], ['name', 'Utility']])],
+  ])]])]]);
+  L.set(M.db(v), 'profiles', 'Default', 'addons', 'EllesmereUIUnitFrames', 'playerAuraBars', pab);
+  const plan = M.hugPlan(s, { style: 'crescent', sizePx: 43, gapPx: 0, map: { cx: 1720, cy: 1085, r: 121 }, marginPx: 8 });
+  assert.deepStrictEqual(M.setupAuras(v, 'Default', s, plan.auras), []);
+  assert.strictEqual(pab.get('enabled'), true);
+  assert.strictEqual(pab.get('pabEditModeSeeded'), true);
+  const combat = L.get(pab, 'customBuffBars', 1);
+  assert.strictEqual(combat.get('showAllBuffs'), false);
+  assert.deepStrictEqual([...combat.get('filters').keys()].sort(), [1, 5, 6]);
+  assert.deepStrictEqual([...L.get(pab, 'defaultBuffs', 'negFilters').keys()].sort(), [1, 5, 6]);
+  assert.strictEqual(pab.get('nextBarId'), 2);
+  assert.strictEqual(L.get(pab, 'debuffsPos', 'point'), 'RIGHT');
+  // building twice does not add a second combat bar
+  M.setupAuras(v, 'Default', s, plan.auras);
+  assert.strictEqual(pab.get('customBuffBars').size, 1);
+  assert.strictEqual(L.get(M.db(v), 'profiles', 'Default', 'addons', 'EllesmereUIUnitFrames', 'target', 'onlyPlayerDebuffs'), true);
+});
+
 test('the built page is up to date with src/', () => {
   const b = require('../build.js');
   assert.strictEqual(fs.readFileSync(b.out, 'utf8'), b.build(), 'run: node dev/elle-config/build.js');
