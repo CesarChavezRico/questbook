@@ -610,15 +610,11 @@
       { key: 'buffs', side: 'left', level: 1 }, { key: 'cooldowns', side: 'right', level: 1 }, { key: 'utility', side: 'right', level: 2 },
     ];
     const capW = 200, capBase = levelOff(2) + icon / 2 + 4;    // just above the highest rows
-    // druid: while in cat or bear a thin mana bar rides on top of the energy / rage bar,
-    // so it ends up right under the cast bar
-    const manaH = 6, manaGap = 2;
-    const stack = [['secondary', 'combo points', 14, 0], ['primary', 'rage / energy', 12, manaGap + manaH], ['castBar', 'cast bar', 16, 0]];
+    // The power bar shows the current resource: energy or rage in a form, mana in caster
+    // form, which is when the cast bar above it appears.
+    const stack = [['secondary', 'combo points', 14], ['primary', 'energy / rage (mana while casting)', 12], ['castBar', 'cast bar', 16]];
     const resources = []; let up = capBase;
-    for (const [key, label, h, extra] of stack) {
-      resources.push({ key, label, w: capW, h, cx: mx, cy: my - up - h / 2, mana: extra ? { h: manaH, gap: manaGap } : null });
-      up += h + 3 + extra;
-    }
+    for (const [key, label, h] of stack) { resources.push({ key, label, w: capW, h, cx: mx, cy: my - up - h / 2 }); up += h + 3; }
     const ghostRow = (label, side, level, n) => {
       const cells = [];
       for (let i = 0; i < n; i++) cells.push({ cx: mx + (side === 'left' ? -1 : 1) * (levelDx(level) + i * pitch), cy: my - levelOff(level), r: icon / 2 });
@@ -637,10 +633,7 @@
       rest: { right: scr.physW - 29, top: 53 + 40, n: 12 },
       targetLift: bandUp - band + 2,
     };
-    for (const r of resources) {
-      planned.push({ label: r.label, side: 'right', bar: { x: r.cx - r.w / 2, y: r.cy - r.h / 2, w: r.w, h: r.h, pips: r.key === 'secondary' ? 5 : 0 }, cells: [] });
-      if (r.mana) planned.push({ label: 'mana (in cat and bear)', side: 'right', bar: { x: r.cx - r.w / 2, y: r.cy - r.h / 2 - r.mana.gap - r.mana.h, w: r.w, h: r.mana.h, pips: 0 }, cells: [] });
-    }
+    for (const r of resources) planned.push({ label: r.label, side: 'right', bar: { x: r.cx - r.w / 2, y: r.cy - r.h / 2, w: r.w, h: r.h, pips: r.key === 'secondary' ? 5 : 0 }, cells: [] });
     return { shape: 'circle', sizePx: opts.sizePx, bars, frames, cdm, reach, dome, planned, auras, resources };
   }
 
@@ -719,6 +712,9 @@
   // with the cast bar on top of the map. Each is stored as a centre-to-centre position.
   function setupResources(vars, profile, scr, items) {
     const ppu = scr.pxPerUnit;
+    // Druid on this client: the player frame's power line stays on mana in bear and cat
+    // (the "Power Type: Mana" choice of the player frame).
+    L.set(db(vars), 'profiles', profile, 'addons', 'EllesmereUIUnitFrames', 'player', 'powerTypeOverride', 'foreverDruid', true);
     for (const r of items) {
       const path = ['profiles', profile, 'addons', 'EllesmereUIResourceBars', r.key];
       const set = (k, v) => L.set.apply(null, [db(vars)].concat(path, [k, v]));
@@ -726,16 +722,17 @@
       if (r.key === 'secondary') { set('pipWidth', r.w / ppu); set('pipHeight', r.h / ppu); }
       else { set('width', r.w / ppu); set('height', r.h / ppu); }
       set('unlockPos', new Map([['point', 'CENTER'], ['relPoint', 'CENTER'], ['x', (r.cx - scr.physW / 2) / ppu], ['y', (scr.physH / 2 - r.cy) / ppu]]));
-      if (r.mana) {
-        // EllesmereUI's "mana bar while shapeshifted" (druid on this client), attached above the
-        // power bar. Written whole, with its other settings at their usual values.
-        set('foreverDruidMana', new Map([
-          ['enabled', true], ['position', 'above'], ['gap', r.mana.gap / ppu], ['height', r.mana.h / ppu], ['offsetX', 0], ['offsetY', 0],
-          ['textFormat', 'none'], ['showPercent', true], ['textSize', 8], ['textXOffset', 0], ['textYOffset', 0], ['textAnchor', 'CENTER'],
-          ['textCustomColored', true], ['textFillR', 1], ['textFillG', 1], ['textFillB', 1], ['textFillA', 1],
-        ]));
-      }
     }
+  }
+
+  // Turns EllesmereUI's reskin of the map and quest log window on or off. With it off the
+  // window is the game's own again. Kept in step with the saved copy of the active style.
+  function setMapSkin(vars, on) {
+    const d = db(vars);
+    d.set('reskinWorldMap', on);
+    const active = L.get(d, 'windowSkinStyleSlots', 'active');
+    const slot = typeof active === 'string' ? L.get(d, 'windowSkinStyleSlots', active) : null;
+    if (slot instanceof Map) slot.set('reskinWorldMap', on);
   }
 
   // Applies the frame and cooldown-row places of a plan made by hugPlan.
@@ -829,7 +826,7 @@
   const api = {
     SHAPES, SHAPE_LABELS, THICKNESS, isCustomShape, AB_BARS,
     db, profileName, profileNames, screen, place, unplace, elements, actionBars, cdmBars, unitFrames,
-    setShape, setField, moveTo, diff, honeycomb, handsPlan, HEX_HEIGHT, questbookMap, layoutBars, hugPlan, crownCooldowns, placeAround, slimFrames, setupAuras, setupResources,
+    setShape, setField, moveTo, diff, honeycomb, handsPlan, HEX_HEIGHT, questbookMap, layoutBars, hugPlan, crownCooldowns, placeAround, slimFrames, setupAuras, setupResources, setMapSkin,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ElleModel = api;

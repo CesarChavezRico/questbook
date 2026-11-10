@@ -304,6 +304,7 @@
         if (skipped.length) err = (err ? err + '\n' : '') + 'Moved but kept square (their Border Style is not Solid): ' + skipped.join(', ');
       }
     }
+    if ($('hcMapSkin').checked) M.setMapSkin(state.vars, false);
     const box = $('hcSeats'); box.textContent = '';
     for (const c of cells) {
       if (c.empty) state.empty[c.bar] = c.empty;
