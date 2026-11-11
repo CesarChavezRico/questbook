@@ -122,7 +122,7 @@
     const id = evt.currentTarget.getAttribute('data-id');
     state.selected = id;
     const e = selectedEl();
-    if (e && (e.kind === 'actionbar' || e.kind === 'cdm' || e.kind === 'unitframe')) {
+    if (e && (e.kind === 'actionbar' || e.kind === 'cdm' || e.kind === 'unitframe' || e.kind === 'resource')) {
       const p = toUi(evt);
       drag = { id, dx: p.x - e.left, dy: p.y - e.top, moved: false };
       evt.currentTarget.setPointerCapture(evt.pointerId);
@@ -200,8 +200,8 @@
     if (e.placed) {
       const px = field(box, 'Left edge (screen pixels)', numInput(e.left * ppu, 1, (v) => apply(M.moveTo(state.vars, state.profile, e, v / ppu, e.top, state.scr))));
       const py = field(box, 'Top edge (screen pixels)', numInput(e.top * ppu, 1, (v) => apply(M.moveTo(state.vars, state.profile, e, e.left, v / ppu, state.scr))));
-      px.id = 'posx'; py.id = 'posy'; px.disabled = py.disabled = !(editable || e.kind === 'unitframe');
-      h('p', { className: 'hint', textContent: 'Size on screen: ' + Math.round(e.w * ppu) + ' × ' + Math.round(e.h * ppu) + ' pixels.' + (editable || e.kind === 'unitframe' ? ' Drag it, or use the arrow keys (Shift for 10 pixels).' : '') }, box);
+      px.id = 'posx'; py.id = 'posy'; px.disabled = py.disabled = !(editable || e.kind === 'unitframe' || e.kind === 'resource');
+      h('p', { className: 'hint', textContent: 'Size on screen: ' + Math.round(e.w * ppu) + ' × ' + Math.round(e.h * ppu) + ' pixels.' + (editable || e.kind === 'unitframe' || e.kind === 'resource' ? ' Drag it, or use the arrow keys (Shift for 10 pixels).' : '') }, box);
     }
     if (editable) {
       const s = e.settings;
