@@ -142,6 +142,28 @@ slash("bars apply")
 text = table.concat(__take(), "\n")
 assert(text:find("macro QB New: could not be created") and text:find("no macro with that name"), "a failed creation is reported: " .. text)
 CreateMacro = realCreate
+-- 10. forms by name: the numbers are this character's own. Here: bear 1, cat 2 (no Aquatic Form yet).
+local formSpells = { 5487, 768 }
+function GetNumShapeshiftForms() return #formSpells end
+function GetShapeshiftFormInfo(i) return 132276, false, true, formSpells[i] end
+M.db.plan = { v = 2, slots = {},
+  macros = { { name = "QB F", body = "/cast [form:cat] Rake; [form:bear/cat] Feral Charge; [form:travel] X; [noform] Wrath; [mod:shift] Y" } } }
+slash("bars apply"); __take()
+local body = macros[GetMacroIndexByName("QB F")][3]
+assert(body == "/cast [form:2] Rake; [form:1/2] Feral Charge; [form:99] X; [noform] Wrath; [mod:shift] Y", "names become numbers: " .. body)
+-- learning Aquatic Form moves cat to 3: applying again rewrites the macro
+formSpells = { 5487, 1066, 768 }
+slash("bars apply")
+assert(said("macros: 0 new, 1 rewritten"), "a new form rewrites the macro")
+assert(macros[GetMacroIndexByName("QB F")][3]:find("[form:3] Rake; [form:1/3] Feral Charge", 1, true), "cat is 3 now")
+-- the first plan (v 1) wrote 1 for bear and 3 for cat: upgraded to names once, then numbered for this character
+formSpells = { 5487, 768 }
+M.db.plan = { v = 1, slots = {}, macros = { { name = "QB Old", body = "/cast [form:3] Rake; [form:1/3] Feral Charge; [form:1] Bash; [noform] Wrath" } } }
+slash("bars apply"); __take()
+assert(M.db.plan.v == 2 and M.db.plan.macros[1].body == "/cast [form:cat] Rake; [form:bear/cat] Feral Charge; [form:bear] Bash; [noform] Wrath", "v1 upgraded: " .. M.db.plan.macros[1].body)
+assert(macros[GetMacroIndexByName("QB Old")][3] == "/cast [form:2] Rake; [form:1/2] Feral Charge; [form:1] Bash; [noform] Wrath", "and written with this character's numbers")
+slash("bars apply"); assert(said("0 to place %(done%), 0 already right, 0 skipped$"), "the upgrade happens once and then nothing changes")
+
 M.db.plan.macros = nil; M.db.plan.slots = { [1] = { kind = "spell", name = "Wrath" } }
 
 slash("bars"); assert(said("bars: plan 1 button"), "status counts the valid plan entries")

@@ -15,7 +15,11 @@
 --                              | { kind = "item", id = 858, name = "..." } | { kind = "empty" } } }
 -- A spell is found by name first (the highest rank the character knows), then by id. A slot the plan does not mention is left alone.
 -- The plan may also carry macros to create first, so a seat that changes with the druid's form can be one macro instead of a paged
--- bar:   macros = { { name = "QB Top M", body = "#showtooltip\n/cast [form:1] Bash; [noform] Regrowth" } }
+-- bar:   macros = { { name = "QB Top M", body = "#showtooltip\n/cast [form:bear] Bash; [noform] Regrowth" } }
+-- A druid's forms are named in the macro text (form:bear, form:cat, also aquatic, travel, moonkin, and lists like form:bear/cat),
+-- because their numbers depend on which forms the character has learned: at Cesar's first test (2026-11-10) Thara had no Aquatic
+-- Form, so cat was form 2 and the plan's "form:3" matched nothing. The names become the character's own numbers when the plan is
+-- applied; applying again after learning a form rewrites the macros.
 -- They are made as character macros (18 at most), or rewritten when one of that name exists and its text differs.
 --
 -- Game functions used, and where their use on this client was seen (EllesmereUI's rank-upgrade code, read 2026-11-10, does the same
@@ -137,14 +141,68 @@ local function PlanSlots()
   return out
 end
 
+-- Shapeshift forms by name -> the spell that is the form.
+local FORM_SPELLS = { bear = { 5487, 9634 }, cat = { 768 }, aquatic = { 1066 }, travel = { 783 }, moonkin = { 24858 } }
+
+-- name -> this character's stance number (a form it does not have is absent)
+local function FormNumbers()
+  local out = {}
+  local okN, n = Try(_G.GetNumShapeshiftForms)
+  for i = 1, (okN and tonumber(n)) or 0 do
+    local okF, _, _, _, spellID = Try(_G.GetShapeshiftFormInfo, i)
+    spellID = okF and Plain(spellID, "number")
+    if spellID then
+      for name, ids in pairs(FORM_SPELLS) do
+        for _, id in ipairs(ids) do if id == spellID then out[name] = i end end
+      end
+    end
+  end
+  return out
+end
+
+-- "[form:bear/cat]" -> "[form:1/2]". A form the character lacks becomes 99, which is never true.
+local function NameForms(body, forms)
+  return (body:gsub("form:([%a/]+)", function(list)
+    local parts = {}
+    for name in list:gmatch("[^/]+") do
+      if not FORM_SPELLS[name] then return nil end          -- not a list of form names: leave the text alone
+      parts[#parts + 1] = tostring(forms[name] or 99)
+    end
+    return "form:" .. table.concat(parts, "/")
+  end))
+end
+
+-- The first plan (v = 1, written by hand on 2026-11-10) used the usual numbers: 1 for bear, 3 for cat. Rewrite them as names, once.
+local V1_FORMS = { ["1"] = "bear", ["3"] = "cat" }
+local function UpgradePlan(plan)
+  if type(plan) ~= "table" or plan.v ~= 1 then return end
+  if type(plan.macros) == "table" then
+    for _, m in ipairs(plan.macros) do
+      if type(m) == "table" and type(m.body) == "string" then
+        m.body = m.body:gsub("form:([%d/]+)", function(list)
+          local parts = {}
+          for num in list:gmatch("[^/]+") do
+            if not V1_FORMS[num] then return nil end
+            parts[#parts + 1] = V1_FORMS[num]
+          end
+          return "form:" .. table.concat(parts, "/")
+        end)
+      end
+    end
+  end
+  plan.v = 2
+end
+
 -- The plan's macros: creates the missing ones, rewrites those whose text differs. Returns made, changed, lines of trouble.
 -- dry = true only counts.
 local function SyncMacros(dry)
   local list = mod.db and mod.db.plan and mod.db.plan.macros
   local made, changed, lines = 0, 0, {}
   if type(list) ~= "table" then return made, changed, lines end
-  for _, m in ipairs(list) do
-    if type(m) == "table" and type(m.name) == "string" and m.name ~= "" and type(m.body) == "string" then
+  local forms = FormNumbers()
+  for _, planned in ipairs(list) do
+    if type(planned) == "table" and type(planned.name) == "string" and planned.name ~= "" and type(planned.body) == "string" then
+      local m = { name = planned.name, icon = planned.icon, body = NameForms(planned.body, forms) }
       local okI, index = Try(_G.GetMacroIndexByName, m.name)
       index = okI and tonumber(index) or 0
       if index > 0 then
@@ -235,7 +293,8 @@ end
 -- dry = true: only say what would happen
 function mod:Run(dry)
   local entries = PlanSlots()
-  if not entries or #entries == 0 then
+  local hasMacros = mod.db and type(mod.db.plan) == "table" and type(mod.db.plan.macros) == "table" and #mod.db.plan.macros > 0
+  if not entries or (#entries == 0 and not hasMacros) then
     QB:Say("bars: no plan yet. Write one in the offline configurator and put QuestBook.lua back in SavedVariables.")
     return false
   end
@@ -243,6 +302,7 @@ function mod:Run(dry)
     local why = Blocked()
     if why then QB:Say("bars: " .. why); return false end
   end
+  UpgradePlan(mod.db.plan)
   local top, _, noBook = ReadSpells()
   local madeMacros, changedMacros, lines = SyncMacros(dry)
   local placed, same, skipped, failed = 0, 0, 0, 0
