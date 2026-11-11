@@ -16,6 +16,8 @@ module.exports = {
     ['QB Thumb 1', '/cast [form:cat] Ferocious Bite; [form:bear] Enrage; [noform] Thorns'],
     ['QB Thumb 2', '/cast [form:cat] Rip; [form:bear] Demoralizing Roar; [noform] Mark of the Wild'],
     ['QB Thumb 3', '/cast [form:cat] Prowl; [form:bear] Growl; [noform] Entangling Roots'],
+    // the map key (Cesar, 2026-11-11: "use the key below the mousewheel"): one press per step of the map loop
+    ['QB Map', '/qb overlay cycle', 'INV_Misc_Map_01'],
   ],
   // [page, button, what]. Every button the layout shows is listed, so nothing old lingers.
   seats: [
@@ -36,7 +38,7 @@ module.exports = {
     // mouse index = bar 8 (page 15): front, rear
     [15, 1, S('Moonfire')], [15, 2, S('Faerie Fire')],
     // wheel = bar 9 (page 2): up, click, down, the button below the wheel
-    [2, 1, S('Cat Form')], [2, 2, E], [2, 3, S('Bear Form')], [2, 4, E],
+    [2, 1, S('Cat Form')], [2, 2, E], [2, 3, S('Bear Form')], [2, 4, M('QB Map')],
     // tilts = bar 10 (page 10)
     [10, 1, E], [10, 2, E],
   ],

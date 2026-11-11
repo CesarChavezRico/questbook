@@ -11,6 +11,7 @@ QB.planData = {
     { name = "QB Thumb 1", body = "#showtooltip\n/cast [form:cat] Ferocious Bite; [form:bear] Enrage; [noform] Thorns" },
     { name = "QB Thumb 2", body = "#showtooltip\n/cast [form:cat] Rip; [form:bear] Demoralizing Roar; [noform] Mark of the Wild" },
     { name = "QB Thumb 3", body = "#showtooltip\n/cast [form:cat] Prowl; [form:bear] Growl; [noform] Entangling Roots" },
+    { name = "QB Map", body = "/qb overlay cycle", icon = "INV_Misc_Map_01" },
   },
   slots = {
     [1] = { kind = "empty" },
@@ -20,7 +21,7 @@ QB.planData = {
     [13] = { kind = "spell", name = "Cat Form" },
     [14] = { kind = "empty" },
     [15] = { kind = "spell", name = "Bear Form" },
-    [16] = { kind = "empty" },
+    [16] = { kind = "macro", name = "QB Map" },
     [25] = { kind = "spell", name = "Cat Form" },
     [26] = { kind = "empty" },
     [27] = { kind = "macro", name = "QB Home M" },
