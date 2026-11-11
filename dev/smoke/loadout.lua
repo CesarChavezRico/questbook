@@ -37,6 +37,11 @@ local function slash(s) SlashCmdList.QUESTBOOK(s) end
 local function said(pat) for _, l in ipairs(__take()) do if l:find(pat) then return l end end end
 local M = QB.modules.loadout
 assert(M and M.active, "the module is on")
+-- the addon ships a plan and a layout (data/): they loaded, and are set aside so the scenarios below use their own
+assert(type(QB.planData) == "table" and QB.planData.v == 2 and next(QB.planData.slots), "data/Plan.lua loaded")
+assert(type(QB.layoutData) == "table" and #QB.layoutData.sets > 0, "data/Layout.lua loaded")
+local shippedPlan, shippedLayout = QB.planData, QB.layoutData
+QB.planData, QB.layoutData = nil, nil
 
 -- 1. no plan: says so, changes nothing
 slash("bars apply")
@@ -180,6 +185,60 @@ GetActionInfo = plainInfo; GetActionText = nil
 
 M.db.plan.macros = nil; M.db.plan.slots = { [1] = { kind = "spell", name = "Wrath" } }
 
+-- 12. a plan in the addon folder wins over the saved one, and the status says where the plan comes from
+slash("bars"); assert(said("bars: plan 1 button%(s%) from saved settings"), "status: the saved plan")
+QB.planData = { v = 2, slots = { [5] = { kind = "spell", name = "Claw" }, [6] = { kind = "spell", name = "Moonfire" } } }
+slash("bars"); assert(said("bars: plan 2 button%(s%) from the addon folder"), "status: the shipped plan")
+slash("bars apply"); __take()
+assert(slots[5] and slots[5][2] == 200 and slots[6][2] == 300, "the shipped plan was applied")
+QB.planData = nil
+
+-- 13. the layout: values written into EllesmereUI's saved settings, remembered, reloaded; undo puts them back
+local reloads = 0
+ReloadUI = function() reloads = reloads + 1 end
+slash("layout check"); assert(said("no layout in the addon folder"), "no layout: says so")
+QB.layoutData = { v = 1, name = "test", sets = {
+    { path = { "profiles", "$profile", "addons", "Bars", "MainBar", "x" }, value = 12.5 },
+    { path = { "profiles", "$profile", "addons", "Bars", "MainBar", "shape" }, value = "circle" },
+    { path = { "profiles", "$profile", "addons", "New", "list" }, value = { 1, 2, { deep = true } } },
+    { path = { "top" }, value = true },
+  }, removes = { { path = { "profiles", "$profile", "addons", "Bars", "MainBar", "old" } }, { path = { "profiles", "$profile", "nothing", "here" } } } }
+slash("layout check"); assert(said("EllesmereUI's settings are not loaded"), "no EllesmereUI: says so")
+EllesmereUIDB = { activeProfile = "Mine", profiles = { Mine = { addons = { Bars = { MainBar = { x = 1, shape = "circle", old = 7, keep = "me" } } } } } }
+slash("layout check"); assert(said('layout check: "test": 4 of 6 value%(s%) differ'), "check counts what differs")
+assert(EllesmereUIDB.profiles.Mine.addons.Bars.MainBar.x == 1 and reloads == 0, "check wrote nothing")
+__combat = true; slash("layout apply"); assert(said("not in combat"), "refuses in combat"); __combat = false
+slash("layout apply")
+text = table.concat(__take(), "\n")
+assert(text:find('layout apply: "test": 4 value(s) written', 1, true) and reloads == 1, "apply writes and reloads: " .. text)
+local mb = EllesmereUIDB.profiles.Mine.addons.Bars.MainBar
+assert(mb.x == 12.5 and mb.old == nil and mb.keep == "me" and EllesmereUIDB.top == true, "the values are in, the rest untouched")
+assert(EllesmereUIDB.profiles.Mine.addons.New.list[3].deep == true and EllesmereUIDB.profiles.Mine.nothing == nil, "tables are created, and a remove creates none")
+QB.layoutData.sets[3].value[3].deep = false
+assert(EllesmereUIDB.profiles.Mine.addons.New.list[3].deep == true, "the settings hold a copy, not the layout's own table")
+QB.layoutData.sets[3].value[3].deep = true
+slash("layout apply"); assert(said("already in place"), "a second apply does nothing"); assert(reloads == 1, "and does not reload")
+slash("layout undo")
+assert(said("layout undo: 4 value%(s%) put back"), "undo reports")
+mb = EllesmereUIDB.profiles.Mine.addons.Bars.MainBar
+assert(mb.x == 1 and mb.old == 7 and EllesmereUIDB.top == nil and EllesmereUIDB.profiles.Mine.addons.New.list == nil and reloads == 2, "undo restores every value and reloads")
+slash("layout undo"); assert(said("nothing to undo"), "undo is used up")
+-- the layout that ships today fits a settings table it has never seen, and a second check finds nothing left
+QB.layoutData = shippedLayout
+EllesmereUIDB = { activeProfile = "Default", profiles = { Default = { addons = {} } } }
+slash("layout apply"); __take()
+slash("layout check"); assert(said(": 0 of %d+ value%(s%) differ"), "the shipped layout applies cleanly")
+slash("layout"); assert(said('layout: "circles'), "status names the layout")
+QB.layoutData, EllesmereUIDB = nil, nil
+-- the plan that ships today is well formed: every macro seat names a macro it defines
+local names = {}
+for _, m in ipairs(shippedPlan.macros) do names[m.name] = true; assert(#m.name <= 16 and #m.body <= 255, "macro limits: " .. m.name) end
+for slot, w in pairs(shippedPlan.slots) do
+  assert(type(slot) == "number" and slot >= 1 and slot <= 180, "slot range")
+  if w.kind == "macro" then assert(names[w.name], "macro seat without a macro: " .. tostring(w.name)) end
+end
+
+M.db.plan.slots = { [1] = { kind = "spell", name = "Wrath" } }
 slash("bars"); assert(said("bars: plan 1 button"), "status counts the valid plan entries")
 slash("bars what"); assert(said("/qb bars .*dump.*check.*apply.*undo"), "usage")
 print("loadout: ok")

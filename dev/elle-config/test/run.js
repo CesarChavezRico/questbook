@@ -258,6 +258,35 @@ test('auras: EllesmereUI takes over buffs and debuffs, with a combat bar built f
   assert.strictEqual(L.get(M.db(v), 'profiles', 'Default', 'addons', 'EllesmereUIUnitFrames', 'target', 'onlyPlayerDebuffs'), true);
 });
 
+test('patch: what turns one tree into another, with paths as arrays', () => {
+  const a = L.parse('D = { ["a.b"] = { ["x"] = 1, ["gone"] = 2, ["same"] = { ["k"] = 1 } }, ["old"] = true }').get('D');
+  const b = L.parse('D = { ["a.b"] = { ["x"] = 5, ["same"] = { ["k"] = 1 }, ["new"] = { ["t"] = "v" } } }').get('D');
+  const p = M.patch(a, b);
+  assert.deepStrictEqual(p.sets.map((s) => s.path), [['a.b', 'x'], ['a.b', 'new']]);
+  assert.strictEqual(p.sets[0].value, 5); assert.strictEqual(p.sets[1].value.get('t'), 'v');
+  assert.deepStrictEqual(p.removes.map((r) => r.path), [['a.b', 'gone'], ['old']]);
+  assert.strictEqual(M.patch(a, a).sets.length + M.patch(a, a).removes.length, 0);
+});
+test('emit: the layout and plan files are valid Lua and say what they hold', async () => {
+  const { LuaFactory } = require('wasmoon');
+  const before = 'EllesmereUIDB = { ["activeProfile"] = "Default", ["profiles"] = { ["Default"] = { ["addons"] = { ["B"] = { ["x"] = 1, ["y"] = 2 } } } } }';
+  const after = 'EllesmereUIDB = { ["activeProfile"] = "Default", ["profiles"] = { ["Default"] = { ["addons"] = { ["B"] = { ["x"] = 3, ["t"] = { ["a"] = "q" } } } } } }';
+  const lay = require('../emit-layout.js').emit(before, after, 'n');
+  assert.strictEqual(lay.sets, 2); assert.strictEqual(lay.removes, 1);
+  assert.ok(lay.text.includes('"profiles", "$profile", "addons"'), 'the profile name is written as $profile');
+  const plan = require('../emit-plan.js').emit(require('../plans/thara.js'));
+  const lua = await new LuaFactory().createEngine();
+  try {
+    lua.global.set('LAY', lay.text); lua.global.set('PLAN', plan.text);
+    const r = await lua.doString(`local QB = {}
+      assert(load(LAY))('QuestBook', QB); assert(load(PLAN))('QuestBook', QB)
+      local n = 0 for _ in pairs(QB.planData.slots) do n = n + 1 end
+      return #QB.layoutData.sets .. ' ' .. #QB.layoutData.removes .. ' ' .. QB.layoutData.sets[1].path[2] .. ' ' .. n .. ' ' .. #QB.planData.macros`);
+    assert.strictEqual(r, '2 1 $profile ' + plan.slots + ' 6');
+  } finally { lua.global.close(); }
+  assert.throws(() => require('../emit-plan.js').emit({ name: 'x', macros: [], seats: [[1, 1, { kind: 'macro', name: 'Missing' }]] }), /does not define/);
+});
+
 test('the built page is up to date with src/', () => {
   const b = require('../build.js');
   assert.strictEqual(fs.readFileSync(b.out, 'utf8'), b.build(), 'run: node dev/elle-config/build.js');
