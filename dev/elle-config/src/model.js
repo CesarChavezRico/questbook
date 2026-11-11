@@ -305,8 +305,79 @@
     return out;
   }
 
+  // EllesmereUI's resource bars: the power bar (mana, energy, rage), the class resource
+  // (combo points) and its cast bar. The first two are off by default on this client. A bar
+  // that was never moved has no position in the file and is not drawn.
+  const RESOURCE_BARS = [
+    { key: 'primary', label: 'Power bar (mana, energy, rage)', w: 'width', h: 'height', dw: 214, dh: 14, defaultOn: false },
+    { key: 'secondary', label: 'Combo points', w: 'pipWidth', h: 'pipHeight', dw: 214, dh: 20, defaultOn: false, pips: 5 },
+    { key: 'castBar', label: 'Cast bar', w: 'width', h: 'height', dw: 220, dh: 20, defaultOn: true },
+  ];
+  function resourceBars(vars, scr, profile) {
+    const rb = addon(vars, profile, 'EllesmereUIResourceBars');
+    const out = [];
+    for (const d of RESOURCE_BARS) {
+      const t = L.get(rb, d.key);
+      const num = (k, dflt) => (t instanceof Map && typeof t.get(k) === 'number' ? t.get(k) : dflt);
+      const on = t instanceof Map && typeof t.get('enabled') === 'boolean' ? t.get('enabled') : d.defaultOn;
+      const pos = plainPos(L.get(rb, d.key, 'unlockPos'));
+      const w = num(d.w, d.dw), h = num(d.h, d.dh);
+      const notes = [];
+      if (!pos) notes.push('This bar has no saved position (it was never moved), so the preview cannot place it.');
+      const match = L.get(db(vars), 'unlockWidthMatch', { primary: 'ERB_PowerBar', secondary: 'ERB_ClassResource', castBar: 'ERB_CastBar' }[d.key]);
+      if (typeof match === 'string') notes.push('Its width is matched to "' + match + '" in the game, which can override the width saved here.');
+      const f = pos ? place(pos, w, h, scr) : null;
+      const cells = [];
+      if (d.pips) for (let i = 0; i < d.pips; i++) cells.push({ x: i * w / d.pips, y: 0, w: w / d.pips, h, label: '' });
+      out.push({
+        id: 'rb:' + d.key, kind: 'resource', key: d.key, label: d.label, hidden: !on, placed: !!f,
+        left: f ? f.left : 0, top: f ? f.top : 0, w, h, cells, shape: 'none', borderPx: 1, pos, notes,
+      });
+    }
+    return out;
+  }
+
+  // EllesmereUI's Player Aura Bars: your buffs, your debuffs, and any extra buff bars. Drawn
+  // at the room each bar reserves (icons per row by rows), not at how many auras you have.
+  function auraBars(vars, scr, profile) {
+    const pab = L.get(addon(vars, profile, 'EllesmereUIUnitFrames'), 'playerAuraBars');
+    if (!(pab instanceof Map) || pab.get('enabled') !== true) return [];
+    const out = [];
+    const one = (id, label, cfg, pos, isBuff, dfltPos) => {
+      const num = (k, d) => (cfg instanceof Map && typeof cfg.get(k) === 'number' ? cfg.get(k) : d);
+      const shape = cfg instanceof Map && typeof cfg.get('iconShape') === 'string' ? cfg.get('iconShape') : 'none';
+      const size = num('iconSize', 32) + (isCustomShape(shape) ? 8 : 0), pad = num('padding', 5), gap = num('rowSpacing', 12);
+      const cols = Math.max(1, num('iconsPerRow', isBuff ? 11 : 8)), maxRows = Math.max(1, num('maxRows', isBuff ? 3 : 2));
+      const total = Math.min(num('maxTotal', isBuff ? 32 : 16), cols * maxRows), rows = Math.min(maxRows, Math.max(1, Math.ceil(total / cols)));
+      const w = cols * size + (cols - 1) * pad, h = rows * size + (rows - 1) * gap;
+      const p = plainPos(pos) || dfltPos;
+      const f = place(p, w, h, scr);
+      const grow = cfg instanceof Map && typeof cfg.get('growDirection') === 'string' ? cfg.get('growDirection') : 'LEFT';
+      const cells = [];
+      for (let i = 0; i < total; i++) {
+        const c = i % cols, r = Math.floor(i / cols);
+        cells.push({ x: (grow === 'RIGHT' ? c : cols - 1 - c) * (size + pad), y: r * (size + gap), w: size, h: size, label: '' });
+      }
+      const off = cfg instanceof Map && cfg.get('enabled') === false;
+      out.push({
+        id: 'aura:' + id, kind: 'aura', key: id, label, hidden: off, placed: true, left: f.left, top: f.top, w, h, cells, shape, borderPx: 1, pos: p,
+        notes: ['Shows the room this bar reserves. In the game only the auras you have appear. It cannot be edited here yet.'],
+      });
+    };
+    one('buffs', 'Your buffs', pab.get('defaultBuffs'), pab.get('buffsPos'), true, { point: 'TOPRIGHT', relPoint: 'TOPRIGHT', x: -300, y: -200 });
+    one('debuffs', 'Debuffs on you', pab.get('defaultDebuffs'), pab.get('debuffsPos'), false, { point: 'TOPRIGHT', relPoint: 'TOPRIGHT', x: -300, y: -260 });
+    const custom = pab.get('customBuffBars');
+    if (custom instanceof Map) {
+      for (const bar of custom.values()) {
+        if (bar instanceof Map && bar.get('pos') instanceof Map) one('custom' + bar.get('id'), 'Buff bar: ' + (bar.get('name') || '?'), bar, bar.get('pos'), true, null);
+      }
+    }
+    return out;
+  }
+
   function elements(vars, scr, profile, previewCounts) {
-    return [].concat(actionBars(vars, scr, profile), cdmBars(vars, scr, profile, previewCounts), unitFrames(vars, scr, profile));
+    return [].concat(actionBars(vars, scr, profile), cdmBars(vars, scr, profile, previewCounts), unitFrames(vars, scr, profile),
+      resourceBars(vars, scr, profile), auraBars(vars, scr, profile));
   }
 
   // ---- edits ---------------------------------------------------------------
@@ -383,6 +454,15 @@
 
   // Moves an element so its top-left corner lands at left/top (UI units).
   function moveTo(vars, profile, el, left, top, scr) {
+    if (el.kind === 'resource') {
+      if (!el.placed) return 'This bar has no saved position yet. Move it once in the game first.';
+      const lp = Math.round(left / scr.onePx) * scr.onePx, tp = Math.round(top / scr.onePx) * scr.onePx;
+      const pos = el.pos || { point: 'CENTER', relPoint: 'CENTER' };
+      const o = unplace(pos, lp, tp, el.w, el.h, scr);
+      const t = L.get(db(vars), 'profiles', profile, 'addons', 'EllesmereUIResourceBars', el.key, 'unlockPos');
+      t.set('x', o.x); t.set('y', o.y);
+      return undefined;
+    }
     if (el.kind === 'unitframe') {
       const lp = Math.round(left / scr.onePx) * scr.onePx, tp = Math.round(top / scr.onePx) * scr.onePx;
       const o = unplace({ point: 'CENTER', relPoint: 'CENTER' }, lp, tp, el.w, el.h, scr);
@@ -849,7 +929,7 @@
 
   const api = {
     SHAPES, SHAPE_LABELS, THICKNESS, isCustomShape, AB_BARS,
-    db, profileName, profileNames, screen, place, unplace, elements, actionBars, cdmBars, unitFrames,
+    db, profileName, profileNames, screen, place, unplace, elements, actionBars, cdmBars, unitFrames, resourceBars, auraBars,
     setShape, setField, moveTo, diff, patch, honeycomb, handsPlan, HEX_HEIGHT, questbookMap, layoutBars, hugPlan, crownCooldowns, placeAround, slimFrames, setupAuras, setupResources, setMapSkin,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
