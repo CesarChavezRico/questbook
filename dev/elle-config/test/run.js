@@ -229,7 +229,8 @@ test('map layouts: read the QuestBook map, keep every button off the map, stay o
       const idx = els.find((x) => x.key === 'Bar8'), big = els.find((x) => x.key === 'Bar6');
       assert.strictEqual(thumbs.cells.length, 2); assert.ok(thumbs.h > thumbs.w * 1.9, 'thumb pair is upright');
       assert.ok(idx.h > idx.w * 1.9, 'index pair is upright');
-      assert.strictEqual(big.cells.length, 1); assert.ok(big.w > thumbs.w * 1.15, 'the big button is bigger');
+      assert.strictEqual(big.cells.length, 1); near(big.w, thumbs.w, 'the big button is the same size');
+      assert.ok(big.left < thumbs.left && big.top > thumbs.top && big.top < thumbs.top + thumbs.h / 2 + 1, 'and sits left of the two thumbs, between them');
       assert.strictEqual(L.get(M.db(w), 'profiles', 'Default', 'addons', 'EllesmereUIActionBars', 'bars', 'Bar7', 'alwaysShowButtons'), true);
     }
   }

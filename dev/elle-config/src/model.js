@@ -586,17 +586,17 @@
     bars.push({ bar: 'Bar5', n: 2, dir: 'h', x: mx - inner(tOff) + S / 2 - (p + S), y: my + tOff - S / 2, pitchPx: p, seat: 'left thumb keys', labels: ['Th', 'Th'] });
     // The mouse, as Cesar asked after the first client test (2026-11-10): each pair stands
     // as it does under the hand. From the map outward: the two thumb buttons one above the
-    // other with the big thumb button below and beside them, the two index buttons one above
-    // the other, then the wheel as a cross (up, click, down, a tilt on each side).
+    // other with the big thumb button to their left, level with the gap between them, the two
+    // index buttons one above the other, then the wheel as a cross (up, click, down, a tilt
+    // on each side). All the same size.
     const rowOff = (k) => first + k * p;
     const col = (k) => Math.max(centre, inner(rowOff(2))) + k * p;
     const at = (c, r) => ({ x: mx + col(c) - S / 2, y: my + rowOff(r) - S / 2 });
-    const bigPx = Math.round(opts.sizePx * 1.25);
-    bars.push(Object.assign({ bar: 'Bar7', n: 2, dir: 'v', pitchPx: p, seat: 'mouse thumb buttons: up, down', labels: ['ThU', 'ThD'] }, at(0, 2)));
-    bars.push(Object.assign({ bar: 'Bar6', n: 1, dir: 'v', pitchPx: bigPx + exp, sizePx: bigPx, seat: 'mouse big thumb button', labels: ['Big'] }, at(1, 3)));
-    bars.push(Object.assign({ bar: 'Bar8', n: 2, dir: 'v', pitchPx: p, seat: 'index buttons: front above rear', labels: ['IF', 'IR'] }, at(1, 1)));
-    bars.push(Object.assign({ bar: 'Bar10', n: 2, dir: 'h', pitchPx: 2 * p, seat: 'wheel tilt left and right, either side of the wheel click', labels: ['<', '>'] }, at(2, 1)));
-    bars.push(Object.assign({ bar: 'Bar9', n: 3, dir: 'v', pitchPx: p, seat: 'wheel up, click, down', labels: ['Up', 'Clk', 'Dn'] }, at(3, 0)));
+    bars.push(Object.assign({ bar: 'Bar6', n: 1, dir: 'v', pitchPx: p, seat: 'mouse big thumb button', labels: ['Big'] }, at(0, 2.5)));
+    bars.push(Object.assign({ bar: 'Bar7', n: 2, dir: 'v', pitchPx: p, seat: 'mouse thumb buttons: up, down', labels: ['ThU', 'ThD'] }, at(1, 2)));
+    bars.push(Object.assign({ bar: 'Bar8', n: 2, dir: 'v', pitchPx: p, seat: 'index buttons: front above rear', labels: ['IF', 'IR'] }, at(2, 1)));
+    bars.push(Object.assign({ bar: 'Bar10', n: 2, dir: 'h', pitchPx: 2 * p, seat: 'wheel tilt left and right, either side of the wheel click', labels: ['<', '>'] }, at(3, 1)));
+    bars.push(Object.assign({ bar: 'Bar9', n: 3, dir: 'v', pitchPx: p, seat: 'wheel up, click, down', labels: ['Up', 'Clk', 'Dn'] }, at(4, 0)));
     const frames = [
       { key: 'player', left: mx - reach - fr.player.w, top: my - fr.player.h / 2 },
       { key: 'target', left: mx + reach, top: my - fr.target.h / 2 },
