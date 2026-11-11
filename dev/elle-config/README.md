@@ -48,6 +48,17 @@ running (4BI-39). Open `elle-config.html` in a browser; it needs no server and n
 EllesmereUI has no licence file, so it is treated as all rights reserved. This tool reads the
 settings file and mirrors how the settings behave; it contains no EllesmereUI code or art.
 
+## Delivering a layout and a button plan by git pull (4BI-41)
+
+Swapping the settings file costs a logout. The addon can instead apply both while the game runs:
+
+- `node dev/elle-config/emit-layout.js <before.lua> <after.lua> "<name>"` writes `data/Layout.lua`: the values that turn
+  the first settings file into the second. Use the file the player has now as "before", so only real changes are written.
+  In game: `/qb layout check | apply | undo`. Apply reloads the UI.
+- `node dev/elle-config/emit-plan.js thara` writes `data/Plan.lua` from `plans/thara.js`. In game: `/qb bars check | apply | undo`.
+
+Both generated files are loaded by the addon and ship with it. They hold layout values and spell names only.
+
 ## Develop
 
 ```

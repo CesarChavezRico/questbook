@@ -213,7 +213,10 @@
     return o;
   }
 
-  const api = { parse, serialize, get, set, equal, toPlain };
+  // One value as Lua source text.
+  function lua(v) { const out = []; writeValue(v, out); return out.join(''); }
+
+  const api = { parse, serialize, get, set, equal, toPlain, lua };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.LuaTable = api;
 })(typeof self !== 'undefined' ? self : this);

@@ -132,8 +132,17 @@ end
 
 -- ---------------------------------------------------------------- the plan
 
+-- The plan in force: the one shipped in the addon folder (data/Plan.lua, updated by a git pull) if there is one, else the one in
+-- our saved settings (how the first plan was delivered, 2026-11-10).
+local function Plan()
+  if type(QB.planData) == "table" then return QB.planData, "the addon folder" end
+  local saved = mod.db and mod.db.plan
+  if type(saved) == "table" then return saved, "saved settings" end
+  return nil
+end
+
 local function PlanSlots()
-  local plan = mod.db and mod.db.plan
+  local plan = Plan()
   if type(plan) ~= "table" or type(plan.slots) ~= "table" then return nil end
   local out = {}
   for slot, want in pairs(plan.slots) do
@@ -201,7 +210,8 @@ end
 -- The plan's macros: creates the missing ones, rewrites those whose text differs. Returns made, changed, lines of trouble.
 -- dry = true only counts.
 local function SyncMacros(dry)
-  local list = mod.db and mod.db.plan and mod.db.plan.macros
+  local plan = Plan()
+  local list = plan and plan.macros
   local made, changed, lines = 0, 0, {}
   if type(list) ~= "table" then return made, changed, lines end
   local forms = FormNumbers()
@@ -298,7 +308,8 @@ end
 -- dry = true: only say what would happen
 function mod:Run(dry)
   local entries = PlanSlots()
-  local hasMacros = mod.db and type(mod.db.plan) == "table" and type(mod.db.plan.macros) == "table" and #mod.db.plan.macros > 0
+  local plan = Plan()
+  local hasMacros = plan and type(plan.macros) == "table" and #plan.macros > 0
   if not entries or (#entries == 0 and not hasMacros) then
     QB:Say("bars: no plan yet. Write one in the offline configurator and put QuestBook.lua back in SavedVariables.")
     return false
@@ -307,14 +318,14 @@ function mod:Run(dry)
     local why = Blocked()
     if why then QB:Say("bars: " .. why); return false end
   end
-  UpgradePlan(mod.db.plan)
+  UpgradePlan(plan)
   local top, _, noBook = ReadSpells()
   local madeMacros, changedMacros, lines = SyncMacros(dry)
   local placed, same, skipped, failed = 0, 0, 0, 0
   -- a macro the plan is about to create does not exist yet during a check: it will be there when the plan is applied
   local coming = {}
-  if dry and type(mod.db.plan.macros) == "table" then
-    for _, m in ipairs(mod.db.plan.macros) do if type(m) == "table" and type(m.name) == "string" then coming[m.name] = true end end
+  if dry and type(plan.macros) == "table" then
+    for _, m in ipairs(plan.macros) do if type(m) == "table" and type(m.name) == "string" then coming[m.name] = true end end
   end
   local before = {}
   for _, e in ipairs(entries) do
@@ -419,6 +430,144 @@ function mod:Dump()
   return true
 end
 
+-- ---------------------------------------------------------------- the EllesmereUI layout, delivered by git pull
+--
+-- Cesar, 2026-11-10: "we need a better way for better cadence". Swapping EllesmereUI's settings file cost a logout and two file
+-- transfers per change. The layout now ships in the addon folder (data/Layout.lua, written by dev/elle-config) as a list of values
+-- to set in EllesmereUI's saved settings, and is applied here while the game runs:
+--   /qb layout check   how many values differ from the layout
+--   /qb layout apply   write them, remember what was there, and reload the UI so EllesmereUI reads them
+--   /qb layout undo    put the remembered values back, and reload
+-- QB.layoutData = { v = 1, name = "...", sets = { { path = { "profiles", "$profile", ... }, value = ... } }, removes = { { path = {...} } } }
+-- "$profile" stands for EllesmereUI's active profile. This touches EllesmereUI's DATA only, the same values a hand edit of its
+-- settings file would change; none of its code is called.
+-- UNVERIFIED (client only): that EllesmereUI keeps values written this way through the reload and does not write its own back.
+
+local function Copy(v)
+  if type(v) ~= "table" then return v end
+  local out = {}
+  for k, x in pairs(v) do out[k] = Copy(x) end
+  return out
+end
+
+local function Equal(a, b)
+  if type(a) ~= type(b) then return false end
+  if type(a) ~= "table" then
+    if type(a) == "number" then return math.abs(a - b) < 1e-6 end
+    return a == b
+  end
+  for k, x in pairs(a) do if not Equal(x, b[k]) then return false end end
+  for k in pairs(b) do if a[k] == nil then return false end end
+  return true
+end
+
+local function ElleDB()
+  local d = _G.EllesmereUIDB
+  if type(d) ~= "table" then return nil end
+  return d
+end
+
+-- The table that holds the last key of a path, and that key. create = true makes the tables on the way.
+local function Reach(root, path, create)
+  local profile = root.activeProfile or "Default"
+  local t = root
+  for i = 1, #path - 1 do
+    local k = path[i]
+    if k == "$profile" then k = profile end
+    local nx = t[k]
+    if type(nx) ~= "table" then
+      if not create then return nil end
+      nx = {}
+      t[k] = nx
+    end
+    t = nx
+  end
+  local last = path[#path]
+  if last == "$profile" then last = profile end
+  return t, last
+end
+
+local function LayoutChanges(root, data)
+  local n = 0
+  for _, s in ipairs(data.sets or {}) do
+    local t, k = Reach(root, s.path, false)
+    if not t or not Equal(t[k], s.value) then n = n + 1 end
+  end
+  for _, r in ipairs(data.removes or {}) do
+    local t, k = Reach(root, r.path, false)
+    if t and t[k] ~= nil then n = n + 1 end
+  end
+  return n
+end
+
+local function Reload()
+  QB:Say("layout: reloading the UI")
+  if not Try(_G.ReloadUI) then QB:Say("layout: type /reload to finish") end
+end
+
+function mod:LayoutRun(dry)
+  local data, root = QB.layoutData, ElleDB()
+  if type(data) ~= "table" then QB:Say("layout: no layout in the addon folder (data/Layout.lua)"); return false end
+  if not root then QB:Say("layout: EllesmereUI's settings are not loaded"); return false end
+  local n = LayoutChanges(root, data)
+  if dry then
+    QB:Say(string.format("layout check: \"%s\": %d of %d value(s) differ", tostring(data.name or "?"), n, #(data.sets or {}) + #(data.removes or {})))
+    return true
+  end
+  if QB:InCombat() then QB:Say("layout: not in combat"); return false end
+  if n == 0 then QB:Say("layout: already in place, nothing to do"); return true end
+  local undo = {}
+  for _, s in ipairs(data.sets or {}) do
+    local t, k = Reach(root, s.path, true)
+    if not Equal(t[k], s.value) then
+      undo[#undo + 1] = { path = Copy(s.path), had = t[k] ~= nil, old = Copy(t[k]) }
+      t[k] = Copy(s.value)
+    end
+  end
+  for _, r in ipairs(data.removes or {}) do
+    local t, k = Reach(root, r.path, false)
+    if t and t[k] ~= nil then
+      undo[#undo + 1] = { path = Copy(r.path), had = true, old = Copy(t[k]) }
+      t[k] = nil
+    end
+  end
+  mod.db.layoutUndo = { v = 1, name = data.name, profile = root.activeProfile, list = undo }
+  QB:Say(string.format("layout apply: \"%s\": %d value(s) written. /qb layout undo puts them back.", tostring(data.name or "?"), #undo))
+  Reload()
+  return true
+end
+
+function mod:LayoutUndo()
+  local u, root = mod.db and mod.db.layoutUndo, ElleDB()
+  if type(u) ~= "table" or type(u.list) ~= "table" or #u.list == 0 then QB:Say("layout: nothing to undo"); return false end
+  if not root then QB:Say("layout: EllesmereUI's settings are not loaded"); return false end
+  if QB:InCombat() then QB:Say("layout: not in combat"); return false end
+  for i = #u.list, 1, -1 do
+    local e = u.list[i]
+    local t, k = Reach(root, e.path, true)
+    if e.had then t[k] = Copy(e.old) else t[k] = nil end
+  end
+  QB:Say(string.format("layout undo: %d value(s) put back", #u.list))
+  mod.db.layoutUndo = nil
+  Reload()
+  return true
+end
+
+QB:RegisterSlash(mod, "layout", function(rest)
+  local sub = (rest or ""):lower():match("^(%S*)")
+  if sub == "check" then mod:LayoutRun(true)
+  elseif sub == "apply" then mod:LayoutRun(false)
+  elseif sub == "undo" then mod:LayoutUndo()
+  else
+    if sub ~= "" and sub ~= "status" then QB:Usage("/qb layout | check | apply | undo") end
+    local data = QB.layoutData
+    local u = mod.db and mod.db.layoutUndo
+    QB:Say(string.format("layout: %s | undo %s | check, apply, undo",
+      type(data) == "table" and ("\"" .. tostring(data.name or "?") .. "\", " .. (#(data.sets or {}) + #(data.removes or {})) .. " value(s)") or "none in the addon folder",
+      (type(u) == "table" and type(u.list) == "table" and #u.list > 0) and (#u.list .. " value(s)") or "none"))
+  end
+end, "layout: put the EllesmereUI layout shipped with the addon in place (check, apply, undo)")
+
 QB:RegisterSlash(mod, "bars", function(rest)
   local sub = (rest or ""):lower():match("^(%S*)")
   if sub == "dump" then mod:Dump()
@@ -428,10 +577,11 @@ QB:RegisterSlash(mod, "bars", function(rest)
   else
     if sub ~= "" and sub ~= "status" then QB:Usage("/qb bars | dump | check | apply | undo") end
     local entries = PlanSlots()
+    local _, from = Plan()
     local undo = mod.db and mod.db.undo
     local nu = 0
     if type(undo) == "table" and type(undo.slots) == "table" then for _ in pairs(undo.slots) do nu = nu + 1 end end
     QB:Say(string.format("bars: plan %s | dump %s | undo %s | dump, check, apply, undo",
-      entries and (#entries .. " button(s)") or "none", (mod.db and mod.db.dump) and "saved" or "none", nu > 0 and (nu .. " button(s)") or "none"))
+      entries and (#entries .. " button(s) from " .. tostring(from)) or "none", (mod.db and mod.db.dump) and "saved" or "none", nu > 0 and (nu .. " button(s)") or "none"))
   end
 end, "bars: fill the action buttons from a plan written offline (dump, check, apply, undo)")

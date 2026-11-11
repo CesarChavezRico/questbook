@@ -221,8 +221,18 @@ test('map layouts: read the QuestBook map, keep every button off the map, stay o
       }
     }
     const thumbs = els.find((x) => x.key === 'Bar7');
-    assert.strictEqual(thumbs.cells.length, 4, 'two, a gap, and one');
-    assert.strictEqual(L.get(M.db(w), 'profiles', 'Default', 'addons', 'EllesmereUIActionBars', 'bars', 'Bar7', 'alwaysShowButtons'), false);
+    if (style === 'wings') {
+      assert.strictEqual(thumbs.cells.length, 4, 'two, a gap, and one');
+      assert.strictEqual(L.get(M.db(w), 'profiles', 'Default', 'addons', 'EllesmereUIActionBars', 'bars', 'Bar7', 'alwaysShowButtons'), false);
+    } else {
+      // circles: thumb up over thumb down, the index pair also upright, and a larger single button on its own bar
+      const idx = els.find((x) => x.key === 'Bar8'), big = els.find((x) => x.key === 'Bar6');
+      assert.strictEqual(thumbs.cells.length, 2); assert.ok(thumbs.h > thumbs.w * 1.9, 'thumb pair is upright');
+      assert.ok(idx.h > idx.w * 1.9, 'index pair is upright');
+      assert.strictEqual(big.cells.length, 1); near(big.w, thumbs.w, 'the big button is the same size');
+      assert.ok(big.left < thumbs.left && big.top > thumbs.top && big.top < thumbs.top + thumbs.h / 2 + 1, 'and sits left of the two thumbs, between them');
+      assert.strictEqual(L.get(M.db(w), 'profiles', 'Default', 'addons', 'EllesmereUIActionBars', 'bars', 'Bar7', 'alwaysShowButtons'), true);
+    }
   }
 });
 
@@ -246,6 +256,35 @@ test('auras: EllesmereUI takes over buffs and debuffs, with a combat bar built f
   M.setupAuras(v, 'Default', s, plan.auras);
   assert.strictEqual(pab.get('customBuffBars').size, 1);
   assert.strictEqual(L.get(M.db(v), 'profiles', 'Default', 'addons', 'EllesmereUIUnitFrames', 'target', 'onlyPlayerDebuffs'), true);
+});
+
+test('patch: what turns one tree into another, with paths as arrays', () => {
+  const a = L.parse('D = { ["a.b"] = { ["x"] = 1, ["gone"] = 2, ["same"] = { ["k"] = 1 } }, ["old"] = true }').get('D');
+  const b = L.parse('D = { ["a.b"] = { ["x"] = 5, ["same"] = { ["k"] = 1 }, ["new"] = { ["t"] = "v" } } }').get('D');
+  const p = M.patch(a, b);
+  assert.deepStrictEqual(p.sets.map((s) => s.path), [['a.b', 'x'], ['a.b', 'new']]);
+  assert.strictEqual(p.sets[0].value, 5); assert.strictEqual(p.sets[1].value.get('t'), 'v');
+  assert.deepStrictEqual(p.removes.map((r) => r.path), [['a.b', 'gone'], ['old']]);
+  assert.strictEqual(M.patch(a, a).sets.length + M.patch(a, a).removes.length, 0);
+});
+test('emit: the layout and plan files are valid Lua and say what they hold', async () => {
+  const { LuaFactory } = require('wasmoon');
+  const before = 'EllesmereUIDB = { ["activeProfile"] = "Default", ["profiles"] = { ["Default"] = { ["addons"] = { ["B"] = { ["x"] = 1, ["y"] = 2 } } } } }';
+  const after = 'EllesmereUIDB = { ["activeProfile"] = "Default", ["profiles"] = { ["Default"] = { ["addons"] = { ["B"] = { ["x"] = 3, ["t"] = { ["a"] = "q" } } } } } }';
+  const lay = require('../emit-layout.js').emit(before, after, 'n');
+  assert.strictEqual(lay.sets, 2); assert.strictEqual(lay.removes, 1);
+  assert.ok(lay.text.includes('"profiles", "$profile", "addons"'), 'the profile name is written as $profile');
+  const plan = require('../emit-plan.js').emit(require('../plans/thara.js'));
+  const lua = await new LuaFactory().createEngine();
+  try {
+    lua.global.set('LAY', lay.text); lua.global.set('PLAN', plan.text);
+    const r = await lua.doString(`local QB = {}
+      assert(load(LAY))('QuestBook', QB); assert(load(PLAN))('QuestBook', QB)
+      local n = 0 for _ in pairs(QB.planData.slots) do n = n + 1 end
+      return #QB.layoutData.sets .. ' ' .. #QB.layoutData.removes .. ' ' .. QB.layoutData.sets[1].path[2] .. ' ' .. n .. ' ' .. #QB.planData.macros`);
+    assert.strictEqual(r, '2 1 $profile ' + plan.slots + ' 6');
+  } finally { lua.global.close(); }
+  assert.throws(() => require('../emit-plan.js').emit({ name: 'x', macros: [], seats: [[1, 1, { kind: 'macro', name: 'Missing' }]] }), /does not define/);
 });
 
 test('the built page is up to date with src/', () => {

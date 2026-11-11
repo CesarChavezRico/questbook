@@ -322,7 +322,10 @@
     return o;
   }
 
-  const api = { parse, serialize, get, set, equal, toPlain };
+  // One value as Lua source text.
+  function lua(v) { const out = []; writeValue(v, out); return out.join(''); }
+
+  const api = { parse, serialize, get, set, equal, toPlain, lua };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.LuaTable = api;
 })(typeof self !== 'undefined' ? self : this);
@@ -844,8 +847,9 @@
   function layoutBars(vars, profile, scr, spec) {
     const one = scr.onePx, errors = [];
     const els = actionBars(vars, scr, profile);
-    const drawn = spec.sizePx + (isCustomShape(spec.shape) ? Math.round(AB_SHAPE_EXPAND / one) : 0);
+    const grow = isCustomShape(spec.shape) ? Math.round(AB_SHAPE_EXPAND / one) : 0;
     for (const b of spec.bars) {
+      const sizePx = b.sizePx || spec.sizePx, drawn = sizePx + grow;
       const el = els.find((e) => e.key === b.bar);
       if (!el) { errors.push('No action bar called ' + b.bar); continue; }
       const err = setShape(vars, profile, el, spec.shape);
@@ -853,10 +857,10 @@
       const t = abBar(vars, profile, el.key);
       t.set('overrideNumIcons', b.n); t.set('overrideNumRows', 1);
       if (b.dir === 'h') t.delete('orientation'); else t.set('orientation', 'vertical');
-      t.set('buttonWidth', spec.sizePx * one); t.set('buttonHeight', spec.sizePx * one);
+      t.set('buttonWidth', sizePx * one); t.set('buttonHeight', sizePx * one);
       t.set('buttonPadding', (b.pitchPx - drawn) * one);
       t.set('growDirection', 'center'); t.set('alwaysHidden', false); t.set('barVisibility', 'always');
-      if (b.hideEmpty) t.set('alwaysShowButtons', false);
+      t.set('alwaysShowButtons', !b.hideEmpty);
       const long = b.n * drawn + (b.n - 1) * (b.pitchPx - drawn);
       const w = (b.dir === 'h' ? long : drawn) * one, h = (b.dir === 'h' ? drawn : long) * one;
       const o = unplace({ point: 'CENTER', relPoint: 'CENTER' }, Math.round(b.x) * one, Math.round(b.y) * one, w, h, scr);
@@ -914,15 +918,19 @@
     });
     const tOff = first + 3 * p;
     bars.push({ bar: 'Bar5', n: 2, dir: 'h', x: mx - inner(tOff) + S / 2 - (p + S), y: my + tOff - S / 2, pitchPx: p, seat: 'left thumb keys', labels: ['Th', 'Th'] });
-    // the mouse mirrors the keypad: the wheel cross under the target frame with its left
-    // tilt on the circle, the index pair under the map beside the wheel's down button, and
-    // the thumb buttons on the lowest row (the pair, a gap, the single one)
-    const wheelX = inner(first + p) + p;
-    bars.push({ bar: 'Bar9', n: 3, dir: 'v', x: mx + wheelX - S / 2, y: my + first - S / 2, pitchPx: p, seat: 'wheel up, click, down', labels: ['Up', 'Clk', 'Dn'] });
-    bars.push({ bar: 'Bar10', n: 2, dir: 'h', x: mx + wheelX - p - S / 2, y: my + first + p - S / 2, pitchPx: 2 * p, seat: 'wheel tilt left and right, either side of the wheel click', labels: ['<', '>'] });
-    const idxX = Math.min(inner(first + 2 * p), wheelX - 2 * p);
-    bars.push({ bar: 'Bar8', n: 2, dir: 'h', x: mx + idxX - S / 2, y: my + first + 2 * p - S / 2, pitchPx: p, seat: 'index buttons (front, rear)', labels: ['IF', 'IR'] });
-    bars.push({ bar: 'Bar7', n: 4, dir: 'h', x: mx + inner(tOff) - S / 2, y: my + tOff - S / 2, pitchPx: p, hideEmpty: true, empty: [3], seat: 'mouse thumb buttons: 1 and 2 are the pair, 4 is the single one, 3 stays empty', labels: ['Th1', 'Th2', '', 'Th3'] });
+    // The mouse, as Cesar asked after the first client test (2026-11-10): each pair stands
+    // as it does under the hand. From the map outward: the two thumb buttons one above the
+    // other with the big thumb button to their left, level with the gap between them, the two
+    // index buttons one above the other, then the wheel as a cross (up, click, down, a tilt
+    // on each side) with the button that sits below the wheel under it. All the same size.
+    const rowOff = (k) => first + k * p;
+    const col = (k) => Math.max(centre, inner(rowOff(2))) + k * p;
+    const at = (c, r) => ({ x: mx + col(c) - S / 2, y: my + rowOff(r) - S / 2 });
+    bars.push(Object.assign({ bar: 'Bar6', n: 1, dir: 'v', pitchPx: p, seat: 'mouse big thumb button', labels: ['Big'] }, at(0, 2.5)));
+    bars.push(Object.assign({ bar: 'Bar7', n: 2, dir: 'v', pitchPx: p, seat: 'mouse thumb buttons: up, down', labels: ['ThU', 'ThD'] }, at(1, 2)));
+    bars.push(Object.assign({ bar: 'Bar8', n: 2, dir: 'v', pitchPx: p, seat: 'index buttons: front above rear', labels: ['IF', 'IR'] }, at(2, 1)));
+    bars.push(Object.assign({ bar: 'Bar10', n: 2, dir: 'h', pitchPx: 2 * p, seat: 'wheel tilt left and right, either side of the wheel click', labels: ['<', '>'] }, at(3, 1)));
+    bars.push(Object.assign({ bar: 'Bar9', n: 4, dir: 'v', pitchPx: p, seat: 'wheel up, click, down, and the button below the wheel', labels: ['Up', 'Clk', 'Dn', 'Btn'] }, at(4, 0)));
     const frames = [
       { key: 'player', left: mx - reach - fr.player.w, top: my - fr.player.h / 2 },
       { key: 'target', left: mx + reach, top: my - fr.target.h / 2 },
@@ -1136,6 +1144,23 @@
     return skipped;
   }
 
+  // What turns tree a into tree b, as values to set and keys to remove, each with the path
+  // to it as an array (keys may contain dots, so paths are never joined).
+  function patch(a, b, path, out) {
+    out = out || { sets: [], removes: [] }; path = path || [];
+    const keys = new Set();
+    if (a instanceof Map) for (const k of a.keys()) keys.add(k);
+    for (const k of b.keys()) keys.add(k);
+    for (const k of keys) {
+      const va = a instanceof Map ? a.get(k) : undefined, vb = b.get(k);
+      const p = path.concat([k]);
+      if (vb === undefined) out.removes.push({ path: p });
+      else if (vb instanceof Map && va instanceof Map) patch(va, vb, p, out);
+      else if (vb instanceof Map || !Object.is(va, vb)) { if (!(vb instanceof Map) || !L.equal(va, vb)) out.sets.push({ path: p, value: vb }); }
+    }
+    return out;
+  }
+
   // Lists what differs between two trees, as readable lines.
   function diff(a, b, path, out) {
     out = out || []; path = path || '';
@@ -1159,7 +1184,7 @@
   const api = {
     SHAPES, SHAPE_LABELS, THICKNESS, isCustomShape, AB_BARS,
     db, profileName, profileNames, screen, place, unplace, elements, actionBars, cdmBars, unitFrames,
-    setShape, setField, moveTo, diff, honeycomb, handsPlan, HEX_HEIGHT, questbookMap, layoutBars, hugPlan, crownCooldowns, placeAround, slimFrames, setupAuras, setupResources, setMapSkin,
+    setShape, setField, moveTo, diff, patch, honeycomb, handsPlan, HEX_HEIGHT, questbookMap, layoutBars, hugPlan, crownCooldowns, placeAround, slimFrames, setupAuras, setupResources, setMapSkin,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ElleModel = api;

@@ -30,7 +30,7 @@ read_globals = {
   "HybridMinimap_LoadUI", "IsIndoors",
   -- loadout: action buttons, spellbook, macros, bindings
   "C_SpellBook", "C_Spell", "C_Item", "GetActionInfo", "PlaceAction", "PickupAction", "PickupMacro", "PickupItem", "ClearCursor",
-  "GetCursorInfo", "GetMacroIndexByName", "GetNumMacros", "GetMacroInfo", "GetBindingKey", "CreateMacro", "EditMacro", "GetNumShapeshiftForms", "GetShapeshiftFormInfo", "GetActionText",
+  "GetCursorInfo", "GetMacroIndexByName", "GetNumMacros", "GetMacroInfo", "GetBindingKey", "CreateMacro", "EditMacro", "GetNumShapeshiftForms", "GetShapeshiftFormInfo", "GetActionText", "EllesmereUIDB",
   "Minimap", "MinimapCluster", "WorldMapFrame", "AddonCompartmentFrame", "MicroMenu",
   "MicroMenuContainer",
   -- shift-click on a quest puts its link into the chat box
