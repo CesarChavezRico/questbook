@@ -104,9 +104,14 @@ local function ReadSlot(slot)
   local rec = { kind = kind, id = id }
   if kind == "spell" and type(id) == "number" then rec.name = SpellName(id)
   elseif kind == "macro" then
-    -- GetActionInfo gives a macro's index, or with subType "spell" the spell it shows; the name is what a plan uses
-    local okM, name = Try(_G.GetMacroInfo, id)
-    rec.name = okM and Plain(name, "string") or nil
+    -- For a macro, GetActionInfo's id is not reliable: seen on Forever (2026-11-10), a macro that currently resolves to a spell
+    -- reports that spell's id (subType "spell"), not the macro's index. The button's text is the macro's name either way.
+    local okT, text = Try(_G.GetActionText, slot)
+    rec.name = okT and Plain(text, "string") or nil
+    if not rec.name then
+      local okM, name = Try(_G.GetMacroInfo, id)
+      rec.name = okM and Plain(name, "string") or nil
+    end
     rec.sub = Plain(sub, "string")
   end
   return rec
