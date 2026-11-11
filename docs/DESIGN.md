@@ -513,3 +513,11 @@ green by itself there.
   frames are found by the names it gives them (`EABBar_`, `ECME_CDMBar_`, `EllesmereUIUnitFrames_`, `EllesmereUIPlayerAuraBars_`
   and three single frames) and only their alpha is changed. Settings: `/qb overlay anchor | sizes | layer | hud`. The reader keeps
   its old place (the offsets).
+- **The camera in the map loop** (v0.28.2, *written, untested in the client*; Cesar after the first client test of the loop,
+  2026-11-11: "We still zoom to the right when stepping into map mode. lets change that by keeping the char centered but zoom
+  progressivly out ... with the overland being the farthest out the camera will allow"). The maps no longer shift the camera
+  sideways (`mapShift` off; the quest reader keeps its shift). The local map pulls the camera back a step (`zoomLocal`), the
+  overland map as far as it goes (`zoomZone`), and closing restores the player's own zoom. `/qb camera map shift on|off`,
+  `/qb camera map zoom <local> <zone>`. Same test: the overland step faded 46 frames but the cooldown icons stayed, so the game's
+  own cooldown viewers are faded too; and the Menu drawer's background is nearly opaque so the tracking list reads over the quest
+  tracker.

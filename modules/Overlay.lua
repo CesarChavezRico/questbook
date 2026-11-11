@@ -1154,7 +1154,10 @@ end
 -- names it gives them (read in its source, v9.8.4): a prefix per family, plus three single frames. Only their alpha is touched,
 -- as with Blizzard's bars, and it is put back on close. A rename in a later EllesmereUI simply leaves that family visible.
 local ELLE_PREFIXES = { "EABBar_", "ECME_CDMBar_", "EllesmereUIUnitFrames_", "EllesmereUIPlayerAuraBars_" }
-local ELLE_SINGLE = { "EllesmereUIResourceBarsFrame", "ERB_CastBarFrame", "ERB_GCDBarFrame" }
+local ELLE_SINGLE = { "EllesmereUIResourceBarsFrame", "ERB_CastBarFrame", "ERB_GCDBarFrame",
+  -- the game's own cooldown viewers: EllesmereUI's cooldown rows show THEIR icons, which stayed up in the first client test
+  -- (2026-11-11) when only EllesmereUI's row frames were faded
+  "EssentialCooldownViewer", "UtilityCooldownViewer", "BuffIconCooldownViewer", "BuffBarCooldownViewer" }
 local elleNames, elleAt = nil, 0
 
 local function ElleHudNames()

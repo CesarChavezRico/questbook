@@ -9,6 +9,7 @@ local writes = 0
 local rawSet = C_CVar.SetCVar
 C_CVar.SetCVar = function(n, v) if n == "test_cameraOverShoulder" then writes = writes + 1 end return rawSet(n, v) end
 
+slash("camera map shift on")      -- this scenario is about the sideways shift meeting a dialogue; since v0.28.2 the maps do not shift by default
 slash("overlay local"); __tick(40, 0.05)
 assert(C.engaged and not C.easing, "engaged and settled")
 local shifted = tonumber(__cvar("test_cameraOverShoulder"))

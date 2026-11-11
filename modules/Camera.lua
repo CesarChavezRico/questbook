@@ -24,7 +24,12 @@ local mod = QB:NewModule("camera", {
   strength = 0.5,     -- multiplier (times side); 1.0 is Dialogue UI's full shift
   side = 1,           -- +1 / -1; which sign moves the character left is UNVERIFIED, see /qb camera flip
   zoomGoal = 0,       -- 0 = off, else an ABSOLUTE camera zoom to go to while shifted (wins over zoomOut)
-  zoomOut = 3,        -- RELATIVE: zoom out by this much while shifted, back when it ends (0 = off)
+  zoomOut = 3,        -- RELATIVE: zoom out by this much while shifted, back when it ends (0 = off). Used when mapShift is on.
+  -- The map loop (Cesar, 2026-11-11: "We still zoom to the right when stepping into map mode. lets change that by keeping the char
+  -- centered but zoom progressivly out, with the zoom out of the map, with the overland being the farthest out the camera will allow"):
+  mapShift = false,   -- the sideways shift for the MAPS (the quest reader keeps its shift); off = the character stays centred
+  zoomLocal = 8,      -- RELATIVE zoom out while the large local map is open
+  zoomZone = 50,      -- RELATIVE zoom out while the overland map is open; 50 is more than any camera allows, so: as far as it goes
   readerZoom = 3,     -- the same, while the QUEST READER is what is open (negative zooms IN, 0 = no zoom change)
   ease = 0.35,        -- seconds
   shift = true,       -- /qb camera on|off: master switch for the shift itself
@@ -93,6 +98,9 @@ end
 -- ---------------------------------------------------------------- target
 
 function mod:Target()
+  -- a map with mapShift off (or the master switch off) keeps the character centred: no sideways offset, only the zoom
+  local map = self.overlayState ~= "off"
+  if (map and not self.db.mapShift) or not self.db.shift then return 0 end
   local mult = self.db.strength * self.db.side
   if Mounted() then mult = mult * self.db.mountMult end
   return OffsetByZoom(Zoom()) * mult
@@ -252,7 +260,10 @@ end
 -- what is open, else the map's.
 function mod:RelativeZoom()
   if self.readerOpen and self.overlayState == "off" then return tonumber(self.db.readerZoom) or 0 end
-  return tonumber(self.db.zoomOut) or 0
+  if self.db.mapShift then return tonumber(self.db.zoomOut) or 0 end
+  if self.overlayState == "local" then return tonumber(self.db.zoomLocal) or 0 end
+  if self.overlayState == "zone" then return tonumber(self.db.zoomZone) or 0 end
+  return 0
 end
 
 function mod:Engage()
@@ -275,9 +286,10 @@ function mod:Engage()
     if type(goal) == "number" and goal > 0 then
       self.oldZoom = Zoom()
       self:ZoomTo(goal)
-    elseif out ~= 0 then
+    else
+      -- remembered even when this first step does not zoom: the next one (local map -> overland map) starts from it
       self.oldZoom = Zoom()
-      self:ZoomTo(self.oldZoom + out)      -- the client clamps at its own limits
+      if out ~= 0 then self:ZoomTo(self.oldZoom + out) end      -- the client clamps at its own limits
     end
   elseif self.oldZoom and not (type(self.db.zoomGoal) == "number" and self.db.zoomGoal > 0) then
     -- already shifted and something changed hands (the map and the quest reader trade places, each with its own
@@ -300,7 +312,8 @@ function mod:Release(immediate)
 end
 
 function mod:Sync()
-  local want = self.db.shift and (self.overlayState ~= "off" or self.readerOpen)
+  -- a map always engages (for its zoom); the reader only while the shift is on
+  local want = self.overlayState ~= "off" or (self.db.shift and self.readerOpen)
   if want then
     self:Engage()
   elseif self.engaged then
@@ -404,8 +417,8 @@ end, mod)
 local function Status()
   local db = mod.db
   return string.format(
-    "camera: shift=%s strength=%.2f side=%+d zoomOut=%s readerZoom=%s zoomGoal=%s ease=%.2fs mountMult=%.2f | overlay=%s engaged=%s offset=%.3f%s",
-    db.shift and "on" or "off", db.strength, db.side,
+    "camera: shift=%s maps: shift=%s zoom local=%s zone=%s | strength=%.2f side=%+d zoomOut=%s readerZoom=%s zoomGoal=%s ease=%.2fs mountMult=%.2f | overlay=%s engaged=%s offset=%.3f%s",
+    db.shift and "on" or "off", db.mapShift and "on" or "off", tostring(db.zoomLocal), tostring(db.zoomZone), db.strength, db.side,
     (db.zoomOut and db.zoomOut > 0) and tostring(db.zoomOut) or "off",
     (db.readerZoom and db.readerZoom ~= 0) and tostring(db.readerZoom) or "off",
     (db.zoomGoal and db.zoomGoal > 0) and tostring(db.zoomGoal) or "off",
@@ -435,6 +448,19 @@ QB:RegisterSlash(mod, "camera", function(rest)
     -- effect the next time the overlay opens, or now if it is open
     db.zoomOut = math.max(0, math.min(n, 30))
     if mod.engaged and not mod.releasing and mod.oldZoom then mod:ZoomTo(mod.oldZoom + db.zoomOut) end
+  elseif sub == "map" then
+    -- /qb camera map shift on|off | zoom <local> <zone>
+    local what, v1, v2 = arg:lower():match("^(%S*)%s*(%S*)%s*(%S*)$")
+    if what == "shift" and (v1 == "on" or v1 == "off") then
+      db.mapShift = (v1 == "on")
+      mod:Sync()
+    elseif what == "zoom" and tonumber(v1) then
+      db.zoomLocal = math.max(0, math.min(tonumber(v1), 50))
+      if tonumber(v2) then db.zoomZone = math.max(0, math.min(tonumber(v2), 50)) end
+      if mod.engaged and not mod.releasing and mod.oldZoom and mod.overlayState ~= "off" then mod:ZoomTo(mod.oldZoom + mod:RelativeZoom()) end
+    else
+      QB:Usage("/qb camera map shift on|off | zoom <local> <zone>   (how far the camera pulls back for each map; 50 = as far as it goes)")
+    end
   elseif sub == "zoom" and n then
     db.zoomGoal = math.max(0, n)
   elseif sub == "ease" and n then
@@ -449,7 +475,7 @@ QB:RegisterSlash(mod, "camera", function(rest)
     db.shift = true
     mod:Sync()
   elseif sub ~= "" and sub ~= "status" then
-    QB:Usage("/qb camera flip | strength <n> | zoomout <n> | readerzoom <n> | zoom <n|0> | ease <s> | mount <n> | on | off")
+    QB:Usage("/qb camera map shift on|off | map zoom <local> <zone> | flip | strength <n> | zoomout <n> | readerzoom <n> | zoom <n|0> | ease <s> | mount <n> | on | off")
   end
   QB:Say(Status())
 end, "camera shift tied to the map overlay and the quest reader (flip | strength <n> | zoomout <n> | readerzoom <n> | zoom <n> | on | off)")

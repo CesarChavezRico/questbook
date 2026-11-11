@@ -26,10 +26,10 @@ local C = QB.modules.camera
 __tick(40, 0.05)                 -- (the camera is still letting go after the reader closed)
 local z0 = GetCameraZoom()
 QB:Fire("overlay_state", "local"); __tick(30, 0.05)
-assert(math.abs(GetCameraZoom() - (z0 + 3)) < 0.01, "zoomed out by 3, got " .. GetCameraZoom() - z0)
+assert(math.abs(GetCameraZoom() - (z0 + 8)) < 0.01, "the local map zooms out by 8, got " .. GetCameraZoom() - z0)
 QB:Fire("overlay_state", "off"); __tick(30, 0.05)
 assert(math.abs(GetCameraZoom() - z0) < 0.01, "zoom restored, got " .. GetCameraZoom() - z0)
-slash("camera zoomout 0"); QB:Fire("overlay_state", "local"); __tick(30, 0.05)
-assert(math.abs(GetCameraZoom() - z0) < 0.01, "zoomout 0 = no zoom change")
+slash("camera map zoom 0 0"); QB:Fire("overlay_state", "local"); __tick(30, 0.05)
+assert(math.abs(GetCameraZoom() - z0) < 0.01, "map zoom 0 = no zoom change")
 QB:Fire("overlay_state", "off"); __tick(30, 0.05)
 for _, l in ipairs(__take()) do io.write(l .. "\n") end
