@@ -30,8 +30,8 @@ local mod = QB:NewModule("overlay", {
   -- The map loop (Cesar, 2026-11-11): the small map rests inside the HUD; the first press opens the large local map ON TOP of the HUD,
   -- the second replaces the HUD with the overland map, the third goes back. Both large maps open on the small map's spot.
   anchor = "corner",   -- where the large maps open: "corner" = centred on the small map | "offset" = offsetX / offsetY (the old way)
-  localSize = 0.45,    -- height of the large local map, fraction of screen height (anchor "corner")
-  zoneSize = 0.5,      -- height of the overland map, likewise
+  localSize = 0.62,    -- height of the large local map, fraction of screen height (anchor "corner")
+  zoneSize = 0.78,     -- height of the overland map, likewise (Cesar, first client test 2026-11-11: both "larger" / "bigger")
   hudLocal = "keep",   -- the HUD while the local map is open: "keep" (the map lies over it) | "hide"
   localLayer = "over", -- the large local map draws "over" the HUD (Cesar: "a render on top of our HUD") | "under" it, as a background
   hudZone = "hide",    -- the HUD while the overland map is open: "hide" (the map takes its place) | "keep"
@@ -1154,7 +1154,10 @@ end
 -- names it gives them (read in its source, v9.8.4): a prefix per family, plus three single frames. Only their alpha is touched,
 -- as with Blizzard's bars, and it is put back on close. A rename in a later EllesmereUI simply leaves that family visible.
 local ELLE_PREFIXES = { "EABBar_", "ECME_CDMBar_", "EllesmereUIUnitFrames_", "EllesmereUIPlayerAuraBars_" }
-local ELLE_SINGLE = { "EllesmereUIResourceBarsFrame", "ERB_CastBarFrame", "ERB_GCDBarFrame" }
+local ELLE_SINGLE = { "EllesmereUIResourceBarsFrame", "ERB_CastBarFrame", "ERB_GCDBarFrame",
+  -- the game's own cooldown viewers: EllesmereUI's cooldown rows show THEIR icons, which stayed up in the first client test
+  -- (2026-11-11) when only EllesmereUI's row frames were faded
+  "EssentialCooldownViewer", "UtilityCooldownViewer", "BuffIconCooldownViewer", "BuffBarCooldownViewer" }
 local elleNames, elleAt = nil, 0
 
 local function ElleHudNames()
@@ -1440,6 +1443,12 @@ function mod:OnInit()
   if (db.v or 0) < 4 then
     if db.shape == "rect" then db.shape = "circle" end
     db.v = 4
+  end
+  -- v0.28.3: both large maps grew after the first client test. The first sizes (0.45 and 0.5) were only v0.28.0's defaults.
+  if (db.v or 0) < 5 then
+    if db.localSize == 0.45 then db.localSize = 0.62 end
+    if db.zoneSize == 0.5 then db.zoneSize = 0.78 end
+    db.v = 5
   end
 end
 

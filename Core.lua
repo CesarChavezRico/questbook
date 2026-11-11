@@ -10,7 +10,7 @@
 
 local ADDON, QB = ...
 QB.name = ADDON
-QB.version = "0.28.1"
+QB.version = "0.28.3"
 QB.modules = {}      -- name -> module table
 QB.order = {}        -- registration order
 QB.errors = {}       -- module name -> { msg = string, count = number }

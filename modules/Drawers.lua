@@ -511,7 +511,8 @@ local function EnsureBuilt()
 
   local bg = p:CreateTexture(nil, "BACKGROUND")
   bg:SetAllPoints(p)
-  bg:SetColorTexture(0.04, 0.04, 0.04, 0.45)
+  -- nearly opaque: the tracking list is text over whatever lies behind (in the first client test, 2026-11-11, the quest tracker)
+  bg:SetColorTexture(0.04, 0.04, 0.04, 0.9)
   p.bg = bg
 
   p:SetScript("OnShow", function(self)
