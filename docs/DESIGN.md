@@ -494,3 +494,7 @@ green by itself there.
   and we are missing out on functionality"). The client's own quest areas are back on the minimap. Because the old module had
   switched them off through the "Quest POIs" tracking filter and remembered it in saved settings, the overlay switches the filter
   back on once and removes the leftovers. Everything above about `markers` is history.
+- **Minimap tracking in the Menu drawer** (v0.27.0, *written, untested in the client*; Cesar, 2026-11-11: "I think we need a section
+  on our top right menu for the minimap tracking options"). The game's tracking button lives on the minimap cluster, which the overlay
+  hides. The drawer now lists every entry of the game's tracking menu under the micro menu and bags; a click switches it.
+  `/qb drawers tracking on|off`.
