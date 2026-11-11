@@ -504,3 +504,12 @@ green by itself there.
   `dev/elle-config/plans/guide-rxp.js`): the guide window in the upper left, the helper windows under it, quest and gossip automation
   off so the quest text is still heard. `/qb layout` now writes to more than one addon's settings; RestedXP's are an AceDB table, and
   its windows are asked to move after the write because it saves their live places when the UI unloads.
+
+- **The map loop** (v0.28.0, *written, untested in the client*; Cesar, 2026-11-11: "let's explore the idea of rendering on a loop
+  (like before) with the first step being a render on top of our HUD, blending with the rest of the UI, and a second more detailed
+  being removing our HUD and replacing it with the map"). Rest: the small map inside the HUD. First press: the large local map, a
+  circle on the small map's spot, drawn over the HUD, which stays. Second press: the overland map in the same place, and the HUD
+  fades (Cesar: "nothing" stays). Third: back. The HUD is EllesmereUI's now, which has no way for another addon to hide it, so its
+  frames are found by the names it gives them (`EABBar_`, `ECME_CDMBar_`, `EllesmereUIUnitFrames_`, `EllesmereUIPlayerAuraBars_`
+  and three single frames) and only their alpha is changed. Settings: `/qb overlay anchor | sizes | layer | hud`. The reader keeps
+  its old place (the offsets).
