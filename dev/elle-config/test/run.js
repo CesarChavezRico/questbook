@@ -221,8 +221,17 @@ test('map layouts: read the QuestBook map, keep every button off the map, stay o
       }
     }
     const thumbs = els.find((x) => x.key === 'Bar7');
-    assert.strictEqual(thumbs.cells.length, 4, 'two, a gap, and one');
-    assert.strictEqual(L.get(M.db(w), 'profiles', 'Default', 'addons', 'EllesmereUIActionBars', 'bars', 'Bar7', 'alwaysShowButtons'), false);
+    if (style === 'wings') {
+      assert.strictEqual(thumbs.cells.length, 4, 'two, a gap, and one');
+      assert.strictEqual(L.get(M.db(w), 'profiles', 'Default', 'addons', 'EllesmereUIActionBars', 'bars', 'Bar7', 'alwaysShowButtons'), false);
+    } else {
+      // circles: thumb up over thumb down, the index pair also upright, and a larger single button on its own bar
+      const idx = els.find((x) => x.key === 'Bar8'), big = els.find((x) => x.key === 'Bar6');
+      assert.strictEqual(thumbs.cells.length, 2); assert.ok(thumbs.h > thumbs.w * 1.9, 'thumb pair is upright');
+      assert.ok(idx.h > idx.w * 1.9, 'index pair is upright');
+      assert.strictEqual(big.cells.length, 1); assert.ok(big.w > thumbs.w * 1.15, 'the big button is bigger');
+      assert.strictEqual(L.get(M.db(w), 'profiles', 'Default', 'addons', 'EllesmereUIActionBars', 'bars', 'Bar7', 'alwaysShowButtons'), true);
+    }
   }
 });
 
