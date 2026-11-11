@@ -1,4 +1,7 @@
 __fire("ADDON_LOADED", "QuestBook"); __loggedIn = true; __fire("PLAYER_LOGIN")
+
+-- these assertions are about the maps as they were before the map loop (v0.28.0): placed by offsets, rectangular, HUD hidden in both
+SlashCmdList.QUESTBOOK("overlay anchor offset"); SlashCmdList.QUESTBOOK("overlay shape rect"); SlashCmdList.QUESTBOOK("overlay hud local hide"); __take()
 local function slash(s) SlashCmdList.QUESTBOOK(s) end
 local function flush(tag) for _, l in ipairs(__take()) do io.write(tag .. " | " .. l .. "\n") end end
 local O = QB.modules.overlay
@@ -78,7 +81,9 @@ print("off ok")
 -- bars setting
 slash("overlay bars all"); slash("overlay local"); __tick(3)
 a1, a2, a3 = barsAlpha(); assert(a3 == 0, "status bars hidden with bars=all")
-slash("overlay bars none"); a1, a2, a3 = barsAlpha(); assert(a1 == 1 and a3 == 1, "bars=none restores")
+slash("overlay hud local keep"); a1, a2, a3 = barsAlpha(); assert(a1 == 1 and a3 == 1, "hud local keep restores (the maps follow `hud`, the reader follows `bars`)")
+slash("overlay hud local hide"); a1 = barsAlpha(); assert(a1 == 0, "and hide fades them again")
+slash("overlay hud what"); __take()
 slash("overlay bars actions")
 slash("overlay off")
 

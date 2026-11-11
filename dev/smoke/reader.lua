@@ -22,8 +22,8 @@ local tUIPS = 0
 for _, n in ipairs(UISpecialFrames) do if n == "QuestBookReader" then tUIPS = 1 end end
 assert(tUIPS == 1, "Esc closes it (a UISpecialFrame)")
 
--- it sits where the big map sits: same centre, same height
-local ow, oh, ocx, ocy = O:Geometry()
+-- it sits where the big map used to sit (the offsets): since the map loop (v0.28.0) the maps open on the small map, the reader stays
+local ow, oh, ocx, ocy = O:ReaderRect(1)
 local p = { R:GetPoint(1) }
 assert(p[1] == "CENTER" and p[2] == UIParent, "centred on the screen")
 assert(math.abs(p[4] - ocx) <= u and math.abs(p[5] - ocy) <= u, ("same centre as the map: %.2f,%.2f vs %.2f,%.2f"):format(p[4], p[5], ocx, ocy))
@@ -82,13 +82,15 @@ assert(bar:GetAlpha() == 1, "bars visible with nothing open")
 QB:Call("questlog", "Open", 100); __tick(3, 0.05)
 assert(bar:GetAlpha() == 0, "bars hidden while the reader is open")
 O:Cycle(); __tick(3, 0.05)
-assert(O.state == "local" and bar:GetAlpha() == 0, "hidden through the swap to the map")
+assert(O.state == "local" and bar:GetAlpha() == 1, "the local map lies over the HUD: the bars are back (map loop, v0.28.0)")
 QB:Call("questlog", "Open", 100); __tick(3, 0.05)
 assert(R:IsShown() and bar:GetAlpha() == 0, "and through the swap back")
 R:Hide(); __tick(3, 0.05)
 assert(bar:GetAlpha() == 1, "visible again when the reader closes")
 QB:Call("questlog", "Open", 100); O:Cycle(); __tick(3, 0.05)
-assert(not R:IsShown() and bar:GetAlpha() == 0, "the map keeps them hidden when it takes over")
+assert(not R:IsShown() and bar:GetAlpha() == 1, "the local map that takes over lies over the HUD: the bars are back")
+O:SetState("zone"); __tick(3, 0.05)
+assert(bar:GetAlpha() == 0, "the overland map hides them")
 O:SetState("off"); __tick(3, 0.05)
 assert(bar:GetAlpha() == 1, "and gives them back")
 QB:Call("questlog", "Open", 100)

@@ -26,7 +26,15 @@ local mod = QB:NewModule("overlay", {
   size = 0.62,         -- panel height, fraction of screen (UIParent) height
   offsetX = 0.17,      -- panel centre, fraction of screen width, from centre toward the right
   offsetY = 0.02,      -- panel centre, fraction of screen height, from centre upward
-  shape = "rect",      -- "rect" | "circle"
+  shape = "circle",    -- "rect" | "circle"
+  -- The map loop (Cesar, 2026-11-11): the small map rests inside the HUD; the first press opens the large local map ON TOP of the HUD,
+  -- the second replaces the HUD with the overland map, the third goes back. Both large maps open on the small map's spot.
+  anchor = "corner",   -- where the large maps open: "corner" = centred on the small map | "offset" = offsetX / offsetY (the old way)
+  localSize = 0.45,    -- height of the large local map, fraction of screen height (anchor "corner")
+  zoneSize = 0.5,      -- height of the overland map, likewise
+  hudLocal = "keep",   -- the HUD while the local map is open: "keep" (the map lies over it) | "hide"
+  localLayer = "over", -- the large local map draws "over" the HUD (Cesar: "a render on top of our HUD") | "under" it, as a background
+  hudZone = "hide",    -- the HUD while the overland map is open: "hide" (the map takes its place) | "keep"
   aspect = 1.25,       -- Zone rect width / height (the minimap is always square; circle is 1)
   localAlpha = 0.55,
   zoneAlpha = 0.45,
@@ -260,12 +268,22 @@ end
 function mod:Geometry()
   local db = self.db
   local W, H = UIParent:GetWidth(), UIParent:GetHeight()
-  local h = math.max(64, clamp(tonumber(db.size) or 0.62, 0.1, 1.5) * H)
+  local corner = db.anchor == "corner"
+  local size = db.size
+  if corner then size = (self.mode == "local") and db.localSize or db.zoneSize end
+  local h = math.max(64, clamp(tonumber(size) or 0.5, 0.1, 1.5) * H)
   local aspect = 1
   -- the minimap is ALWAYS square: a stretched widget put the ground and the blips on different
   -- scales (the first client run showed pins off in position and direction)
   if db.shape ~= "circle" and self.mode ~= "local" then aspect = clamp(tonumber(db.aspect) or 1.25, 0.5, 3) end
-  return h * aspect, h, (tonumber(db.offsetX) or 0) * W, (tonumber(db.offsetY) or 0) * H
+  local w = h * aspect
+  if not corner then return w, h, (tonumber(db.offsetX) or 0) * W, (tonumber(db.offsetY) or 0) * H end
+  -- centred on the small map (its top-right corner hangs cornerX, cornerY from the screen's), then kept on screen
+  local s = math.max(48, clamp(tonumber(db.cornerSize) or 0.16, 0.05, 0.5) * H)
+  local cx = W / 2 + (tonumber(db.cornerX) or -24) - s / 2
+  local cy = H / 2 + (tonumber(db.cornerY) or -44) - s / 2
+  local mx, my = math.max(0, W / 2 - w / 2), math.max(0, H / 2 - h / 2)
+  return w, h, clamp(cx, -mx, mx), clamp(cy, -my, my)
 end
 
 -- The quest reader sits where the big map sits: the same centre and height; its width is its own (a page).
@@ -453,7 +471,8 @@ function mod:LocalUpdate()
     end,
     function(x, orig) x:SetSize(orig[1], orig[2]) end)
   TAlpha(set, "mm.alpha", mm, self:LocalAlpha())
-  TStrata(set, "mm.strata", mm, "LOW")
+  -- the small map and an "under" local map sit below the HUD; an "over" local map is drawn above it (translucent, click-through)
+  TStrata(set, "mm.strata", mm, (self.host == "big" and self.db.localLayer ~= "under") and "HIGH" or "LOW")
   TLevel(set, "mm.level", mm, panel:GetFrameLevel() + 1)
   -- click-through: the widget, its wheel, and the small zoom hit areas
   TMouse(set, "mm.mouse", mm, false)
@@ -1130,17 +1149,55 @@ function mod:ReaderOpen(on, opts)
   end
 end
 
+-- EllesmereUI's HUD (Cesar plays with its bars, frames, cooldown rows and resource bars; 2026-11-11: when the overland map replaces
+-- the HUD, "nothing" of it stays). EllesmereUI offers no way for another addon to hide these, so they are found by the global
+-- names it gives them (read in its source, v9.8.4): a prefix per family, plus three single frames. Only their alpha is touched,
+-- as with Blizzard's bars, and it is put back on close. A rename in a later EllesmereUI simply leaves that family visible.
+local ELLE_PREFIXES = { "EABBar_", "ECME_CDMBar_", "EllesmereUIUnitFrames_", "EllesmereUIPlayerAuraBars_" }
+local ELLE_SINGLE = { "EllesmereUIResourceBarsFrame", "ERB_CastBarFrame", "ERB_GCDBarFrame" }
+local elleNames, elleAt = nil, 0
+
+local function ElleHudNames()
+  local now = (type(GetTime) == "function" and GetTime()) or 0
+  if elleNames and now - elleAt < 30 then return elleNames end
+  local out = {}
+  for _, name in ipairs(ELLE_SINGLE) do if G(name) then out[#out + 1] = name end end
+  for name, obj in pairs(_G) do
+    if type(name) == "string" and type(obj) == "table" then
+      for _, prefix in ipairs(ELLE_PREFIXES) do
+        if name:sub(1, #prefix) == prefix and type(obj.SetAlpha) == "function" and type(obj.GetAlpha) == "function" then
+          out[#out + 1] = name
+          break
+        end
+      end
+    end
+  end
+  elleNames, elleAt = out, now
+  return out
+end
+
+-- Should the HUD be hidden right now, and for whom: the quest reader hides the bars as before (setting `bars`); a map mode
+-- follows hudLocal / hudZone.
+function mod:HudHidden()
+  if self.readerOn then return self.db.bars ~= "none", "reader" end
+  if self.state == "local" then return self.db.hudLocal == "hide", "map" end
+  if self.state == "zone" then return self.db.hudZone ~= "keep", "map" end
+  return false
+end
+
 -- Action bars are faded to alpha 0 (not hidden): SetAlpha is not protected, so it is also
 -- safe to undo from the combat-start path, and Edit Mode keeps its own show/hide state.
 function mod:ApplyBars(on)
   local set = self.barTweaks
-  local mode = self.db.bars
-  if not on or mode == "none" then
+  local hide, why = self:HudHidden()
+  if not on or not hide then
     if #set.order > 0 then TweakUndoAll(set) end
+    self.barsFound = 0
     return
   end
   local lists = { BAR_FRAMES.actions }
-  if mode == "all" then lists[#lists + 1] = BAR_FRAMES.status end
+  if self.db.bars == "all" then lists[#lists + 1] = BAR_FRAMES.status end
+  if why == "map" then lists[#lists + 1] = ElleHudNames() end
   local found = 0
   for _, list in ipairs(lists) do
     for _, name in ipairs(list) do
@@ -1379,6 +1436,11 @@ function mod:OnInit()
     if db.cornerMask == "stock" then db.cornerMask = "soft" end
     db.v = 3
   end
+  -- v0.28.0, the map loop: the large maps are circles that open on the small map. A saved "rect" was only the old default.
+  if (db.v or 0) < 4 then
+    if db.shape == "rect" then db.shape = "circle" end
+    db.v = 4
+  end
 end
 
 -- The markers module is retired (Cesar, 2026-11-11: "we should retire the quest's markers ... we are missing out on functionality").
@@ -1477,6 +1539,8 @@ local function Status()
   s = s .. string.format(" | corner=%s host=%s size=%.2f pos=%d,%d alpha=%.2f rotate=%s mask=%s",
     db.corner and "on" or "off", tostring(mod.host), db.cornerSize, db.cornerX, db.cornerY,
     db.cornerAlpha, db.cornerRotate and "on" or "off", db.cornerMask)
+  s = s .. string.format(" | loop: anchor=%s layer=%s sizes=%.2f/%.2f hud local=%s zone=%s (%d frame(s) faded)",
+    tostring(db.anchor), tostring(db.localLayer), tonumber(db.localSize) or 0, tonumber(db.zoneSize) or 0, tostring(db.hudLocal), tostring(db.hudZone), #mod.barTweaks.order)
   if mod.lastError then s = s .. " | last error: " .. mod.lastError end
   return s
 end
@@ -1558,6 +1622,29 @@ QB:RegisterSlash(mod, "overlay", function(rest)
     if n1 > 1.5 then n1 = n1 / 100 end      -- allow percent
     db.size = clamp(n1, 0.1, 1.5)
     mod:Layout()
+  elseif sub == "anchor" and (arg == "corner" or arg == "offset") then
+    db.anchor = arg
+    mod:Layout()
+  elseif sub == "sizes" and n1 then
+    if n1 > 1.5 then n1 = n1 / 100 end
+    db.localSize = clamp(n1, 0.1, 1.5)
+    if n2 then
+      if n2 > 1.5 then n2 = n2 / 100 end
+      db.zoneSize = clamp(n2, 0.1, 1.5)
+    end
+    mod:Layout()
+  elseif sub == "layer" and (arg == "over" or arg == "under") then
+    db.localLayer = arg
+    if mod.localOn then mod:LocalUpdate() end
+  elseif sub == "hud" then
+    local which, what = arg:match("^(%S*)%s*(%S*)$")
+    if (which == "local" or which == "zone") and (what == "keep" or what == "hide") then
+      mod:ApplyBars(false)
+      if which == "local" then db.hudLocal = what else db.hudZone = what end
+      mod:ApplyBars(mod:BarsWanted())
+    else
+      QB:Usage("/qb overlay hud local|zone keep|hide   (what happens to the HUD while that map is open)")
+    end
   elseif sub == "aspect" and n1 then
     db.aspect = clamp(n1, 0.5, 3)
     mod:Layout()
@@ -1626,7 +1713,7 @@ QB:RegisterSlash(mod, "overlay", function(rest)
     Diag()
     return
   elseif sub ~= "" and sub ~= "status" then
-    QB:Usage("/qb overlay corner ... (the small minimap) | cycle | off | local | zone | shape rect|circle | size <n> | aspect <n> | pos <x> <y> | alpha <local> [zone] | zoom <n> | rotate on|off | ground hybrid|native|auto | bars actions|all|none | icons <n> | mask | diag")
+    QB:Usage("/qb overlay corner ... (the small minimap) | cycle | off | local | zone | anchor corner|offset | sizes <local> [zone] | layer over|under | hud local|zone keep|hide | shape rect|circle | size <n> | aspect <n> | pos <x> <y> | alpha <local> [zone] | zoom <n> | rotate on|off | ground hybrid|native|auto | bars actions|all|none | icons <n> | mask | diag")
   end
   QB:Say(Status())
 end, "map overlay (cycle | off | local | zone | shape | size | alpha | rotate | ground | bars | icons | mask | diag)")

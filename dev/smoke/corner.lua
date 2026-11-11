@@ -1,4 +1,7 @@
 __fire("ADDON_LOADED", "QuestBook"); __loggedIn = true; __fire("PLAYER_LOGIN")
+
+-- these assertions are about the maps as they were before the map loop (v0.28.0): placed by offsets, rectangular, HUD hidden in both
+SlashCmdList.QUESTBOOK("overlay anchor offset"); SlashCmdList.QUESTBOOK("overlay shape rect"); SlashCmdList.QUESTBOOK("overlay hud local hide"); __take()
 local function slash(s) SlashCmdList.QUESTBOOK(s) end
 local function flush(tag) for _, l in ipairs(__take()) do io.write(tag .. " | " .. l .. "\n") end end
 local O = QB.modules.overlay
