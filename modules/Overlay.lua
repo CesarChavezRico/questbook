@@ -1126,7 +1126,7 @@ function mod:ReaderOpen(on, opts)
   self:ApplyUnitFrames()
   if self.cornerPanel then
     self.cornerPanel:SetShown(self:CornerShown())
-    QB:Fire("overlay_host", self.host)      -- the markers follow the minimap's visibility
+    QB:Fire("overlay_host", self.host)
   end
 end
 
@@ -1381,7 +1381,33 @@ function mod:OnInit()
   end
 end
 
+-- The markers module is retired (Cesar, 2026-11-11: "we should retire the quest's markers ... we are missing out on functionality").
+-- It kept the client's quest areas off the minimap through the "Quest POIs" tracking filter, and remembered that in its saved
+-- settings. Those settings outlive the module, so the filter is switched back on here, once, and the leftovers removed.
+-- Returns true when there is nothing (left) to do.
+local QUEST_POIS = 65536        -- Enum.MinimapTrackingFilter.QuestPOIs
+local function GiveBackQuestAreas()
+  local all = QB.db and QB.db.mod
+  local old = type(all) == "table" and all.markers
+  if type(old) ~= "table" then return true end
+  if not (old.areasBackup or old.areas == "hidden") then all.markers = nil; return true end
+  if not (C_Minimap and C_Minimap.GetNumTrackingTypes and C_Minimap.GetTrackingFilter and C_Minimap.SetTracking) then return false end
+  local okN, n = pcall(C_Minimap.GetNumTrackingTypes)
+  if not (okN and type(n) == "number") then return false end
+  local want = (Enum and Enum.MinimapTrackingFilter and Enum.MinimapTrackingFilter.QuestPOIs) or QUEST_POIS
+  for i = 1, n do
+    local ok, f = pcall(C_Minimap.GetTrackingFilter, i)
+    if ok and type(f) == "table" and f.filterID == want then
+      if pcall(C_Minimap.SetTracking, i, true) then all.markers = nil; return true end
+      return false
+    end
+  end
+  return false                  -- the tracking list is not there yet (early in login): try again later
+end
+mod.GiveBackQuestAreas = GiveBackQuestAreas
+
 function mod:OnEnable()
+  if not GiveBackQuestAreas() then self.areasOwed = true end
   self.state = "off"
   self:EnsurePanel()
   self:LayoutPanel()
@@ -1417,6 +1443,8 @@ mod.events.PLAYER_REGEN_ENABLED = function(self)
     self:ReapplyZone()
   end
 end
+mod.events.PLAYER_ENTERING_WORLD = function(self) if self.areasOwed and GiveBackQuestAreas() then self.areasOwed = nil end end
+mod.events.MINIMAP_UPDATE_TRACKING = function(self) if self.areasOwed and GiveBackQuestAreas() then self.areasOwed = nil end end
 mod.events.ZONE_CHANGED_INDOORS = function(self) if self.localOn then self:ApplyGround() end end
 mod.events.DISPLAY_SIZE_CHANGED = function(self) self:Layout() end
 mod.events.UI_SCALE_CHANGED = function(self) self:Layout() end

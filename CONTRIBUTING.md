@@ -12,7 +12,6 @@ modules/QuestLog.lua   the quest reader (one page) and the quest log's duties: a
 modules/Overlay.lua    Off / Minimap / Map, masks, ground, bars, indoor handling
 modules/Camera.lua     lateral shift + zoom-out, CVar backup and restore
 modules/Tracker.lua    the compact quest list that replaces Blizzard's objective tracker
-modules/Markers.lua    our quest markers on the minimap; switches the client's quest areas off
 modules/Giver.lua      who gave each quest (recorded at accept); feeds the reader and, later, the voice
 modules/Xp.lua         the experience bar under the strip; fades Blizzard's bottom bar while it is up
 modules/Elle.lua        the Play / Stop button on EllesmereUI's quest tracker rows (its plugin API)

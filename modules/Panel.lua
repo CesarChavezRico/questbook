@@ -146,7 +146,6 @@ local MODULES = {
   { "tracker", "QuestBook's own quest list", "Replaces Blizzard's objective tracker. Turn it off to use EllesmereUI's." },
   { "overlay", "Map overlay", "The big translucent minimap and overland map beside your character, and the small corner minimap." },
   { "camera", "Camera shift for the overlay and the reader", "Slides the camera sideways and back while the overlay or the reader is open." },
-  { "markers", "Minimap quest markers", "Needs the map overlay." },
   { "plates", "Quest icons on nameplates", nil },
 }
 
