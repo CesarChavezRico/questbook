@@ -919,7 +919,7 @@
     // as it does under the hand. From the map outward: the two thumb buttons one above the
     // other with the big thumb button to their left, level with the gap between them, the two
     // index buttons one above the other, then the wheel as a cross (up, click, down, a tilt
-    // on each side). All the same size.
+    // on each side) with the button that sits below the wheel under it. All the same size.
     const rowOff = (k) => first + k * p;
     const col = (k) => Math.max(centre, inner(rowOff(2))) + k * p;
     const at = (c, r) => ({ x: mx + col(c) - S / 2, y: my + rowOff(r) - S / 2 });
@@ -927,7 +927,7 @@
     bars.push(Object.assign({ bar: 'Bar7', n: 2, dir: 'v', pitchPx: p, seat: 'mouse thumb buttons: up, down', labels: ['ThU', 'ThD'] }, at(1, 2)));
     bars.push(Object.assign({ bar: 'Bar8', n: 2, dir: 'v', pitchPx: p, seat: 'index buttons: front above rear', labels: ['IF', 'IR'] }, at(2, 1)));
     bars.push(Object.assign({ bar: 'Bar10', n: 2, dir: 'h', pitchPx: 2 * p, seat: 'wheel tilt left and right, either side of the wheel click', labels: ['<', '>'] }, at(3, 1)));
-    bars.push(Object.assign({ bar: 'Bar9', n: 3, dir: 'v', pitchPx: p, seat: 'wheel up, click, down', labels: ['Up', 'Clk', 'Dn'] }, at(4, 0)));
+    bars.push(Object.assign({ bar: 'Bar9', n: 4, dir: 'v', pitchPx: p, seat: 'wheel up, click, down, and the button below the wheel', labels: ['Up', 'Clk', 'Dn', 'Btn'] }, at(4, 0)));
     const frames = [
       { key: 'player', left: mx - reach - fr.player.w, top: my - fr.player.h / 2 },
       { key: 'target', left: mx + reach, top: my - fr.target.h / 2 },
