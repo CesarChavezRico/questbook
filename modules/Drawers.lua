@@ -52,6 +52,7 @@ local drawers = QB:NewModule("drawers", {
   hideArt = true,     -- hide Blizzard's ornate frame art (BorderArt/BackgroundArt) inside the panel
   pad = 12,           -- panel padding
   gap = 6,            -- space between the two rows
+  tracking = true,    -- a "Tracking" list under them: the minimap's tracking menu (Cesar, 2026-11-11)
   fallbackX = -24,    -- own handle position when the strip is absent (TOPRIGHT of UIParent)
   fallbackY = -14,
 })
@@ -79,6 +80,9 @@ local pending = false       -- work postponed because of combat
 local stripOn = false       -- is the strip module's Menu handle available
 local measureQueued = false
 local restoreFrame = nil    -- tiny always-on frame to finish a restore after combat
+local track = nil           -- our frame with the tracking list; trackW / trackH = the room it takes
+local trackW, trackH = 0, 0
+local trackRows = {}
 
 -- ---------------------------------------------------------------- small helpers
 
@@ -149,8 +153,9 @@ local function Measure()
   local pad, gap = db.pad, db.gap
   local mw, mh = Extent(TARGETS[1])
   local bw, bh = Extent(TARGETS[2])
-  local w = math.max(mw, bw)
+  local w = math.max(mw, bw, trackW)
   local h = mh + bh + ((mh > 0 and bh > 0) and gap or 0)
+  if trackH > 0 then h = h + trackH + ((h > 0) and gap or 0) end
   if w <= 0 or h <= 0 then w, h = 60, 16 end
   local newW, newH = w + 2 * pad, h + 2 * pad
   if math.abs(panel:GetWidth() - newW) > 0.5 or math.abs(panel:GetHeight() - newH) > 0.5 then
@@ -179,6 +184,102 @@ local function Desired(T)
     return "TOPRIGHT", micro.frame, "BOTTOMRIGHT", 0, -db.gap / s
   end
   return "TOPRIGHT", panel, "TOPRIGHT", -db.pad / s, -db.pad / s
+end
+
+-- ---------------------------------------------------------------- the tracking list
+--
+-- Cesar, 2026-11-11: "I think we need a section on our top right menu for the minimap tracking options". The game's tracking
+-- button sits on the minimap cluster, which our overlay hides, so the same list is offered here: every entry of the minimap's
+-- tracking menu (C_Minimap.GetNumTrackingTypes / GetTrackingInfo: name, texture, active), a click switches it
+-- (C_Minimap.SetTracking). It is a list of our own text rows at the bottom of the panel, rebuilt each time the panel opens and
+-- when the game says the tracking changed.
+-- UNVERIFIED (client only): the look; that SetTracking is accepted from a click here for every entry (tracking spells are cast).
+
+local ROW_H = 17
+
+local function TrackingEntries()
+  local out = {}
+  if not (C_Minimap and C_Minimap.GetNumTrackingTypes and C_Minimap.GetTrackingInfo) then return out end
+  local okN, n = pcall(C_Minimap.GetNumTrackingTypes)
+  if not (okN and type(n) == "number") then return out end
+  for i = 1, n do
+    local ok, info = pcall(C_Minimap.GetTrackingInfo, i)
+    if ok and type(info) == "table" and type(info.name) == "string" then
+      out[#out + 1] = { index = i, name = info.name, texture = info.texture, active = info.active and true or false }
+    end
+  end
+  return out
+end
+
+local function PaintRow(r)
+  local c = r.active and COLOR_HOT or COLOR
+  r.text:SetTextColor(c[1], c[2], c[3], (r.active or r.over) and 1 or 0.6)
+  r.dot:SetAlpha(r.active and 1 or 0)
+  if r.icon then r.icon:SetAlpha(r.active and 1 or 0.45) end
+end
+
+local function RefreshTracking()
+  trackW, trackH = 0, 0
+  if not panel then return end
+  local entries = drawers.db.tracking and TrackingEntries() or {}
+  if #entries == 0 then
+    if track then track:Hide() end
+    return
+  end
+  if not track then
+    track = CreateFrame("Frame", nil, panel)
+    track.title = track:CreateFontString(nil, "OVERLAY")
+    track.title:SetFont(FONT, 11, "")
+    track.title:SetText("TRACKING")
+    track.title:SetTextColor(COLOR[1], COLOR[2], COLOR[3], 0.55)
+    track.title:SetPoint("TOPRIGHT", track, "TOPRIGHT", 0, 0)
+  end
+  local widest = track.title:GetStringWidth() or 60
+  for i, e in ipairs(entries) do
+    local r = trackRows[i]
+    if not r then
+      r = CreateFrame("Button", nil, track)
+      r:SetHeight(ROW_H)
+      r.text = r:CreateFontString(nil, "OVERLAY")
+      r.text:SetFont(FONT, 12, "")
+      r.text:SetJustifyH("RIGHT")
+      r.text:SetPoint("RIGHT", r, "RIGHT", -20, 0)
+      r.icon = r:CreateTexture(nil, "ARTWORK")
+      r.icon:SetSize(14, 14)
+      r.icon:SetPoint("RIGHT", r, "RIGHT", 0, 0)
+      r.dot = r:CreateTexture(nil, "OVERLAY")
+      r.dot:SetSize(4, 4)
+      r.dot:SetColorTexture(COLOR_HOT[1], COLOR_HOT[2], COLOR_HOT[3], 1)
+      r.dot:SetPoint("RIGHT", r.text, "LEFT", -6, 0)
+      r:SetScript("OnEnter", function(self) self.over = true; PaintRow(self) end)
+      r:SetScript("OnLeave", function(self) self.over = false; PaintRow(self) end)
+      r:SetScript("OnClick", function(self)
+        QB:Safe(drawers, function()
+          if not (C_Minimap and C_Minimap.SetTracking) then return end
+          local ok, err = pcall(C_Minimap.SetTracking, self.index, not self.active)
+          if not ok then QB:Say("tracking: the game refused (" .. tostring(err) .. ")") end
+          RefreshTracking()
+          Measure()
+        end)
+      end)
+      trackRows[i] = r
+    end
+    r.index, r.active = e.index, e.active
+    r.text:SetText(e.name)
+    if e.texture then r.icon:SetTexture(e.texture); r.icon:Show() else r.icon:Hide() end
+    r:ClearAllPoints()
+    r:SetPoint("TOPRIGHT", track, "TOPRIGHT", 0, -(ROW_H + (i - 1) * ROW_H))
+    PaintRow(r)
+    r:Show()
+    widest = math.max(widest, (r.text:GetStringWidth() or 80) + 20 + 12)
+  end
+  for i = #entries + 1, #trackRows do trackRows[i]:Hide() end
+  trackW, trackH = widest, ROW_H + #entries * ROW_H
+  for i = 1, #entries do trackRows[i]:SetWidth(trackW) end
+  track:SetSize(trackW, trackH)
+  track:ClearAllPoints()
+  track:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -drawers.db.pad, drawers.db.pad)
+  track:Show()
 end
 
 -- ---------------------------------------------------------------- hooks
@@ -416,6 +517,7 @@ local function EnsureBuilt()
   p:SetScript("OnShow", function(self)
     self:RegisterEvent("GLOBAL_MOUSE_DOWN")   -- Blizzard_APIDocumentationGenerated/SystemDocumentation.lua
     NotifyStrip(true)
+    QB:Safe(drawers, RefreshTracking)
     QB:Safe(drawers, Measure)
     if C_Timer and C_Timer.After then
       -- GridLayout frames lay out on a later pass; measure again once they have
@@ -535,6 +637,11 @@ drawers.events.EDIT_MODE_LAYOUTS_UPDATED = function()
   Later(0.5)
 end
 
+-- the game switched a tracking entry (ours or the player's own): repaint the list while the panel is open
+drawers.events.MINIMAP_UPDATE_TRACKING = function()
+  if panel and panel:IsShown() then RefreshTracking(); Measure() end
+end
+
 -- the experience row appeared, changed size or went away: move the panel with it
 QB:On("xp_layout", function() if panel then AnchorPanel() end end, drawers)
 QB:On("combat_start", function()
@@ -581,9 +688,18 @@ QB:RegisterSlash(drawers, "drawers", function(rest)
     drawers:CloseMenu()
   elseif a == "toggle" then
     drawers:ToggleMenu()
+  elseif a == "tracking" then
+    local v = (rest or ""):lower():match("^%S+%s+(%S+)")
+    if v == "on" or v == "off" then
+      drawers.db.tracking = (v == "on")
+      if panel and panel:IsShown() then RefreshTracking(); Measure() end
+    elseif v then
+      QB:Usage("usage: /qb drawers tracking on | off")
+    end
+    QB:Say("drawers: the tracking list is " .. (drawers.db.tracking and "on" or "off") .. " (" .. #TrackingEntries() .. " entries in the game's tracking menu)")
   elseif a == "status" or a == "" then
     Status()
   else
-    QB:Usage("usage: /qb drawers open | close | toggle | status")
+    QB:Usage("usage: /qb drawers open | close | toggle | status | tracking on|off")
   end
-end, "Menu drawer (micro menu + bags): open | close | toggle | status")
+end, "Menu drawer (micro menu + bags + minimap tracking): open | close | toggle | status | tracking on|off")
