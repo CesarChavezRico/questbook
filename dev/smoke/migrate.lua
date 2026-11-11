@@ -3,9 +3,10 @@ QuestBookDB = { mod = { overlay = { ground = "hybrid", shape = "rect", cornerMas
 __fire("ADDON_LOADED", "QuestBook"); __loggedIn = true; __fire("PLAYER_LOGIN")
 local O = QB.modules.overlay
 assert(O.db.ground == "auto", "migrated to auto, got " .. tostring(O.db.ground))
-assert(O.db.v == 4)
+assert(O.db.v == 5)
 -- the map loop (v0.28.0): a saved "rect" was only the old default, the large maps are circles now
 assert(O.db.shape == "circle", "shape migrated: " .. tostring(O.db.shape))
+-- (sizes: none saved here, so the defaults apply; a saved 0.45 / 0.5 is covered below)
 -- the small minimap bleeds out now: a saved "stock" (the old default) moved to "soft" once
 assert(O.db.cornerMask == "soft", "corner mask migrated: " .. tostring(O.db.cornerMask))
 -- the list may use more of the screen: a saved 0.42 default moves once, a deliberate mode stays

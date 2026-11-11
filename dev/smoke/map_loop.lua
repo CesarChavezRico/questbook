@@ -13,10 +13,13 @@ __fire("ADDON_LOADED", "QuestBook"); __loggedIn = true; __fire("PLAYER_LOGIN")
 local function slash(s) SlashCmdList.QUESTBOOK(s) end
 local O = QB.modules.overlay
 local W, H = UIParent:GetWidth(), UIParent:GetHeight()
-assert(O.db.v == 4 and O.db.shape == "circle" and O.db.anchor == "corner", "migrated to the loop's defaults")
+assert(O.db.v == 5 and O.db.shape == "circle" and O.db.anchor == "corner", "migrated to the loop's defaults")
 local s = 0.2 * H
 local smallX, smallY = W / 2 - 1314 - s / 2, H / 2 - 784 - s / 2          -- the small map's centre, from the screen centre
 local function centre() local p = { O.panel:GetPoint(1) }; return p[4], p[5] end
+
+-- sizes saved by v0.28.0 (its defaults) grow once; a size the player chose stays
+assert(O.db.localSize == 0.62 and O.db.zoneSize == 0.78, "the new sizes")
 
 -- rest
 assert(O.state == "off" and O.cornerPanel:IsShown(), "at rest the small map shows")
@@ -26,9 +29,9 @@ for n, f in pairs(elle) do assert(f:GetAlpha() > 0, n .. " visible at rest") end
 O:Cycle(); __tick(3)
 assert(O.state == "local", "first press opens the local map")
 local x, y = centre()
-assert(math.abs(O.panel:GetHeight() - 0.45 * H) < 0.5 and math.abs(O.panel:GetWidth() - O.panel:GetHeight()) < 0.5, "local map: 0.45 of the screen, square")
+assert(math.abs(O.panel:GetHeight() - 0.62 * H) < 0.5 and math.abs(O.panel:GetWidth() - O.panel:GetHeight()) < 0.5, "local map: 0.62 of the screen, square")
 assert(math.abs(x - smallX) < 0.5, "local map centred on the small map (x): " .. x .. " vs " .. smallX)
-local wantY = math.max(-(H / 2 - 0.45 * H / 2), math.min(H / 2 - 0.45 * H / 2, smallY))
+local wantY = math.max(-(H / 2 - 0.62 * H / 2), math.min(H / 2 - 0.62 * H / 2, smallY))
 assert(math.abs(y - wantY) < 0.5, "and (y), kept on screen: " .. y .. " vs " .. wantY)
 for n, f in pairs(elle) do assert(f:GetAlpha() > 0, n .. " stays under the local map") end
 assert(Minimap:GetFrameStrata() == "HIGH", "the local map is drawn over the HUD: " .. tostring(Minimap:GetFrameStrata()))
@@ -40,7 +43,7 @@ assert(MainActionBar:GetAlpha() == 1, "the game's own bars too")
 -- second press: the overland map replaces the HUD
 O:Cycle(); __tick(3)
 assert(O.state == "zone", "second press opens the overland map")
-assert(math.abs(O.panel:GetHeight() - 0.5 * H) < 0.5, "overland map: half the screen")
+assert(math.abs(O.panel:GetHeight() - 0.78 * H) < 0.5, "overland map: 0.78 of the screen")
 local _, zy = centre()
 assert(zy - O.panel:GetHeight() / 2 >= -H / 2 - 0.5, "kept on screen at the bottom")
 for n, f in pairs(elle) do assert(f:GetAlpha() == 0, n .. " faded under the overland map") end
