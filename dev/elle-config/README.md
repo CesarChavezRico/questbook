@@ -57,7 +57,10 @@ Swapping the settings file costs a logout. The addon can instead apply both whil
   In game: `/qb layout check | apply | undo`. Apply reloads the UI.
 - `node dev/elle-config/emit-plan.js thara` writes `data/Plan.lua` from `plans/thara.js`. In game: `/qb bars check | apply | undo`.
 
-Both generated files are loaded by the addon and ship with it. They hold layout values and spell names only.
+- `node dev/elle-config/emit-guide.js` writes `data/Guide.lua` from `plans/guide-rxp.js`: settings for RestedXP Guides (4BI-42),
+  applied by the same `/qb layout apply`.
+
+The generated files are loaded by the addon and ship with it. They hold layout values and spell names only.
 
 ## Develop
 

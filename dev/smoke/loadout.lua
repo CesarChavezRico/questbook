@@ -40,8 +40,9 @@ assert(M and M.active, "the module is on")
 -- the addon ships a plan and a layout (data/): they loaded, and are set aside so the scenarios below use their own
 assert(type(QB.planData) == "table" and QB.planData.v == 2 and next(QB.planData.slots), "data/Plan.lua loaded")
 assert(type(QB.layoutData) == "table" and #QB.layoutData.sets > 0, "data/Layout.lua loaded")
-local shippedPlan, shippedLayout = QB.planData, QB.layoutData
-QB.planData, QB.layoutData = nil, nil
+assert(type(QB.guideData) == "table" and #QB.guideData.sets > 0, "data/Guide.lua loaded")
+local shippedPlan, shippedLayout, shippedGuide = QB.planData, QB.layoutData, QB.guideData
+QB.planData, QB.layoutData, QB.guideData = nil, nil, nil
 
 -- 1. no plan: says so, changes nothing
 slash("bars apply")
@@ -203,14 +204,14 @@ QB.layoutData = { v = 1, name = "test", sets = {
     { path = { "profiles", "$profile", "addons", "New", "list" }, value = { 1, 2, { deep = true } } },
     { path = { "top" }, value = true },
   }, removes = { { path = { "profiles", "$profile", "addons", "Bars", "MainBar", "old" } }, { path = { "profiles", "$profile", "nothing", "here" } } } }
-slash("layout check"); assert(said("EllesmereUI's settings are not loaded"), "no EllesmereUI: says so")
+slash("layout check"); assert(said("EllesmereUI's settings are not loaded, so \"test\" is skipped"), "no EllesmereUI: says so")
 EllesmereUIDB = { activeProfile = "Mine", profiles = { Mine = { addons = { Bars = { MainBar = { x = 1, shape = "circle", old = 7, keep = "me" } } } } } }
-slash("layout check"); assert(said('layout check: "test": 4 of 6 value%(s%) differ'), "check counts what differs")
+slash("layout check"); assert(said('layout check: EllesmereUI, "test": 4 of 6 value%(s%) differ'), "check counts what differs")
 assert(EllesmereUIDB.profiles.Mine.addons.Bars.MainBar.x == 1 and reloads == 0, "check wrote nothing")
 __combat = true; slash("layout apply"); assert(said("not in combat"), "refuses in combat"); __combat = false
 slash("layout apply")
 text = table.concat(__take(), "\n")
-assert(text:find('layout apply: "test": 4 value(s) written', 1, true) and reloads == 1, "apply writes and reloads: " .. text)
+assert(text:find('layout apply: EllesmereUI, "test": 4 value(s) written', 1, true) and reloads == 1, "apply writes and reloads: " .. text)
 local mb = EllesmereUIDB.profiles.Mine.addons.Bars.MainBar
 assert(mb.x == 12.5 and mb.old == nil and mb.keep == "me" and EllesmereUIDB.top == true, "the values are in, the rest untouched")
 assert(EllesmereUIDB.profiles.Mine.addons.New.list[3].deep == true and EllesmereUIDB.profiles.Mine.nothing == nil, "tables are created, and a remove creates none")
@@ -228,8 +229,45 @@ QB.layoutData = shippedLayout
 EllesmereUIDB = { activeProfile = "Default", profiles = { Default = { addons = {} } } }
 slash("layout apply"); __take()
 slash("layout check"); assert(said(": 0 of %d+ value%(s%) differ"), "the shipped layout applies cleanly")
-slash("layout"); assert(said('layout: "circles'), "status names the layout")
+slash("layout"); assert(said('layout: EllesmereUI "'), "status names the layout")
 QB.layoutData, EllesmereUIDB = nil, nil
+
+-- 14. a second addon's settings: RestedXP Guides (4BI-42). Its table is an AceDB one: the profile for this character is named by
+-- profileKeys["Name - Realm"]. After writing, its windows are asked to move (it saves their live places when the UI unloads).
+function GetRealmName() return "PvP" end
+local moved = 0
+local r0 = reloads
+QB.guideData = shippedGuide
+slash("layout check"); assert(said("RestedXP's settings are not loaded"), "RestedXP absent: skipped, said so")
+slash("layout apply"); __take(); assert(reloads == r0, "nothing to write anywhere: no reload")
+RXPSettings = { profileKeys = { ["Thara - PvP"] = "Leveling" }, profiles = { Leveling = { enableQuestAutomation = true, framePositions = { arrowFrame = { { "TOP", "UIParent", "TOP", 0, 0 } } } }, Other = {} } }
+RXP = { settings = { LoadFramePositions = function(self) assert(self == RXP.settings, "called as a method"); moved = moved + 1 end } }
+slash("layout check"); assert(said('layout check: RestedXP, "guide in the upper left'), "check names RestedXP")
+slash("layout apply")
+text = table.concat(__take(), "\n")
+assert(text:find("layout apply: RestedXP,", 1, true) and reloads == r0 + 1 and moved == 1, "apply writes, moves the windows once, reloads: " .. text)
+local prof = RXPSettings.profiles.Leveling
+assert(prof.enableQuestAutomation == false and prof.enableGossipAutomation == false and prof.activeTheme == "QuestBook", "the choices are in this character's profile")
+assert(prof.framePositions.RXPFrame[1][1] == "TOPLEFT" and prof.framePositions.RXPFrame[1][2] == "UIParent" and prof.framePositions.RXPFrame[1][5] < 0, "the guide window goes to the upper left")
+assert(prof.framePositions.arrowFrame[1][1] == "TOP", "a window we do not place keeps its position")
+assert(next(RXPSettings.profiles.Other) == nil, "another profile is untouched")
+slash("layout undo"); __take()
+assert(prof.enableQuestAutomation == true and prof.activeTheme == nil and prof.framePositions.RXPFrame == nil and moved == 2 and reloads == r0 + 2, "undo restores RestedXP's values and moves the windows back")
+-- both at once, RestedXP without the helper global: the values are written, and the note says the windows did not move
+RXP = nil
+QB.layoutData = { v = 1, name = "ui", sets = { { path = { "top" }, value = 1 } } }
+EllesmereUIDB = { activeProfile = "Default", profiles = {} }
+slash("layout apply")
+text = table.concat(__take(), "\n")
+assert(text:find("EllesmereUI,", 1, true) and text:find("RestedXP,", 1, true) and text:find("could not be moved", 1, true) and reloads == r0 + 3, "both targets in one run: " .. text)
+slash("layout"); assert(said("EllesmereUI \"ui\", 1 value%(s%); RestedXP "), "status lists both")
+slash("layout undo"); __take()
+assert(EllesmereUIDB.top == nil and RXPSettings.profiles.Leveling.activeTheme == nil, "one undo covers both")
+-- a character with no profile entry yet: AceDB's own default name, "Name - Realm"
+RXPSettings = { profiles = {} }
+slash("layout apply"); __take()
+assert(RXPSettings.profiles["Thara - PvP"] and RXPSettings.profiles["Thara - PvP"].activeTheme == "QuestBook", "falls back to the character's own profile name")
+QB.layoutData, QB.guideData, EllesmereUIDB, RXPSettings = nil, nil, nil, nil
 -- the plan that ships today is well formed: every macro seat names a macro it defines
 local names = {}
 for _, m in ipairs(shippedPlan.macros) do names[m.name] = true; assert(#m.name <= 16 and #m.body <= 255, "macro limits: " .. m.name) end

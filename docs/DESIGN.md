@@ -498,3 +498,9 @@ green by itself there.
   on our top right menu for the minimap tracking options"). The game's tracking button lives on the minimap cluster, which the overlay
   hides. The drawer now lists every entry of the game's tracking menu under the micro menu and bags; a click switches it.
   `/qb drawers tracking on|off`.
+- **RestedXP Guides, melded** (v0.28.0, *written, untested in the client*; Cesar, 2026-11-11: "Lets take a good look at rested xp addon
+  and see if we can meld it to our setup"; 4BI-42). RestedXP stays its own addon. We hand it a theme through the list it reads before
+  it starts (`RXPGuides_Themes`, `modules/Guide.lua`), and its settings through `/qb layout apply` (`data/Guide.lua`, generated from
+  `dev/elle-config/plans/guide-rxp.js`): the guide window in the upper left, the helper windows under it, quest and gossip automation
+  off so the quest text is still heard. `/qb layout` now writes to more than one addon's settings; RestedXP's are an AceDB table, and
+  its windows are asked to move after the write because it saves their live places when the UI unloads.

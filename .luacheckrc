@@ -30,7 +30,7 @@ read_globals = {
   "HybridMinimap_LoadUI", "IsIndoors",
   -- loadout: action buttons, spellbook, macros, bindings
   "C_SpellBook", "C_Spell", "C_Item", "GetActionInfo", "PlaceAction", "PickupAction", "PickupMacro", "PickupItem", "ClearCursor",
-  "GetCursorInfo", "GetMacroIndexByName", "GetNumMacros", "GetMacroInfo", "GetBindingKey", "CreateMacro", "EditMacro", "GetNumShapeshiftForms", "GetShapeshiftFormInfo", "GetActionText", "EllesmereUIDB",
+  "GetCursorInfo", "GetMacroIndexByName", "GetNumMacros", "GetMacroInfo", "GetBindingKey", "CreateMacro", "EditMacro", "GetNumShapeshiftForms", "GetShapeshiftFormInfo", "GetActionText", "EllesmereUIDB", "RXPSettings", "RXP", "RXPGuides", "GetRealmName",
   "Minimap", "MinimapCluster", "WorldMapFrame", "AddonCompartmentFrame", "MicroMenu",
   "MicroMenuContainer",
   -- shift-click on a quest puts its link into the chat box
@@ -42,6 +42,7 @@ globals = {
   -- (Blizzard_Minimap/Mainline/Minimap.lua), and puts the original back afterwards
   "C_Minimap",
   "SlashCmdList", "ToggleQuestLog",
+  "RXPGuides_Themes",
   "QuestBookDB", "QuestBook_Toggle", "QuestBook_ToggleList", "QuestBook_MapCycle", "QuestBook_FullMap",
   "BINDING_HEADER_QUESTBOOK", "BINDING_NAME_QUESTBOOK_TOGGLE",
   "BINDING_NAME_QUESTBOOK_LIST", "BINDING_NAME_QUESTBOOK_MAPCYCLE", "BINDING_NAME_QUESTBOOK_FULLMAP",
