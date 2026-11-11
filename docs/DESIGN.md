@@ -494,3 +494,9 @@ green by itself there.
   and we are missing out on functionality"). The client's own quest areas are back on the minimap. Because the old module had
   switched them off through the "Quest POIs" tracking filter and remembered it in saved settings, the overlay switches the filter
   back on once and removes the leftovers. Everything above about `markers` is history.
+- **RestedXP Guides, melded** (v0.27.0, *written, untested in the client*; Cesar, 2026-11-11: "Lets take a good look at rested xp addon
+  and see if we can meld it to our setup"; 4BI-42). RestedXP stays its own addon. We hand it a theme through the list it reads before
+  it starts (`RXPGuides_Themes`, `modules/Guide.lua`), and its settings through `/qb layout apply` (`data/Guide.lua`, generated from
+  `dev/elle-config/plans/guide-rxp.js`): the guide window in the upper left, the helper windows under it, quest and gossip automation
+  off so the quest text is still heard. `/qb layout` now writes to more than one addon's settings; RestedXP's are an AceDB table, and
+  its windows are asked to move after the write because it saves their live places when the UI unloads.

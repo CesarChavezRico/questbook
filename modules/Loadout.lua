@@ -438,7 +438,7 @@ end
 --   /qb layout check   how many values differ from the layout
 --   /qb layout apply   write them, remember what was there, and reload the UI so EllesmereUI reads them
 --   /qb layout undo    put the remembered values back, and reload
--- QB.layoutData = { v = 1, name = "...", sets = { { path = { "profiles", "$profile", ... }, value = ... } }, removes = { { path = {...} } } }
+-- A layout = { v = 1, name = "...", sets = { { path = { "profiles", "$profile", ... }, value = ... } }, removes = { { path = {...} } } }
 -- "$profile" stands for EllesmereUI's active profile. This touches EllesmereUI's DATA only, the same values a hand edit of its
 -- settings file would change; none of its code is called.
 -- UNVERIFIED (client only): that EllesmereUI keeps values written this way through the reload and does not write its own back.
@@ -461,15 +461,39 @@ local function Equal(a, b)
   return true
 end
 
-local function ElleDB()
-  local d = _G.EllesmereUIDB
-  if type(d) ~= "table" then return nil end
-  return d
+-- The settings a layout can be written into. Each is another addon's saved table, with its own way to name the profile in use.
+--   ui    = EllesmereUI (data/Layout.lua, QB.layoutData): the profile is EllesmereUIDB.activeProfile
+--   guide = RestedXP Guides (data/Guide.lua, QB.guideData, 4BI-42): an AceDB table, whose profile for this character is
+--           RXPSettings.profileKeys["Name - Realm"]. RestedXP saves its windows' live positions when the UI unloads, so after
+--           writing we ask it to move its windows to the saved positions (its LoadFramePositions, reached through the global
+--           `RXP` it keeps "for debug purposes"); without that the reload would write the old places back over ours.
+local function CharKey()
+  local okN, name = Try(_G.UnitName, "player")
+  local okR, realm = Try(_G.GetRealmName)
+  if okN and okR and Plain(name, "string") and Plain(realm, "string") then return name .. " - " .. realm end
+  return nil
 end
 
+local TARGETS = {
+  { id = "ui", label = "EllesmereUI", data = function() return QB.layoutData end, root = function() return _G.EllesmereUIDB end,
+    profile = function(root) return root.activeProfile or "Default" end },
+  { id = "guide", label = "RestedXP", data = function() return QB.guideData end, root = function() return _G.RXPSettings end,
+    profile = function(root)
+      local key = CharKey()
+      local name = key and type(root.profileKeys) == "table" and root.profileKeys[key]
+      return name or key or "Default"
+    end,
+    after = function()
+      local rxp = _G.RXP
+      if type(rxp) == "table" and type(rxp.settings) == "table" and type(rxp.settings.LoadFramePositions) == "function" then
+        if pcall(rxp.settings.LoadFramePositions, rxp.settings) then return true end
+      end
+      return false, "RestedXP's windows could not be moved from here: they keep their old place until you move them"
+    end },
+}
+
 -- The table that holds the last key of a path, and that key. create = true makes the tables on the way.
-local function Reach(root, path, create)
-  local profile = root.activeProfile or "Default"
+local function Reach(root, path, create, profile)
   local t = root
   for i = 1, #path - 1 do
     local k = path[i]
@@ -487,14 +511,14 @@ local function Reach(root, path, create)
   return t, last
 end
 
-local function LayoutChanges(root, data)
+local function LayoutChanges(root, data, profile)
   local n = 0
   for _, s in ipairs(data.sets or {}) do
-    local t, k = Reach(root, s.path, false)
+    local t, k = Reach(root, s.path, false, profile)
     if not t or not Equal(t[k], s.value) then n = n + 1 end
   end
   for _, r in ipairs(data.removes or {}) do
-    local t, k = Reach(root, r.path, false)
+    local t, k = Reach(root, r.path, false, profile)
     if t and t[k] ~= nil then n = n + 1 end
   end
   return n
@@ -506,48 +530,86 @@ local function Reload()
 end
 
 function mod:LayoutRun(dry)
-  local data, root = QB.layoutData, ElleDB()
-  if type(data) ~= "table" then QB:Say("layout: no layout in the addon folder (data/Layout.lua)"); return false end
-  if not root then QB:Say("layout: EllesmereUI's settings are not loaded"); return false end
-  local n = LayoutChanges(root, data)
-  if dry then
-    QB:Say(string.format("layout check: \"%s\": %d of %d value(s) differ", tostring(data.name or "?"), n, #(data.sets or {}) + #(data.removes or {})))
-    return true
-  end
-  if QB:InCombat() then QB:Say("layout: not in combat"); return false end
-  if n == 0 then QB:Say("layout: already in place, nothing to do"); return true end
-  local undo = {}
-  for _, s in ipairs(data.sets or {}) do
-    local t, k = Reach(root, s.path, true)
-    if not Equal(t[k], s.value) then
-      undo[#undo + 1] = { path = Copy(s.path), had = t[k] ~= nil, old = Copy(t[k]) }
-      t[k] = Copy(s.value)
+  local any, wrote, parts = false, 0, {}
+  for _, target in ipairs(TARGETS) do
+    local data = target.data()
+    if type(data) == "table" then
+      any = true
+      local root = target.root()
+      local total = #(data.sets or {}) + #(data.removes or {})
+      if type(root) ~= "table" then
+        QB:Say(string.format("layout: %s's settings are not loaded, so \"%s\" is skipped", target.label, tostring(data.name or "?")))
+      else
+        local profile = target.profile(root)
+        local n = LayoutChanges(root, data, profile)
+        if dry then
+          QB:Say(string.format("layout check: %s, \"%s\": %d of %d value(s) differ", target.label, tostring(data.name or "?"), n, total))
+        elseif QB:InCombat() then
+          QB:Say("layout: not in combat"); return false
+        elseif n == 0 then
+          QB:Say(string.format("layout: %s already in place", target.label))
+        else
+          local undo = {}
+          for _, s in ipairs(data.sets or {}) do
+            local t, k = Reach(root, s.path, true, profile)
+            if not Equal(t[k], s.value) then
+              undo[#undo + 1] = { path = Copy(s.path), had = t[k] ~= nil, old = Copy(t[k]) }
+              t[k] = Copy(s.value)
+            end
+          end
+          for _, r in ipairs(data.removes or {}) do
+            local t, k = Reach(root, r.path, false, profile)
+            if t and t[k] ~= nil then
+              undo[#undo + 1] = { path = Copy(r.path), had = true, old = Copy(t[k]) }
+              t[k] = nil
+            end
+          end
+          parts[#parts + 1] = { id = target.id, profile = profile, name = data.name, list = undo }
+          wrote = wrote + #undo
+          QB:Say(string.format("layout apply: %s, \"%s\": %d value(s) written", target.label, tostring(data.name or "?"), #undo))
+          if target.after then
+            local ok, why = target.after()
+            if not ok and why then QB:Say("layout: " .. why) end
+          end
+        end
+      end
     end
   end
-  for _, r in ipairs(data.removes or {}) do
-    local t, k = Reach(root, r.path, false)
-    if t and t[k] ~= nil then
-      undo[#undo + 1] = { path = Copy(r.path), had = true, old = Copy(t[k]) }
-      t[k] = nil
-    end
-  end
-  mod.db.layoutUndo = { v = 1, name = data.name, profile = root.activeProfile, list = undo }
-  QB:Say(string.format("layout apply: \"%s\": %d value(s) written. /qb layout undo puts them back.", tostring(data.name or "?"), #undo))
+  if not any then QB:Say("layout: no layout in the addon folder (data/)"); return false end
+  if dry then return true end
+  if wrote == 0 then return true end
+  mod.db.layoutUndo = { v = 2, parts = parts }
+  QB:Say("layout: /qb layout undo puts the old values back")
   Reload()
   return true
 end
 
 function mod:LayoutUndo()
-  local u, root = mod.db and mod.db.layoutUndo, ElleDB()
-  if type(u) ~= "table" or type(u.list) ~= "table" or #u.list == 0 then QB:Say("layout: nothing to undo"); return false end
-  if not root then QB:Say("layout: EllesmereUI's settings are not loaded"); return false end
+  local u = mod.db and mod.db.layoutUndo
+  local parts = type(u) == "table" and (u.parts or (type(u.list) == "table" and { { id = "ui", profile = u.profile, list = u.list } })) or nil
+  if type(parts) ~= "table" or #parts == 0 then QB:Say("layout: nothing to undo"); return false end
   if QB:InCombat() then QB:Say("layout: not in combat"); return false end
-  for i = #u.list, 1, -1 do
-    local e = u.list[i]
-    local t, k = Reach(root, e.path, true)
-    if e.had then t[k] = Copy(e.old) else t[k] = nil end
+  local done = 0
+  for _, part in ipairs(parts) do
+    for _, target in ipairs(TARGETS) do
+      if target.id == part.id and type(part.list) == "table" then
+        local root = target.root()
+        if type(root) ~= "table" then
+          QB:Say(string.format("layout: %s's settings are not loaded, its values stay as they are", target.label))
+        else
+          local profile = part.profile or target.profile(root)
+          for i = #part.list, 1, -1 do
+            local e = part.list[i]
+            local t, k = Reach(root, e.path, true, profile)
+            if e.had then t[k] = Copy(e.old) else t[k] = nil end
+            done = done + 1
+          end
+          if target.after then target.after() end
+        end
+      end
+    end
   end
-  QB:Say(string.format("layout undo: %d value(s) put back", #u.list))
+  QB:Say(string.format("layout undo: %d value(s) put back", done))
   mod.db.layoutUndo = nil
   Reload()
   return true
@@ -560,13 +622,23 @@ QB:RegisterSlash(mod, "layout", function(rest)
   elseif sub == "undo" then mod:LayoutUndo()
   else
     if sub ~= "" and sub ~= "status" then QB:Usage("/qb layout | check | apply | undo") end
-    local data = QB.layoutData
+    local have = {}
+    for _, target in ipairs(TARGETS) do
+      local data = target.data()
+      if type(data) == "table" then
+        have[#have + 1] = string.format("%s \"%s\", %d value(s)", target.label, tostring(data.name or "?"), #(data.sets or {}) + #(data.removes or {}))
+      end
+    end
     local u = mod.db and mod.db.layoutUndo
-    QB:Say(string.format("layout: %s | undo %s | check, apply, undo",
-      type(data) == "table" and ("\"" .. tostring(data.name or "?") .. "\", " .. (#(data.sets or {}) + #(data.removes or {})) .. " value(s)") or "none in the addon folder",
-      (type(u) == "table" and type(u.list) == "table" and #u.list > 0) and (#u.list .. " value(s)") or "none"))
+    local nu = 0
+    if type(u) == "table" then
+      if type(u.parts) == "table" then for _, part in ipairs(u.parts) do nu = nu + #(part.list or {}) end
+      elseif type(u.list) == "table" then nu = #u.list end
+    end
+    QB:Say(string.format("layout: %s | undo %s | check, apply, undo", #have > 0 and table.concat(have, "; ") or "none in the addon folder",
+      nu > 0 and (nu .. " value(s)") or "none"))
   end
-end, "layout: put the EllesmereUI layout shipped with the addon in place (check, apply, undo)")
+end, "layout: put the layouts shipped with the addon in place: EllesmereUI, RestedXP (check, apply, undo)")
 
 QB:RegisterSlash(mod, "bars", function(rest)
   local sub = (rest or ""):lower():match("^(%S*)")
