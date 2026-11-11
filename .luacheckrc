@@ -24,10 +24,13 @@ read_globals = {
   "GetNumQuestLeaderBoards", "GetQuestLogLeaderBoard", "IsQuestComplete", "ExpandQuestHeader",
   "QuestLogPushQuest", "QuestUtils_GetQuestName", "StaticPopup_Show", "StaticPopup_Hide",
   -- map, camera, strip, drawers
-  "GetCVar", "SetCVar", "GetPlayerFacing", "GetAddOnMetadata", "C_AddOns", "UnitExists", "UnitSex", "UnitCreatureType", "UnitGUID", "UnitName", "GetQuestID", "GetServerTime", "UnitXP", "UnitXPMax", "UnitLevel", "GetXPExhaustion", "IsResting", "IsXPUserDisabled", "GetMaxPlayerLevel", "GetPhysicalScreenSize", "GetCameraZoom", "CameraZoomIn", "CameraZoomOut",
+  "GetCVar", "SetCVar", "GetGameTime", "date", "GetPlayerFacing", "GetAddOnMetadata", "C_AddOns", "ReloadUI", "EllesmereUI", "UnitExists", "UnitSex", "UnitCreatureType", "UnitGUID", "UnitName", "GetQuestID", "GetServerTime", "UnitXP", "UnitXPMax", "UnitLevel", "GetXPExhaustion", "IsResting", "IsXPUserDisabled", "GetMaxPlayerLevel", "GetPhysicalScreenSize", "GetCameraZoom", "CameraZoomIn", "CameraZoomOut",
   "GetZoneText", "GetSubZoneText", "HasNewMail", "CursorHasItem", "GetMouseFoci", "GetMouseFocus",
   "ShowUIPanel", "HideUIPanel", "ToggleWorldMap", "PlayerMovementFrameFader",
   "HybridMinimap_LoadUI", "IsIndoors",
+  -- loadout: action buttons, spellbook, macros, bindings
+  "C_SpellBook", "C_Spell", "C_Item", "GetActionInfo", "PlaceAction", "PickupAction", "PickupMacro", "PickupItem", "ClearCursor",
+  "GetCursorInfo", "GetMacroIndexByName", "GetNumMacros", "GetMacroInfo", "GetBindingKey", "CreateMacro", "EditMacro", "GetNumShapeshiftForms", "GetShapeshiftFormInfo", "GetActionText", "EllesmereUIDB",
   "Minimap", "MinimapCluster", "WorldMapFrame", "AddonCompartmentFrame", "MicroMenu",
   "MicroMenuContainer",
   -- shift-click on a quest puts its link into the chat box

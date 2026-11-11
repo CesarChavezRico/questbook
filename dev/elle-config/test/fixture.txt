@@ -1,0 +1,109 @@
+
+EllesmereUIDB = {
+["ppUIScale"] = 0.6399999856948853,
+["activeProfile"] = "Default",
+["note"] = "quote \" backslash \\ newline \n tab	end",
+["list"] = {
+"first", -- [1]
+"second", -- [2]
+{
+["nested"] = true,
+}, -- [3]
+},
+[102] = "number key",
+["102"] = "string key",
+["cdmCachedBarSizes"] = {
+["Tester-Realm"] = {
+["102"] = {
+["cooldowns"] = 4,
+["utility"] = 5,
+},
+},
+},
+["profiles"] = {
+["Default"] = {
+["addons"] = {
+["EllesmereUIActionBars"] = {
+["barPositions"] = {
+["MainBar"] = {
+["y"] = -371.2498626708984,
+["relPoint"] = "CENTER",
+["point"] = "CENTER",
+["x"] = -203.3329467773438,
+},
+["Bar3"] = {
+["y"] = -555.8333457571767,
+["relPoint"] = "CENTER",
+["point"] = "CENTER",
+["x"] = 1136.666692073147,
+},
+["Bar4"] = {
+["y"] = 319.1666738005977,
+["relPoint"] = "CENTER",
+["point"] = "CENTER",
+["x"] = -1410.833364867916,
+},
+},
+["bars"] = {
+["MainBar"] = {
+["overrideNumRows"] = 4,
+["growDirection"] = "center",
+["orientation"] = "vertical",
+["overrideNumIcons"] = 12,
+["buttonHeight"] = 35.83333413427076,
+["buttonWidth"] = 35.83333413427076,
+},
+["Bar3"] = {
+["growDirection"] = "center",
+["overrideNumIcons"] = 12,
+["buttonHeight"] = 45,
+["buttonWidth"] = 45,
+["overrideNumRows"] = 1,
+},
+["Bar4"] = {
+["alwaysHidden"] = true,
+["orientation"] = "vertical",
+["barVisibility"] = "never",
+["buttonHeight"] = 45,
+["buttonWidth"] = 45,
+},
+},
+},
+["EllesmereUICooldownManager"] = {
+["cdmBarPositions"] = {
+["cooldowns"] = {
+["y"] = -255.8332977294922,
+["relPoint"] = "CENTER",
+["point"] = "LEFT",
+["x"] = -251.6664657592773,
+},
+},
+["cdmBars"] = {
+["bars"] = {
+{
+["borderThickness"] = "normal",
+["borderSize"] = 2,
+["growDirection"] = "RIGHT",
+["iconSize"] = 30,
+["borderTexture"] = "shadow",
+["spacing"] = 8.333333519597852,
+}, -- [1]
+{
+["spacing"] = 0,
+["iconSize"] = 30,
+}, -- [2]
+{
+["iconSize"] = 40,
+}, -- [3]
+{
+["key"] = "__ghost_cd",
+["isGhostBar"] = true,
+["iconSize"] = 0.8333333519597852,
+}, -- [4]
+},
+},
+},
+},
+},
+},
+}

@@ -17,7 +17,7 @@ local subs = {}
 for s in pairs(QB.slash) do subs[#subs + 1] = s end
 table.sort(subs)
 for _, s in ipairs(subs) do slash(s .. " zzzbogus"); check(s) end
-for _, m in ipairs({ "overlay corner zzz", "strip zzz", "strip anchor ZZZ", "drawers zzz", "tracker zzz", "markers zzz", "camera zzz" }) do
+for _, m in ipairs({ "overlay corner zzz", "strip zzz", "strip anchor ZZZ", "drawers zzz", "tracker zzz", "camera zzz" }) do
   slash(m); check(m)
 end
 assert(checked > 20, "looked at " .. checked .. " lines")

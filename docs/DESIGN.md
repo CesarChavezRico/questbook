@@ -119,6 +119,13 @@ split by matching tooltip text to objective text is our own method, not seen els
 dump says, that the tooltip text matches the log's, and the icon art paths (stock icons `INV_Sword_04`, `INV_Misc_Bag_08`,
 `GossipFrame\AvailableQuestIcon`). `/qb plates diag` prints what the module sees for the target or the unit under the mouse.
 
+*Seen in the game (2026-11-04, v0.21.1):* the icon (a bag, with "0/10" beside it) appeared, but in the wrong place: on top of the nameplate's
+small level box, and higher than the health bar. Cause (from the screenshot and Blizzard_NamePlates): the plate frame is bigger than its bar (name
+above, bar, and the level box 5 px right of the bar), and the icon was anchored to the plate frame's right edge and vertical centre. v0.21.2 anchors it
+to the parts instead: right of the level box when it is showing (else of the health bar), centred on the bar; `left` goes past the raid mark and the
+elite mark; `top` goes above the name. It looks again 0.1 s after the plate appears, because Blizzard sets the level box up around then.
+The level box's own "4" and the icon art itself were fine.
+
 ### The camera
 
 - While the overlay is open the camera is slid sideways so the character sits left of centre and the
@@ -333,6 +340,55 @@ from the recorded giver; nothing when no giver was recorded), so the bridge can 
 ElevenLabs Voice Library (`tts.casting` in the bridge; wow-relay `bridge/voices.js`). The slot is still sent, and is what speaks when
 casting is off or fails. Nothing else changes on this side.
 
+**The relay goes quiet (v0.21.3; Cesar, 2026-11-05: "it goes idle and almost every time I want a quest read, I get the default voice. I need to go
+and reconnect the relay, and wait for a bit to be able to read it with the ElevenLabs voices").** The relay addon counts the bridge as
+connected only for a while after it last heard from it (90 s with the sound-file presence beats working; about 12 minutes without them), and
+`WoWAI.SendTts` refuses a request while it is not: so after a quiet spell the reader fell back to the game's voice until the Reconnect
+button was pressed. Now, when a reading needs the relay and it is not connected, the reader does what that button does (`WoWAI.Connect`:
+say hello; the bridge acks and refreshes what the addon reads), shows Stop while it waits, polls every half second for up to 10 seconds, and
+speaks through the relay as soon as it answers; only if it does not answer does it use the game's voice, with the reason and how long the
+bridge has been quiet. After a failed try it does not try again for 45 seconds (each hello costs one of the relay addon's 200 slots, and a
+bridge that is really gone should not make every Talk wait). Stop, or a newer reading, cancels a waiting one; the prefetch at accept does
+the same quietly. `/qb voice status` says in one line why the relay voice would or would not be used. *Unverified:* that Connect brings
+the bridge back in under 10 seconds on the rig, and WHY it goes quiet in the first place (the relay's own `/ai diag` is needed for that:
+whether its sound channel is usable, how many presence beats it hears). One thing seen in the relay's code: where the sound channel is
+unusable, the idle poll reads a slot whose clock only changes when the bridge publishes (on a reply or a hello), so the light cannot stay
+green by itself there.
+
+### QuestBook's settings in EllesmereUI's options panel (v0.23.0; 4BI-38)
+
+- **Why** (Cesar, 2026-11-09, after the Play button: "build the questbook settings into the panel"): about forty settings lived only behind slash commands.
+- **How:** `EllesmereUI.RegisterPlugin("QuestBook", spec)` (its `PLUGINS_API.md`, version 5) gives a section of our own at the bottom of its sidebar: one row,
+  "QuestBook", five tabs. *Voice*: walk-and-listen, the engine (game or ElevenLabs relay), prepare-at-accept, the game voice's speed, a test button, a "why" button.
+  *Reader*: text size, the page's height (same as the map, or its own), width, scroll bar, what it hides, an open button. *Experience bar*: the number, rested,
+  Blizzard's bar, width, height, gap, number size. *Top right*: the strip's coordinates and mail, the Play button's room. *Modules*: a switch for each
+  module, and a reload button. Open with `/qb settings`.
+- **One code path:** a setter runs the same command line as typing it (`QB:Run`, which is `HandleSlash` with the chat output switched off), so clamping and live
+  apply are what the commands already have and the tests already cover; a getter reads the module's saved value. A page for a module that is off says so in its header.
+- **Widgets:** the guide documents the factory's `SectionHeader` and `Toggle`. `Slider`, `Dropdown` and `Button` are what Ellesmere's own pages use; their signatures
+  were read from its source (`EllesmereUIOptions/EllesmereUI_Widgets*.lua`), nothing was copied, and every call is guarded: a widget that is missing or throws is skipped and reported.
+  The guide's other rules are kept: only a section of our own, plain-text labels, no side effects while building (it also runs once in a hidden search pass with a
+  stub factory), protected callbacks. Our section does not take part in Ellesmere's profiles.
+- **Unverified (the client has to say):** how the pages look and behave in the real panel, and the three undocumented widget signatures on the version in use.
+
+### The Play / Stop button on EllesmereUI's tracker (v0.22.0; 4BI-38)
+
+- **Why** (Cesar, 2026-11-09, after leaving our list for EllesmereUI's: "playing the quest text looks painful. Can we integrate the play/stop button into the
+  elle's tracker?"): the list's per-quest Play button went with the list, and the reader needs three steps to read a quest.
+- **How:** EllesmereUI publishes a plugin API (its `PLUGINS_API.md`, `PLUGIN_API_VERSION` 5, "the API only ever grows; existing functions and fields will not
+  change"). `EllesmereUI.RegisterQuestTrackerRow(id, fn, width)` calls `fn(slot, questID, title)` for every quest title row each time its Custom Quest Tracker
+  redraws, with a frame of ours at the right end of the title. `modules/Elle.lua` registers once under our addon's name (34 px reserved), puts a small text
+  button on each slot (created once per slot, set from the questID on every call, never a secure frame), and clicks go to `QuestLog:PlayQuest`. The label is
+  Stop while that quest is the one being read (`QuestLog:SpeakingQuestID`), Play otherwise, and follows the `speech_state` topic through
+  `EllesmereUI.RefreshQuestTrackerRows()`. Written from that document only; none of EllesmereUI's code is used (its repository carries no licence file).
+- **Where it works:** WoW Forever only, and only while EllesmereUI's Custom Quest Tracker is on. TOC: `OptionalDeps: EllesmereUIQuestTracker` so we load after it;
+  if it is still not there, the module tries again at the next `PLAYER_ENTERING_WORLD`. There is no unregister: a disabled module hides its buttons and its callback
+  does nothing. `/qb elle` says whether the hook is available and whether we registered.
+- **Alternative that needs no code from us:** EllesmereUI has its own bridge to the Spoken addon (pre-recorded voices) that puts a Play button on the same rows.
+  If both are installed there will be two buttons; the hook allots each its own width.
+- **Unverified (the client has to say):** that the button shows and takes clicks inside Ellesmere's rows here, how it looks next to Ellesmere's own row icons, and
+  that a click does not also fall through to the row.
+
 ### The quest giver (v0.16.0; 4BI-38 step 1)
 
 - **Why:** the voiceover will pick a voice by who gave the quest (creature type and gender, a per-NPC override, a quick-pick in the
@@ -373,6 +429,11 @@ casting is off or fails. Nothing else changes on this side.
 
 - **The corner minimap is retired** and its slot reused. In its place, a one-line text strip (zone,
   coordinates, mail) that also opens Blizzard's full map on click.
+- **The server clock** (v0.23.1, *written*; Cesar, 2026-11-09: "add the server clock into our menu"; read as the top-right strip, where the Menu handle lives, and
+  not the Menu drawer panel): the realm time from `GetGameTime()` after the coordinates, refreshed once a second, in 12 or 24 hours as the game's own clock
+  setting says (the `timeMgrUseMilitaryTime` CVar; 24 hours when unset), in a fixed-width slot so its neighbours do not jitter. The tooltip also gives the local time.
+  `/qb strip clock on|off` and a toggle in the settings panel. A dash when the game gives no time or a secret value. *Unverified:* that `GetGameTime()` returns the
+  realm time on this client as it does in Blizzard's own clock code, and how it looks in the strip.
 - **The Addons button is Blizzard's addon compartment**, re-anchored to the strip so retiring the
   minimap cluster does not take it along. Whether the compartment exists in Forever is *unverified*
   (inferred from the TOC). Old-style round minimap buttons from libraries are **not** covered.
@@ -418,3 +479,18 @@ casting is off or fails. Nothing else changes on this side.
   so where it was made.
 - Read Blizzard's UI source (`github.com/Gethe/wow-ui-source`, branch `forever`) before guessing; it
   settled the mask-registration bug and the quest-log entry points.
+- **The action bar plan** (v0.24.0, *written, untested in the client*; Cesar, 2026-11-10: "Can you assign abilities to action bar buttons from the
+  configuration?"; 4BI-41). Which ability sits in which button is kept by the game per character, not in any settings file, so the
+  `loadout` module carries a plan in our saved settings and applies it out of combat: `/qb bars dump | check | apply | undo`. The plan is
+  written by the offline configurator (`dev/elle-config`). Spells are matched by name to the highest rank known. Key bindings and macro
+  creation are the next step; the dump already records both.
+- **Layout and plan by git pull** (v0.25.0, *written, untested in the client*; Cesar, 2026-11-10: "we need a better way for better
+  cadence"; 4BI-41). The first client test of the offline layout cost a logout and two file transfers per change. Now the EllesmereUI
+  layout (`data/Layout.lua`) and the button plan (`data/Plan.lua`) ship in the addon folder, generated by `dev/elle-config`, and are
+  applied in game: `/qb layout check | apply | undo` writes the layout's values into EllesmereUI's saved settings and reloads the UI;
+  `/qb bars apply` reads the plan from the addon folder. A change is then a pull, a reload and one command.
+- **The markers module is retired** (v0.26.0; Cesar, 2026-11-11: "we should retire the quest's markers me made. The original intent
+  was to avoid rendering the 'blue' zones of the blizzard quest helper in the 'big' minimap. I think that restriction no longer applies
+  and we are missing out on functionality"). The client's own quest areas are back on the minimap. Because the old module had
+  switched them off through the "Quest POIs" tracking filter and remembered it in saved settings, the overlay switches the filter
+  back on once and removes the leftovers. Everything above about `markers` is history.

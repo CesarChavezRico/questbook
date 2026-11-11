@@ -14,10 +14,12 @@ Offline checks for when there is no game client at hand.
     node run.js ../.. voice.lua                         # the relay voice: slots by giver, Stop, prefetch, the fallback to the game's voice
     node run.js ../.. giver.lua                         # the quest giver: recorded at accept, capped, shown in the reader
     node run.js ../.. xp.lua                            # the experience bar: fill, rested, tooltip, max level, Blizzard's bar, no strip
+    node run.js ../.. elle.lua                          # the Play / Stop button on EllesmereUI's tracker rows (a stand-in for its plugin API)
+    node run.js ../.. panel.lua                         # the settings section in EllesmereUI's panel (a stand-in for its plugin API and widget factory)
+    node run.js ../.. strip_clock.lua                   # the server clock in the strip: 12 / 24 hours, tooltip, the setting, no time
     node run.js ../.. kit.lua                           # /qb screen, /qb kit, pixel arithmetic, the nine-patch page
     node run.js ../.. version.lua                       # the version line at login
     node run.js ../.. help.lua                          # every help / usage line survives the chat frame (no stray "|")
-    node run.js ../.. markers.lua                       # quest markers: positions, rotation, edge, switching the client's areas off and back
     node run.js ../.. tracker.lua                       # the compact tracker: hides and restores Blizzard's, follows the corner minimap
     node run.js ../.. reader.lua                        # the reader: sits where the map sits, trades places with it, camera, duties, voice
     node run.js ../.. migrate.lua                          # settings saved by an older build

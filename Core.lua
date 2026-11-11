@@ -10,7 +10,7 @@
 
 local ADDON, QB = ...
 QB.name = ADDON
-QB.version = "0.21.1"
+QB.version = "0.26.0"
 QB.modules = {}      -- name -> module table
 QB.order = {}        -- registration order
 QB.errors = {}       -- module name -> { msg = string, count = number }
@@ -43,7 +43,19 @@ local function FillDefaults(dst, src)
 end
 
 function QB:Say(msg)
+  if QB.quiet then return end
   print("|cffd8c88aQuestBook|r: " .. tostring(msg))
+end
+
+-- Run a slash command line the way /qb would, without its chat output: for a settings panel that drives the same code paths
+-- (clamping, live apply) as the commands do, and has its own display of the result. Returns true unless the command errored.
+function QB:Run(line)
+  local was = QB.quiet
+  QB.quiet = true
+  local ok, err = pcall(QB.HandleSlash, QB, line)
+  QB.quiet = was
+  if not ok then QB:ReportError("core", err) end
+  return ok
 end
 
 -- Help and usage text: the chat frame reads "|" + a letter as a code ("|t" ends a texture, "|h" a link, "|r"

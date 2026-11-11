@@ -96,6 +96,110 @@ assert(spoken == s1 + 1, "no relay addon: the game's voice")
 R:Hide()
 WoWAI = savedWoWAI
 
+-- THE RELAY HAS GONE QUIET (Cesar, 2026-11-05: "it goes idle and almost every time I want a quest read I get the default voice;
+-- I need to go and reconnect the relay and wait a bit"): Talk asks the relay addon to reconnect, waits a few seconds, and only
+-- then falls back to the game's voice.
+slash("voice engine relay"); __take()
+local clock = 0
+local realGetTime = GetTime
+GetTime = function() return clock end
+local connects, answerAfter = 0, nil          -- answerAfter: seconds after the Connect when the bridge "answers"; nil = never
+local connectAt
+WoWAI.Connect = function() connects = connects + 1; connectAt = clock end
+WoWAI.IsConnected = function() return connected or (answerAfter ~= nil and connectAt ~= nil and clock - connectAt >= answerAfter) end
+WoWAI.BridgeState = function() return "stale", 0.9, 0.8, 0.2, "Bridge: last seen 7m 3s ago" end
+local function scenario(answer)               -- a fresh quiet bridge: it answers `answer` seconds after a Connect (nil = never)
+  connected = false; answerAfter = answer; connectAt = nil; calls = {}; connects = 0; clock = clock + 100
+end
+local function pass(secs)                     -- let `secs` seconds go by, a timer pass every half second
+  for _ = 1, math.floor(secs / 0.5) do clock = clock + 0.5; __runTimers() end
+end
+
+-- 1. quiet, and it answers after 2 s: Talk waits, then the RELAY speaks; the game's voice never does
+scenario(2)
+QB:Call("questlog", "Open", 100)
+local sp0 = spoken
+click(R.talk)
+assert(connects == 1, "Talk asked the relay addon to reconnect, once: " .. connects)
+assert(#calls == 0 and spoken == sp0, "nothing is said yet")
+assert(R.talk:GetText() == "Stop", "the page says Stop while it waits (and Stop cancels it)")
+assert(table.concat(__take(), "\n"):find("reconnecting", 1, true), "and says what it is doing")
+pass(3)
+assert(#calls == 1 and calls[1].action == "play" and calls[1].slot == "male", "the bridge answered: the request went out with the giver's slot")
+assert(spoken == sp0, "the game's voice did not speak")
+click(R.talk); pass(1)                                       -- Stop
+R:Hide(); __take()
+
+-- 2. quiet, and it never answers: after 10 s the game's voice, with the reason (and how long the bridge has been quiet)
+scenario(nil)
+QB:Call("questlog", "Open", 100)
+sp0 = spoken
+click(R.talk)
+pass(9)
+assert(spoken == sp0 and #calls == 0, "still waiting at 9 s")
+pass(2)
+assert(spoken == sp0 + 1 and #calls == 0, "after 10 s the game's voice speaks")
+local said2 = table.concat(__take(), "\n")
+assert(said2:find("not connected", 1, true) and said2:find("last seen 7m 3s ago", 1, true), "and it says why: " .. said2)
+-- a second Talk soon after: no new attempt, the game's voice at once
+local function done() __fire("VOICE_CHAT_TTS_PLAYBACK_FINISHED") end      -- (the stub has no game speech: say the last reading ended)
+done()
+local c2 = connects
+sp0 = spoken
+click(R.talk)
+assert(connects == c2 and spoken == sp0 + 1, "within 45 s of a failed try the game's voice speaks at once, without another reconnect")
+-- 45 s later it tries again, and this time the bridge is back
+done(); clock = clock + 50; answerAfter = 1; connectAt = nil
+click(R.talk); pass(2)
+assert(connects == c2 + 1 and #calls == 1, "after the gap it tries again, and this time the bridge is back")
+click(R.talk); R:Hide(); __take(); done()
+
+-- 3. Stop while it waits cancels the reading: nothing is sent, nothing is said
+scenario(3)
+QB:Call("questlog", "Open", 100)
+sp0 = spoken
+click(R.talk); assert(R.talk:GetText() == "Stop")
+click(R.talk)
+assert(R.talk:GetText() == "Talk", "Stop puts it back")
+pass(12)
+assert(#calls == 0 and spoken == sp0, "cancelled: nothing sent, nothing said")
+
+-- 4. a newer reading replaces the waiting one: only the latest goes out
+scenario(3); done()
+click(R.talk)
+click(R.next)                                                -- reads the next quest: the first wait is dropped
+pass(5)
+assert(#calls == 1 and calls[1].ref ~= "q100", "only the newest reading was sent: " .. tostring(calls[1] and calls[1].ref))
+assert(connects == 1, "and one reconnect served both")
+R:Hide(); __take()
+
+-- 5. prefetch at accept asks quietly and sends once the bridge is back (and says nothing if it is not)
+scenario(2)
+slash("voice prefetch on"); __take()
+__fire("QUEST_ACCEPTED", 2, 100); __runTimers()
+assert(connects == 1, "prefetch asked for a reconnect")
+pass(3)
+assert(#calls == 1 and calls[1].action == "prefetch" and calls[1].ref == "q100", "and the prefetch went out once it answered")
+assert(not table.concat(__take(), "\n"):find("reconnecting", 1, true), "quietly: no chat line for a background prefetch")
+scenario(nil)
+__fire("QUEST_ACCEPTED", 2, 100); __runTimers(); pass(12)
+assert(#calls == 0 and table.concat(__take(), "\n") == "", "bridge really gone: no request, no message")
+
+-- 6. /qb voice status says why, in one line
+scenario(nil)
+slash("voice status")
+local st = table.concat(__take(), "\n")
+assert(st:find("not connected", 1, true) and st:find("last seen 7m 3s ago", 1, true) and st:find("/ai diag", 1, true), "status: " .. st)
+connected = true
+slash("voice status"); assert(table.concat(__take(), "\n"):find("the relay voice is used", 1, true))
+-- no relay addon at all: nothing to reconnect, the game's voice at once (as before)
+local savedW = WoWAI; WoWAI = nil; connected = true
+QB:Call("questlog", "Open", 100); sp0 = spoken; click(R.talk)
+assert(spoken == sp0 + 1, "no relay addon: the game's voice, no waiting")
+click(R.talk); R:Hide(); WoWAI = savedW
+GetTime = realGetTime
+connected = true; answerAfter = nil; calls = {}; __take()
+
 -- prefetch at accept: the bridge makes the audio before you ask
 slash("voice prefetch on")
 calls = {}
