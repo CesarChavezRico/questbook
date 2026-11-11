@@ -10,9 +10,12 @@ function emit(plan) {
     if (button < 1 || button > 12 || slots.has(slot)) throw new Error('bad or repeated seat: page ' + page + ' button ' + button);
     slots.set(slot, what);
   }
-  for (const [name, body] of plan.macros) {
-    if (name.length > 16) throw new Error('macro name over 16 characters: ' + name);
-    if (('#showtooltip\n' + body).length > 255) throw new Error('macro over 255 characters: ' + name);
+  // a macro is [name, body] or [name, body, icon]. Without an icon it gets "#showtooltip" and the question-mark icon, so the
+  // button shows the spell it would cast; with an icon (a macro that runs a command, not a spell) the text is used as written.
+  const text = (m) => (m[2] ? m[1] : '#showtooltip\n' + m[1]);
+  for (const m of plan.macros) {
+    if (m[0].length > 16) throw new Error('macro name over 16 characters: ' + m[0]);
+    if (text(m).length > 255) throw new Error('macro over 255 characters: ' + m[0]);
   }
   const used = new Set([...slots.values()].filter((w) => w.kind === 'macro').map((w) => w.name));
   for (const n of used) if (!plan.macros.some((m) => m[0] === n)) throw new Error('a seat uses a macro the plan does not define: ' + n);
@@ -25,7 +28,7 @@ function emit(plan) {
     '  name = ' + L.lua(plan.name) + ',',
     '  macros = {',
   ];
-  for (const [name, body] of plan.macros) lines.push('    { name = ' + L.lua(name) + ', body = ' + L.lua('#showtooltip\n' + body) + ' },');
+  for (const m of plan.macros) lines.push('    { name = ' + L.lua(m[0]) + ', body = ' + L.lua(text(m)) + (m[2] ? ', icon = ' + L.lua(m[2]) : '') + ' },');
   lines.push('  },', '  slots = {');
   for (const slot of [...slots.keys()].sort((a, b) => a - b)) {
     const w = slots.get(slot);

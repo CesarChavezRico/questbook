@@ -282,7 +282,9 @@ test('emit: the layout and plan files are valid Lua and say what they hold', asy
       assert(load(LAY))('QuestBook', QB); assert(load(PLAN))('QuestBook', QB)
       local n = 0 for _ in pairs(QB.planData.slots) do n = n + 1 end
       return #QB.layoutData.sets .. ' ' .. #QB.layoutData.removes .. ' ' .. QB.layoutData.sets[1].path[2] .. ' ' .. n .. ' ' .. #QB.planData.macros`);
-    assert.strictEqual(r, '2 1 $profile ' + plan.slots + ' 6');
+    assert.strictEqual(r, '2 1 $profile ' + plan.slots + ' ' + plan.macros);
+    assert.ok(/name = "QB Map", body = "\/qb overlay cycle", icon = "INV_Misc_Map_01"/.test(plan.text), 'a command macro keeps its text and carries its icon');
+    assert.ok(/name = "QB Top M", body = "#showtooltip\\n/.test(plan.text), 'a spell macro gets #showtooltip');
   } finally { lua.global.close(); }
   assert.throws(() => require('../emit-plan.js').emit({ name: 'x', macros: [], seats: [[1, 1, { kind: 'macro', name: 'Missing' }]] }), /does not define/);
 });
