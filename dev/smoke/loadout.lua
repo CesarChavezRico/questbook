@@ -164,6 +164,20 @@ assert(M.db.plan.v == 2 and M.db.plan.macros[1].body == "/cast [form:cat] Rake; 
 assert(macros[GetMacroIndexByName("QB Old")][3] == "/cast [form:2] Rake; [form:1/2] Feral Charge; [form:1] Bash; [noform] Wrath", "and written with this character's numbers")
 slash("bars apply"); assert(said("0 to place %(done%), 0 already right, 0 skipped$"), "the upgrade happens once and then nothing changes")
 
+-- 11. a macro button as the Forever client reports it (seen 2026-11-10): a macro that resolves to a spell gives that spell's id,
+-- not the macro's index, so the macro is recognised by the button's text
+local plainInfo = GetActionInfo
+function GetActionText(s) local x = slots[s]; if x and x[1] == "macro" and macros[x[2]] then return macros[x[2]][1] end end
+function GetActionInfo(s) local x = slots[s]; if x and x[1] == "macro" then return "macro", 414924, "spell" end return plainInfo(s) end
+M.db.plan = { v = 2, macros = { { name = "QB R", body = "/cast Rip" } }, slots = { [40] = { kind = "macro", name = "QB R" } } }
+slash("bars apply")
+text = table.concat(__take(), "\n")
+assert(text:find("1 to place (done)", 1, true) and not text:find("FAILED"), "a resolving macro is placed without a false failure: " .. text)
+slash("bars apply"); assert(said("0 to place %(done%), 1 already right"), "and is recognised as already there")
+slash("bars dump"); __take()
+assert(M.db.dump.slots[40].kind == "macro" and M.db.dump.slots[40].name == "QB R", "the dump names the macro")
+GetActionInfo = plainInfo; GetActionText = nil
+
 M.db.plan.macros = nil; M.db.plan.slots = { [1] = { kind = "spell", name = "Wrath" } }
 
 slash("bars"); assert(said("bars: plan 1 button"), "status counts the valid plan entries")
