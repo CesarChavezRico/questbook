@@ -267,6 +267,18 @@ assert(EllesmereUIDB.top == nil and RXPSettings.profiles.Leveling.activeTheme ==
 RXPSettings = { profiles = {} }
 slash("layout apply"); __take()
 assert(RXPSettings.profiles["Thara - PvP"] and RXPSettings.profiles["Thara - PvP"].activeTheme == "QuestBook", "falls back to the character's own profile name")
+-- v0.28.4: when RestedXP's profile table in use can be reached, the values go into it, whatever sits under the name
+local inUse = { enableQuestAutomation = true }
+RXPSettings = { profileKeys = { ["Thara - PvP"] = "Leveling" }, profiles = { Leveling = {} } }
+RXP = { settings = { profile = inUse, LoadFramePositions = function() end } }
+slash("layout check"); assert(said("RestedXP, .-: %d+ of %d+ value%(s%) differ"), "the check reads the table in use")
+slash("layout apply"); __take()
+assert(inUse.activeTheme == "QuestBook" and inUse.enableQuestAutomation == false and inUse.framePositions.RXPFrame[1][1] == "TOPLEFT", "written into the table in use")
+assert(next(RXPSettings.profiles.Leveling) == nil, "the table under the name is left alone")
+slash("layout apply"); assert(said("RestedXP already in place"), "a second apply finds the values in the table in use")
+slash("layout undo"); __take()
+assert(inUse.activeTheme == nil and inUse.enableQuestAutomation == true and inUse.framePositions.RXPFrame == nil, "undo puts the table in use back")
+RXP = nil
 QB.layoutData, QB.guideData, EllesmereUIDB, RXPSettings = nil, nil, nil, nil
 -- the plan that ships today is well formed: every macro seat names a macro it defines
 local names = {}

@@ -49,4 +49,21 @@ QB:RegisterSlash(mod, "guide", function()
   QB:Say(string.format("guide: RestedXP Guides %s | our theme \"%s\" %s | /qb layout apply puts its windows and settings in place",
     Present() and "loaded" or "NOT loaded", THEME_NAME,
     active == THEME_NAME and "is the active theme" or (active and ("offered; the active theme is \"" .. tostring(active) .. "\"") or "offered")))
+  -- Which settings RestedXP is using, for telling why a write did not show (v0.28.4): its profile's name, and whether the
+  -- table saved under that name is the one it reads.
+  if type(s) == "table" then
+    local name
+    local get = _G.RXP.settings.GetSettingsDB
+    if type(get) == "function" then
+      local ok, v = pcall(get)
+      if ok and type(v) == "string" then name = v end
+    end
+    local saved = type(_G.RXPSettings) == "table" and type(_G.RXPSettings.profiles) == "table" and name and _G.RXPSettings.profiles[name]
+    local pos = type(s.framePositions) == "table" and s.framePositions.RXPFrame
+    pos = type(pos) == "table" and type(pos[1]) == "table" and pos[1] or nil
+    QB:Say(string.format("guide: RestedXP's profile is \"%s\", %s | window at %s",
+      tostring(name or "?"),
+      saved == nil and "no saved table to compare" or (saved == s and "the saved table is the one in use" or "the saved table is NOT the one in use"),
+      pos and string.format("%s %s, %s", tostring(pos[1]), tostring(pos[4]), tostring(pos[5])) or "no saved place"))
+  end
 end, "guide: RestedXP Guides and our theme for it (status)")
