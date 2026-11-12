@@ -547,3 +547,6 @@ green by itself there.
   `/qb guide read on|off`, `pause`, `play`, `skip`, `bar on|off|reset`. Pause replays the line from its start (the rig's
   player cannot continue in the middle). The quest text itself is still read by the quest reader's Play. Not verified in
   the client or on the rig.
+  Same day: the bar also shows what the voice costs, "41.2k / 100.0k credits · 212 avg": ElevenLabs credits used of the
+  account's total and the average of a paid reading this month, from the relay addon's `WoWAI.VoiceUsage` (wow-relay PR
+  no. 25). The numbers arrive with whatever the game next reads from the bridge, so they can be minutes behind.

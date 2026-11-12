@@ -108,6 +108,16 @@ local n = #tts; __runTimers(); assert(#tts == n, "off: nothing is read")
 SlashCmdList.QUESTBOOK("guide read on"); __take(); __runTimers(); assert(tts[#tts][3] == "g7", "on again: reading goes on")
 SlashCmdList.QUESTBOOK("guide bar off"); assert(said("hidden") and not QuestBookReaderBar:IsShown(), "the control can be hidden")
 SlashCmdList.QUESTBOOK("guide bar on"); __take(); assert(QuestBookReaderBar:IsShown(), "and shown")
+-- the usage indicator on the bar: from the relay addon when it has the numbers
+time = time or os.time
+assert(QuestBookReaderBar.usage:GetText() == "credits: not known yet", "no numbers yet: " .. tostring(QuestBookReaderBar.usage:GetText()))
+SlashCmdList.QUESTBOOK("guide"); assert(said("voice credits not known yet"), "status without numbers")
+WoWAI.VoiceUsage = function() return { used = 41250, total = 100000, avg = 212, made = 37, source = "account", at = time() - 180 } end
+__runTimers()
+assert(QuestBookReaderBar.usage:GetText() == "41.2k / 100.0k credits \194\183 212 avg", "used of total and the average: " .. tostring(QuestBookReaderBar.usage:GetText()))
+SlashCmdList.QUESTBOOK("guide"); assert(said("voice credits 41250 of 100000 %(the ElevenLabs account%), 37 paid readings this month, 212 credits each on average, as of 3 min ago"), "status with numbers")
+WoWAI.VoiceUsage = function() return { used = 900, total = 150000, avg = 90, made = 10, source = "bridge", at = 0 } end
+__runTimers(); assert(QuestBookReaderBar.usage:GetText() == "900 / 150.0k credits \194\183 90 avg", "follows the numbers: " .. tostring(QuestBookReaderBar.usage:GetText()))
 -- an older relay addon without "queue": falls back to play
 WoWAI.SendTts = function(action, slot, ref, text) if action == "queue" then return false, "bad action" end tts[#tts + 1] = { action, slot, ref, text }; return true end
 RXP.currentGuide.steps[8] = { index = 8, active = true, elements = { { text = "Eight" } } }

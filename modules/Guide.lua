@@ -231,7 +231,10 @@ local function Speak(ref, text)
   return false, tostring(err or sent)
 end
 
+local RefreshUsage                 -- (defined with the bar: repaints it when the numbers changed)
+
 local function Look()
+  if RefreshUsage then RefreshUsage() end
   if not (mod.db and mod.db.read) or mod.paused then return end
   local rxp = _G.RXP
   local guide = type(rxp) == "table" and rxp.currentGuide
@@ -262,6 +265,30 @@ end
 local bar
 local PAL = { normal = { 0.92, 0.89, 0.82 }, hot = { 0.98, 0.92, 0.76 }, faded = { 0.60, 0.57, 0.50 }, warn = { 0.85, 0.68, 0.35 } }
 
+-- What the voice has cost, from the relay addon (WoWAI.VoiceUsage: ElevenLabs credits used of the account's total, and
+-- the average one paid reading costs this month). The bridge sends it with whatever the game reads next, so it can be
+-- some minutes behind. nil when the relay addon does not have it (an older one, or nothing heard yet).
+local function Short(n)
+  n = tonumber(n) or 0
+  if n >= 1000000 then return string.format("%.2fM", n / 1000000) end
+  if n >= 10000 then return string.format("%.1fk", n / 1000) end
+  return string.format("%d", n)
+end
+
+local function Usage()
+  local W = _G.WoWAI
+  if not (type(W) == "table" and type(W.VoiceUsage) == "function") then return nil end
+  local ok, v = pcall(W.VoiceUsage)
+  if not ok or type(v) ~= "table" or type(v.total) ~= "number" then return nil end
+  return v
+end
+
+local function UsageText()
+  local v = Usage()
+  if not v then return "credits: not known yet" end
+  return string.format("%s / %s credits \194\183 %s avg", Short(v.used), Short(v.total), Short(v.avg))
+end
+
 local function PaintBar()
   if not bar then return end
   bar.pause:SetText(mod.paused and "Play" or "Pause")
@@ -273,8 +300,16 @@ local function PaintBar()
     b:ClearAllPoints(); b:SetPoint("LEFT", bar, "LEFT", x, 0)
     x = x + b:GetWidth() + Style.Px(18, bar)
   end
+  bar.shownUsage = UsageText()
+  bar.usage:SetText(bar.shownUsage)
+  bar.usage:ClearAllPoints(); bar.usage:SetPoint("LEFT", bar, "LEFT", x, 0)
+  x = x + bar.usage:GetStringWidth() + Style.Px(18, bar)
   bar:SetWidth(x - Style.Px(6, bar))
   if mod.db.bar and mod.active then bar:Show() else bar:Hide() end
+end
+
+RefreshUsage = function()
+  if bar and bar.shownUsage ~= UsageText() then PaintBar() end
 end
 
 local function PlaceBar()
@@ -319,6 +354,9 @@ local function BuildBar()
   bar.pause = Style.InkLink(bar, 15, function() mod:SetPaused(not mod.paused) end, PAL)
   bar.skip = Style.InkLink(bar, 15, function() mod:Skip() end, PAL); bar.skip:SetText("Skip")
   bar.onoff = Style.InkLink(bar, 15, function() mod:SetRead(not mod.db.read) end, PAL)
+  bar.usage = bar:CreateFontString(nil, "OVERLAY")
+  bar.usage:SetFont(Style.FRIZ, Style.Px(13, bar), "")
+  bar.usage:SetTextColor(PAL.faded[1], PAL.faded[2], PAL.faded[3], 1)
   PlaceBar()
 end
 
@@ -367,6 +405,17 @@ QB:RegisterSlash(mod, "guide", function(rest)
     active == THEME_NAME and "is the active theme" or (active and ("offered; the active theme is \"" .. tostring(active) .. "\"") or "offered")))
   QB:Say("guide: the steps are " .. (mod.db.read and (mod.paused and "read aloud, paused now" or "read aloud") or "not read aloud")
     .. " | /qb guide read on, read off, pause, play, skip, bar on, bar off")
+  do
+    local v = Usage()
+    if v then
+      local age = (type(_G.time) == "function" and v.at and v.at > 0) and math.max(0, math.floor((_G.time() - v.at) / 60)) or nil
+      QB:Say(string.format("guide: voice credits %d of %d (%s), %d paid readings this month, %d credits each on average%s",
+        v.used, v.total, v.source == "account" and "the ElevenLabs account" or "the bridge's own count against its cap", v.made, v.avg,
+        age and string.format(", as of %d min ago", age) or ""))
+    else
+      QB:Say("guide: voice credits not known yet (the relay addon has not heard them from the bridge)")
+    end
+  end
   QB:Say("guide: " .. (mod.attaching and "the step you are on goes with your messages to the relay (/ask ...) when it has changed"
     or "the relay addon does not take attachments (or is not loaded): use /qb guide ask <question>"))
   -- Which settings RestedXP is using, for telling why a write did not show (v0.28.4): its profile's name, and whether the
