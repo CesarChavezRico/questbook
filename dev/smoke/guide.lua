@@ -61,5 +61,17 @@ local long = string.rep("x", 400)
 for i = 4, 7 do RXP.currentGuide.steps[i].elements = { { text = long }, { text = long }, { text = long } } end
 SlashCmdList.QUESTBOOK("guide ask q"); __take(); assert(#sent < 2400 and sent:find("cut here", 1, true), "a long place is cut to fit one message: " .. #sent)
 SlashCmdList.QUESTBOOK("guide bogus"); assert(said("/qb guide || step"), "usage for an unknown word")
+-- the automatic form: a relay addon with RegisterContext is offered a function at enable; it returns the place, capped
+SlashCmdList.QUESTBOOK("guide"); assert(said("use /qb guide ask"), "status: no attachments without the door")
+local offered = {}
+WoWAI = { Send = function(t) sent = t; offered.during = offered.fn and offered.fn() end, RegisterContext = function(k, fn) offered.key, offered.fn = k, fn; return true end }
+QB:Disable("guide"); QB:Enable("guide"); __take()
+assert(offered.key == "questbook-guide" and type(offered.fn) == "function", "offered at enable")
+SlashCmdList.QUESTBOOK("guide"); assert(said("goes with your messages to the relay"), "status: attaching")
+local auto = offered.fn()
+assert(#auto <= 1000 + 12 and auto:find("^%[Where I am in the guide, attached by QuestBook%]\nRestedXP guide: ") and auto:find("(cut here)", 1, true), "the place, capped: " .. #auto)
+SlashCmdList.QUESTBOOK("guide ask q2"); __take(); assert(offered.during == nil and offered.fn() ~= nil, "during /qb guide ask the automatic block stays out")
+RXP.currentGuide = nil; assert(offered.fn() == nil, "no guide: nothing to attach")
+QB:Disable("guide"); assert(offered.fn == nil, "taken back when the module is switched off"); QB:Enable("guide"); __take()
 RXP, WoWAI = nil, nil
 print("guide: ok")

@@ -138,11 +138,42 @@ local function Ask(question)
     block = block .. l .. "\n"
   end
   if cut then block = block .. "(cut here: too long for one message)\n" end
+  mod.asking = true     -- the place is already in this message: the automatic attachment below stays out of it
   local ok, err = pcall(W.Send, question .. "\n\n[Where I am in the guide, sent by /qb guide ask]\n" .. block)
+  mod.asking = nil
   if not ok then QB:Say("guide: the relay did not take the message: " .. tostring(err)); return false end
   QB:Say("guide: question sent with the guide's place; the answer comes in the WoW AI window")
   return true
 end
+
+-- The automatic form (Cesar, 2026-11-12: asking from the chat box with /ask should just work). A relay addon that has
+-- WoWAI.RegisterContext asks this function for text with every message, and puts it under the words when it has changed
+-- since the last one. Registered at login, when the relay addon (which loads after us) is there. An older relay addon has
+-- no such door: /qb guide ask stays the way.
+local AUTO_MAX = 1000
+local function Attached()
+  if mod.asking then return nil end
+  local lines = Where(3)
+  if not lines then return nil end
+  local block = "[Where I am in the guide, attached by QuestBook]"
+  for _, l in ipairs(lines) do
+    if #block + #l + 1 > AUTO_MAX then block = block .. "\n(cut here)"; break end
+    block = block .. "\n" .. l
+  end
+  return block
+end
+
+local function Offer(fn)
+  local W = _G.WoWAI
+  if type(W) == "table" and type(W.RegisterContext) == "function" then
+    local ok, took = pcall(W.RegisterContext, "questbook-guide", fn)
+    return ok and took and true or false
+  end
+  return false
+end
+
+function mod:OnEnable() mod.attaching = Offer(Attached) end
+function mod:OnDisable() Offer(nil); mod.attaching = false end
 
 QB:RegisterSlash(mod, "guide", function(rest)
   local sub, tail = (rest or ""):match("^%s*(%S*)%s*(.*)$")
@@ -156,6 +187,8 @@ QB:RegisterSlash(mod, "guide", function(rest)
   QB:Say(string.format("guide: RestedXP Guides %s | our theme \"%s\" %s | /qb layout apply puts its windows and settings in place",
     Present() and "loaded" or "NOT loaded", THEME_NAME,
     active == THEME_NAME and "is the active theme" or (active and ("offered; the active theme is \"" .. tostring(active) .. "\"") or "offered")))
+  QB:Say("guide: " .. (mod.attaching and "the step you are on goes with your messages to the relay (/ask ...) when it has changed"
+    or "the relay addon does not take attachments (or is not loaded): use /qb guide ask <question>"))
   -- Which settings RestedXP is using, for telling why a write did not show (v0.28.4): its profile's name, and whether the
   -- table saved under that name is the one it reads.
   if type(s) == "table" then
