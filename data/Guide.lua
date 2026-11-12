@@ -3,15 +3,12 @@
 local _, QB = ...
 QB.guideData = {
   v = 1,
-  name = "guide in the upper left, 2026-11-11",
+  name = "guide settings, 2026-11-11",
   sets = {
     { path = { "profiles", "$profile", "enableQuestAutomation" }, value = false },
     { path = { "profiles", "$profile", "enableGossipAutomation" }, value = false },
     { path = { "profiles", "$profile", "activeTheme" }, value = "QuestBook" },
     { path = { "profiles", "$profile", "windowScale" }, value = 1.25 },
-    { path = { "profiles", "$profile", "framePositions", "RXPFrame" }, value = { [1] = { [1] = "TOPLEFT", [2] = "UIParent", [3] = "TOPLEFT", [4] = 30, [5] = -60, }, } },
-    { path = { "profiles", "$profile", "framePositions", "activeItemFrame" }, value = { [1] = { [1] = "TOPLEFT", [2] = "UIParent", [3] = "TOPLEFT", [4] = 30, [5] = -420, }, } },
-    { path = { "profiles", "$profile", "framePositions", "activeTargetFrame" }, value = { [1] = { [1] = "TOPLEFT", [2] = "UIParent", [3] = "TOPLEFT", [4] = 30, [5] = -480, }, } },
   },
   removes = {
   },

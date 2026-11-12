@@ -237,7 +237,14 @@ QB.layoutData, EllesmereUIDB = nil, nil
 function GetRealmName() return "PvP" end
 local moved = 0
 local r0 = reloads
-QB.guideData = shippedGuide
+-- the shipped guide places no window (v0.28.5: Cesar places RestedXP's windows by hand); the mechanism is tested with a guide that does
+for _, e in ipairs(shippedGuide.sets) do assert(e.path[3] ~= "framePositions", "the shipped guide leaves RestedXP's windows where they are") end
+QB.guideData = { v = 1, name = "guide in the upper left", sets = {
+  { path = { "profiles", "$profile", "enableQuestAutomation" }, value = false },
+  { path = { "profiles", "$profile", "enableGossipAutomation" }, value = false },
+  { path = { "profiles", "$profile", "activeTheme" }, value = "QuestBook" },
+  { path = { "profiles", "$profile", "framePositions", "RXPFrame" }, value = { { "TOPLEFT", "UIParent", "TOPLEFT", 30, -60 } } },
+} }
 slash("layout check"); assert(said("RestedXP's settings are not loaded"), "RestedXP absent: skipped, said so")
 slash("layout apply"); __take(); assert(reloads == r0, "nothing to write anywhere: no reload")
 RXPSettings = { profileKeys = { ["Thara - PvP"] = "Leveling" }, profiles = { Leveling = { enableQuestAutomation = true, framePositions = { arrowFrame = { { "TOP", "UIParent", "TOP", 0, 0 } } } }, Other = {} } }

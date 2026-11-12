@@ -527,3 +527,7 @@ green by itself there.
   cause is not confirmed. The write now goes straight into `RXP.settings.profile` when it can be reached (the name stays as
   the fallback), and `/qb guide` prints RestedXP's profile name, whether the table saved under that name is the one in use,
   and the saved place of its window. Not verified in the client.
+- **v0.28.5, RestedXP's windows are placed by hand (4BI-42).** Client, 2026-11-11 evening: with v0.28.4 the theme took
+  ("QuestBook is the active theme", "the saved table is the one in use"), and Cesar dragged the guide window lower because
+  the shipped place sat under the buffs. The shipped guide no longer holds window positions, so `/qb layout apply` leaves
+  RestedXP's windows where he puts them. Why the first write (v0.28.0) did not show is still not confirmed.
