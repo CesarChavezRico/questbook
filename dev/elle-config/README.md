@@ -59,6 +59,8 @@ Swapping the settings file costs a logout. The addon can instead apply both whil
 
 - `node dev/elle-config/emit-guide.js` writes `data/Guide.lua` from `plans/guide-rxp.js`: settings for RestedXP Guides (4BI-42),
   applied by the same `/qb layout apply`.
+- `node dev/elle-config/emit-plates.js` writes `data/Plates.lua` from `plans/plates-mf.js`: settings for MF Nameplates (4BI-43),
+  written into the character's profile in `MFNameplatesDB`. That addon's code is not public; use only setting names seen in a settings file.
 
 The generated files are loaded by the addon and ship with it. They hold layout values and spell names only.
 
