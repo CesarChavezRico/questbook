@@ -41,8 +41,9 @@ assert(M and M.active, "the module is on")
 assert(type(QB.planData) == "table" and QB.planData.v == 2 and next(QB.planData.slots), "data/Plan.lua loaded")
 assert(type(QB.layoutData) == "table" and #QB.layoutData.sets > 0, "data/Layout.lua loaded")
 assert(type(QB.guideData) == "table" and #QB.guideData.sets > 0, "data/Guide.lua loaded")
-local shippedPlan, shippedLayout, shippedGuide = QB.planData, QB.layoutData, QB.guideData
-QB.planData, QB.layoutData, QB.guideData = nil, nil, nil
+assert(type(QB.platesData) == "table" and #QB.platesData.sets > 0, "data/Plates.lua loaded")
+local shippedPlan, shippedLayout, shippedGuide, shippedPlates = QB.planData, QB.layoutData, QB.guideData, QB.platesData
+QB.planData, QB.layoutData, QB.guideData, QB.platesData = nil, nil, nil, nil
 
 -- 1. no plan: says so, changes nothing
 slash("bars apply")
@@ -287,6 +288,31 @@ slash("layout undo"); __take()
 assert(inUse.activeTheme == nil and inUse.enableQuestAutomation == true and inUse.framePositions.RXPFrame == nil, "undo puts the table in use back")
 RXP = nil
 QB.layoutData, QB.guideData, EllesmereUIDB, RXPSettings = nil, nil, nil, nil
+
+-- 15. MF Nameplates (4BI-43): its settings are MFNameplatesDB, and this character's profile is named under profileKeys by a key
+-- that is not UnitName alone (Cesar's file: "Thara Moonward" for UnitName "Thara")
+QB.platesData = shippedPlates
+r0 = reloads
+slash("layout check"); assert(said("MF Nameplates's settings are not loaded"), "MF Nameplates absent: skipped, said so")
+MFNameplatesDB = { profileKeys = { ["Thara Moonward"] = "MF Forever", ["Other Alt"] = "Default" },
+  profiles = { ["MF Forever"] = { units = { friendlyplayer = { name = { size = 18 }, level = { size = 16 }, classIcon = { enabled = false } } } }, Default = { units = {} } } }
+slash("layout check"); assert(said('layout check: MF Nameplates, "nameplates: friendly player text at 12.-: 2 of 2 value%(s%) differ'), "check finds the two sizes")
+slash("layout apply"); __take()
+local fp = MFNameplatesDB.profiles["MF Forever"].units.friendlyplayer
+assert(fp.name.size == 12 and fp.level.size == 12 and fp.classIcon.enabled == false and reloads == r0 + 1, "the sizes are written into this character's profile, the rest kept")
+assert(next(MFNameplatesDB.profiles.Default.units) == nil, "another profile is untouched")
+slash("layout apply"); assert(said("MF Nameplates already in place"), "a second apply does nothing")
+slash("layout undo"); __take()
+assert(fp.name.size == 18 and fp.level.size == 16, "undo puts the sizes back")
+-- one profile key only, under a name we cannot derive: it is the one
+MFNameplatesDB = { profileKeys = { ["Someone Else"] = "Solo" }, profiles = { Solo = {} } }
+slash("layout apply"); __take()
+assert(MFNameplatesDB.profiles.Solo.units.friendlyplayer.name.size == 12, "a single profile key is used")
+-- several keys and none matches: the Default profile, never a guess at somebody else's
+MFNameplatesDB = { profileKeys = { ["A B"] = "One", ["C D"] = "Two" }, profiles = { One = {}, Two = {} } }
+slash("layout apply"); __take()
+assert(next(MFNameplatesDB.profiles.One) == nil and next(MFNameplatesDB.profiles.Two) == nil and MFNameplatesDB.profiles.Default, "no match: Default, the others untouched")
+QB.platesData, MFNameplatesDB = nil, nil
 -- the plan that ships today is well formed: every macro seat names a macro it defines
 local names = {}
 for _, m in ipairs(shippedPlan.macros) do names[m.name] = true; assert(#m.name <= 16 and #m.body <= 255, "macro limits: " .. m.name) end

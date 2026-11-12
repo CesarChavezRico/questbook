@@ -467,11 +467,32 @@ end
 --           RXPSettings.profileKeys["Name - Realm"]. RestedXP saves its windows' live positions when the UI unloads, so after
 --           writing we ask it to move its windows to the saved positions (its LoadFramePositions, reached through the global
 --           `RXP` it keeps "for debug purposes"); without that the reload would write the old places back over ours.
+--   plates = MF Nameplates (data/Plates.lua, QB.platesData, 4BI-43): MFNameplatesDB, whose profile for this character is under
+--           profileKeys. In Cesar's file (2026-11-12) the key there is "Thara Moonward", not the "Thara" UnitName gives, and we
+--           do not know how the addon builds it; so: the key that is the name or starts with it, else the only key there is.
+--           UNVERIFIED (client only): that MF Nameplates keeps values written this way through the reload.
 local function CharKey()
   local okN, name = Try(_G.UnitName, "player")
   local okR, realm = Try(_G.GetRealmName)
   if okN and okR and Plain(name, "string") and Plain(realm, "string") then return name .. " - " .. realm end
   return nil
+end
+
+local function PlatesProfile(root)
+  local keys = root.profileKeys
+  if type(keys) ~= "table" then return "Default" end
+  local okN, name = Try(_G.UnitName, "player")
+  name = okN and Plain(name, "string") or nil
+  local only, count, starts = nil, 0, nil
+  for k, v in pairs(keys) do
+    if type(k) == "string" and type(v) == "string" then
+      count = count + 1
+      only = v
+      if name and k == name then return v end
+      if name and k:sub(1, #name + 1) == name .. " " then starts = v end
+    end
+  end
+  return starts or (count == 1 and only) or "Default"
 end
 
 local TARGETS = {
@@ -498,6 +519,8 @@ local TARGETS = {
       end
       return false, "RestedXP's windows could not be moved from here: they keep their old place until you move them"
     end },
+  { id = "plates", label = "MF Nameplates", data = function() return QB.platesData end, root = function() return _G.MFNameplatesDB end,
+    profile = PlatesProfile },
 }
 
 -- The table that holds the last key of a path, and that key. create = true makes the tables on the way.
