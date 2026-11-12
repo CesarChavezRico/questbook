@@ -73,5 +73,54 @@ assert(#auto <= 1000 + 12 and auto:find("^%[Where I am in the guide, attached by
 SlashCmdList.QUESTBOOK("guide ask q2"); __take(); assert(offered.during == nil and offered.fn() ~= nil, "during /qb guide ask the automatic block stays out")
 RXP.currentGuide = nil; assert(offered.fn() == nil, "no guide: nothing to attach")
 QB:Disable("guide"); assert(offered.fn == nil, "taken back when the module is switched off"); QB:Enable("guide"); __take()
+-- v0.30.0: the guide read aloud. Stand-in for the relay addon's SendTts: records what was asked.
+local tts, connected, connects = {}, true, 0
+WoWAI = { SendTts = function(action, slot, ref, text) tts[#tts + 1] = { action, slot, ref, text }; return true, #tts end,
+  IsConnected = function() return connected end, Connect = function() connects = connects + 1 end }
+RXP = { settings = { profile = {} }, currentGuide = { group = "G", name = "N", steps = {
+  { index = 1, elements = { { text = "behind" } } },
+  { index = 2, active = true, elements = { { text = "|cFFFCDC00Talk to|r Lars", completed = true }, { text = "Accept |Hquest:1|h[Wolves at Our Heels]|h" }, { text = "Kill wolves!" }, { tag = "goto" } } },
+  { index = 3, active = true, elements = { { text = "done", completed = true } } },
+  { index = 4, elements = { { text = "Travel to Darkshire" } } },
+} } }
+assert(QuestBookReaderBar and QuestBookReaderBar:IsShown(), "the control is on screen")
+__runTimers()
+assert(#tts == 1 and tts[1][1] == "queue" and tts[1][2] == "guide" and tts[1][3] == "g2", "the active step is queued in the guide slot: " .. #tts)
+assert(tts[1][4] == "Accept Wolves at Our Heels. Kill wolves!", "what is left to do, as plain sentences: " .. tostring(tts[1][4]))
+__runTimers(); __runTimers(); assert(#tts == 1, "a step is read once; a step with nothing left is not read")
+RXP.currentGuide.steps[2].active = nil; RXP.currentGuide.steps[4].active = true
+__runTimers(); assert(#tts == 2 and tts[2][3] == "g4" and tts[2][4] == "Travel to Darkshire.", "the next step when it becomes active")
+-- the relay gone quiet: ask it to reconnect once, keep the step for later
+connected = false
+RXP.currentGuide.steps[5] = { index = 5, active = true, elements = { { text = "Five" } } }
+__runTimers(); __runTimers(); assert(#tts == 2 and connects == 1, "quiet relay: one reconnect, nothing lost: " .. connects)
+connected = true; __runTimers(); assert(#tts == 3 and tts[3][3] == "g5", "read once the relay is back")
+-- pause holds new steps; play resumes; skip; off stops and stays silent
+SlashCmdList.QUESTBOOK("guide pause"); assert(said("reading paused") and tts[#tts][1] == "pause", "pause goes to the bridge")
+RXP.currentGuide.steps[6] = { index = 6, active = true, elements = { { text = "Six" } } }
+__runTimers(); assert(tts[#tts][1] == "pause", "nothing new is sent while paused")
+SlashCmdList.QUESTBOOK("guide play"); __take(); assert(tts[#tts][1] == "resume", "play resumes")
+__runTimers(); assert(tts[#tts][3] == "g6", "and the step that waited is sent")
+SlashCmdList.QUESTBOOK("guide skip"); __take(); assert(tts[#tts][1] == "skip", "skip")
+SlashCmdList.QUESTBOOK("guide read off"); assert(said("not read aloud") and tts[#tts][1] == "stop" and QuestBookDB.mod.guide.read == false, "off stops the reading and is saved")
+RXP.currentGuide.steps[7] = { index = 7, active = true, elements = { { text = "Seven" } } }
+local n = #tts; __runTimers(); assert(#tts == n, "off: nothing is read")
+SlashCmdList.QUESTBOOK("guide read on"); __take(); __runTimers(); assert(tts[#tts][3] == "g7", "on again: reading goes on")
+SlashCmdList.QUESTBOOK("guide bar off"); assert(said("hidden") and not QuestBookReaderBar:IsShown(), "the control can be hidden")
+SlashCmdList.QUESTBOOK("guide bar on"); __take(); assert(QuestBookReaderBar:IsShown(), "and shown")
+-- the usage indicator on the bar: from the relay addon when it has the numbers
+time = time or os.time
+assert(QuestBookReaderBar.usage:GetText() == "credits: not known yet", "no numbers yet: " .. tostring(QuestBookReaderBar.usage:GetText()))
+SlashCmdList.QUESTBOOK("guide"); assert(said("voice credits not known yet"), "status without numbers")
+WoWAI.VoiceUsage = function() return { used = 41250, total = 100000, avg = 212, made = 37, source = "account", at = time() - 180 } end
+__runTimers()
+assert(QuestBookReaderBar.usage:GetText() == "41.2k / 100.0k credits \194\183 212 avg", "used of total and the average: " .. tostring(QuestBookReaderBar.usage:GetText()))
+SlashCmdList.QUESTBOOK("guide"); assert(said("voice credits 41250 of 100000 %(the ElevenLabs account%), 37 paid readings this month, 212 credits each on average, as of 3 min ago"), "status with numbers")
+WoWAI.VoiceUsage = function() return { used = 900, total = 150000, avg = 90, made = 10, source = "bridge", at = 0 } end
+__runTimers(); assert(QuestBookReaderBar.usage:GetText() == "900 / 150.0k credits \194\183 90 avg", "follows the numbers: " .. tostring(QuestBookReaderBar.usage:GetText()))
+-- an older relay addon without "queue": falls back to play
+WoWAI.SendTts = function(action, slot, ref, text) if action == "queue" then return false, "bad action" end tts[#tts + 1] = { action, slot, ref, text }; return true end
+RXP.currentGuide.steps[8] = { index = 8, active = true, elements = { { text = "Eight" } } }
+__runTimers(); assert(tts[#tts][1] == "play" and tts[#tts][3] == "g8", "no queue in the relay addon: play")
 RXP, WoWAI = nil, nil
 print("guide: ok")
