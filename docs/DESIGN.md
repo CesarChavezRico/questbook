@@ -521,3 +521,9 @@ green by itself there.
   `/qb camera map zoom <local> <zone>`. Same test: the overland step faded 46 frames but the cooldown icons stayed, so the game's
   own cooldown viewers are faded too; and the Menu drawer's background is nearly opaque so the tracking list reads over the quest
   tracker.
+- **v0.28.4, RestedXP settings go into the profile in use (4BI-42).** First client test, 2026-11-11: after
+  `/qb layout apply`, the check said "RestedXP already in place" while RestedXP still reported the theme "RXP Blue" and its
+  window had not moved. So the values written by name into `RXPSettings.profiles` were not in the table RestedXP reads. The
+  cause is not confirmed. The write now goes straight into `RXP.settings.profile` when it can be reached (the name stays as
+  the fallback), and `/qb guide` prints RestedXP's profile name, whether the table saved under that name is the one in use,
+  and the saved place of its window. Not verified in the client.

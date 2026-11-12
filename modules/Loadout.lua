@@ -483,6 +483,14 @@ local TARGETS = {
       local name = key and type(root.profileKeys) == "table" and root.profileKeys[key]
       return name or key or "Default"
     end,
+    -- v0.28.4: the profile table RestedXP is using right now. In the first client test (2026-11-11) the values written by
+    -- name into RXPSettings.profiles did not reach it (RestedXP still said "RXP Blue" while our check said "already in
+    -- place"), so when its table can be reached the values go straight into it, and the name is only the fallback.
+    live = function()
+      local rxp = _G.RXP
+      local p = type(rxp) == "table" and type(rxp.settings) == "table" and rxp.settings.profile
+      return type(p) == "table" and p or nil
+    end,
     after = function()
       local rxp = _G.RXP
       if type(rxp) == "table" and type(rxp.settings) == "table" and type(rxp.settings.LoadFramePositions) == "function" then
@@ -493,9 +501,10 @@ local TARGETS = {
 }
 
 -- The table that holds the last key of a path, and that key. create = true makes the tables on the way.
-local function Reach(root, path, create, profile)
-  local t = root
-  for i = 1, #path - 1 do
+local function Reach(root, path, create, profile, live)
+  local t, from = root, 1
+  if live and path[1] == "profiles" and path[2] == "$profile" and #path > 2 then t, from = live, 3 end
+  for i = from, #path - 1 do
     local k = path[i]
     if k == "$profile" then k = profile end
     local nx = t[k]
@@ -511,14 +520,14 @@ local function Reach(root, path, create, profile)
   return t, last
 end
 
-local function LayoutChanges(root, data, profile)
+local function LayoutChanges(root, data, profile, live)
   local n = 0
   for _, s in ipairs(data.sets or {}) do
-    local t, k = Reach(root, s.path, false, profile)
+    local t, k = Reach(root, s.path, false, profile, live)
     if not t or not Equal(t[k], s.value) then n = n + 1 end
   end
   for _, r in ipairs(data.removes or {}) do
-    local t, k = Reach(root, r.path, false, profile)
+    local t, k = Reach(root, r.path, false, profile, live)
     if t and t[k] ~= nil then n = n + 1 end
   end
   return n
@@ -541,7 +550,8 @@ function mod:LayoutRun(dry)
         QB:Say(string.format("layout: %s's settings are not loaded, so \"%s\" is skipped", target.label, tostring(data.name or "?")))
       else
         local profile = target.profile(root)
-        local n = LayoutChanges(root, data, profile)
+        local live = target.live and target.live() or nil
+        local n = LayoutChanges(root, data, profile, live)
         if dry then
           QB:Say(string.format("layout check: %s, \"%s\": %d of %d value(s) differ", target.label, tostring(data.name or "?"), n, total))
         elseif QB:InCombat() then
@@ -551,14 +561,14 @@ function mod:LayoutRun(dry)
         else
           local undo = {}
           for _, s in ipairs(data.sets or {}) do
-            local t, k = Reach(root, s.path, true, profile)
+            local t, k = Reach(root, s.path, true, profile, live)
             if not Equal(t[k], s.value) then
               undo[#undo + 1] = { path = Copy(s.path), had = t[k] ~= nil, old = Copy(t[k]) }
               t[k] = Copy(s.value)
             end
           end
           for _, r in ipairs(data.removes or {}) do
-            local t, k = Reach(root, r.path, false, profile)
+            local t, k = Reach(root, r.path, false, profile, live)
             if t and t[k] ~= nil then
               undo[#undo + 1] = { path = Copy(r.path), had = true, old = Copy(t[k]) }
               t[k] = nil
@@ -598,9 +608,10 @@ function mod:LayoutUndo()
           QB:Say(string.format("layout: %s's settings are not loaded, its values stay as they are", target.label))
         else
           local profile = part.profile or target.profile(root)
+          local live = target.live and target.live() or nil
           for i = #part.list, 1, -1 do
             local e = part.list[i]
-            local t, k = Reach(root, e.path, true, profile)
+            local t, k = Reach(root, e.path, true, profile, live)
             if e.had then t[k] = Copy(e.old) else t[k] = nil end
             done = done + 1
           end

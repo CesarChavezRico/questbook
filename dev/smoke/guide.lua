@@ -16,4 +16,12 @@ RXPGuides = {}; RXP = { settings = { profile = { activeTheme = "RXP Blue" } } }
 SlashCmdList.QUESTBOOK("guide"); assert(said('RestedXP Guides loaded | our theme "QuestBook" offered; the active theme is "RXP Blue"'), "status: another theme active")
 RXP.settings.profile.activeTheme = "QuestBook"
 SlashCmdList.QUESTBOOK("guide"); assert(said("is the active theme"), "status: ours active")
+-- v0.28.4: the status also says which profile RestedXP uses and whether the table saved under that name is the one it reads
+RXP.settings.GetSettingsDB = function() return "Thara - PvP" end
+RXP.settings.profile.framePositions = { RXPFrame = { { "TOPLEFT", "UIParent", "TOPLEFT", 30, -60 } } }
+RXPSettings = { profiles = { ["Thara - PvP"] = RXP.settings.profile } }
+SlashCmdList.QUESTBOOK("guide"); assert(said('profile is "Thara %- PvP", the saved table is the one in use | window at TOPLEFT 30, %-60'), "status: same table")
+RXPSettings.profiles["Thara - PvP"] = {}
+SlashCmdList.QUESTBOOK("guide"); assert(said("the saved table is NOT the one in use"), "status: a different table")
+RXPSettings = nil
 print("guide: ok")
