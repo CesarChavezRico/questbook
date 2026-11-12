@@ -539,3 +539,11 @@ green by itself there.
   Same day: with a relay addon that has `WoWAI.RegisterContext` (wow-relay PR no. 24) the place is attached automatically
   under any message sent to the relay (`/ask ...`) when it has changed, so no special command is needed; `/qb guide ask`
   stays for an older relay addon and to force the place into a message.
+- **v0.30.0, the guide read aloud, with a control (4BI-42).** Cesar, 2026-11-12: "have the instructions ... read to me while
+  questing", "Let's use ElevenLabs for the guide too", "a 'reader control' that can pause/play, skip and disable the reader".
+  Every 1.5 s the guide module looks at RestedXP's active steps; one not read yet this session goes to the relay's voice
+  helper as a queued reading in the voice slot `guide` (wow-relay PR no. 25: queue, skip, pause, resume), so it waits for a
+  quest being read instead of cutting it. A small dark bar (Pause / Skip / Voice on) drives it, as do
+  `/qb guide read on|off`, `pause`, `play`, `skip`, `bar on|off|reset`. Pause replays the line from its start (the rig's
+  player cannot continue in the middle). The quest text itself is still read by the quest reader's Play. Not verified in
+  the client or on the rig.
