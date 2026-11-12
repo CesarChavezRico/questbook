@@ -34,6 +34,8 @@ local mod = QB:NewModule("overlay", {
   zoneSize = 0.78,     -- height of the overland map, likewise (Cesar, first client test 2026-11-11: both "larger" / "bigger")
   hudLocal = "keep",   -- the HUD while the local map is open: "keep" (the map lies over it) | "hide"
   localLayer = "over", -- the large local map draws "over" the HUD (Cesar: "a render on top of our HUD") | "under" it, as a background
+  -- Cesar, 2026-11-12: "The bigger minimap and both overland maps should allow tooltips on quest objectives and questing areas".
+  hover = true,        -- the large maps answer the mouse HOVERING (tooltips); clicks still pass through to the game
   hudZone = "hide",    -- the HUD while the overland map is open: "hide" (the map takes its place) | "keep"
   aspect = 1.25,       -- Zone rect width / height (the minimap is always square; circle is 1)
   localAlpha = 0.55,
@@ -199,6 +201,24 @@ local function TMouse(set, id, o, enabled)
     function(x) return x:IsMouseEnabled() and true or false end,
     function(x) x:EnableMouse(enabled) end,
     function(x, orig) x:EnableMouse(orig) end)
+end
+
+-- Undo one tweak now and forget it (a setting changed which of two tweaks applies to the same frame).
+local function TweakDrop(set, id)
+  local t = set.map[id]
+  if not t then return end
+  pcall(t.undo, t.obj, t.orig)
+  set.map[id] = nil
+  for i = #set.order, 1, -1 do if set.order[i] == t then table.remove(set.order, i) end end
+end
+
+-- Hover without clicks: the frame answers the pointer resting on it (tooltips) and lets every click through.
+local function THover(set, id, o)
+  if not (o.SetMouseMotionEnabled and o.SetMouseClickEnabled) then return TMouse(set, id, o, false) end
+  return TweakDo(set, id, o,
+    function(x) return { x:IsMouseClickEnabled() and true or false, x:IsMouseMotionEnabled() and true or false } end,
+    function(x) x:SetMouseMotionEnabled(true); x:SetMouseClickEnabled(false) end,
+    function(x, orig) x:SetMouseClickEnabled(orig[1]); x:SetMouseMotionEnabled(orig[2]) end)
 end
 
 local function TWheel(set, id, o, enabled)
@@ -474,8 +494,15 @@ function mod:LocalUpdate()
   -- the small map and an "under" local map sit below the HUD; an "over" local map is drawn above it (translucent, click-through)
   TStrata(set, "mm.strata", mm, (self.host == "big" and self.db.localLayer ~= "under") and "HIGH" or "LOW")
   TLevel(set, "mm.level", mm, panel:GetFrameLevel() + 1)
-  -- click-through: the widget, its wheel, and the small zoom hit areas
-  TMouse(set, "mm.mouse", mm, false)
+  -- click-through: the widget, its wheel, and the small zoom hit areas. The LARGE map answers hovering (the client's own
+  -- tooltips for what is under the pointer) when `hover` is on; the small one never does, it sits among the buttons.
+  if self.host == "big" and self.db.hover then
+    TweakDrop(set, "mm.mouse")                         -- (was plain click-through: put that back first, then take hover)
+    THover(set, "mm.hover", mm)
+  else
+    TweakDrop(set, "mm.hover")
+    TMouse(set, "mm.mouse", mm, false)
+  end
   TWheel(set, "mm.wheel", mm, false)
   for _, key in ipairs(HITCHILDREN) do
     local child = mm[key]
@@ -786,7 +813,8 @@ function mod:PinDisable(pin)
     self.pinMouse[pin] = { pin:IsMouseClickEnabled() and true or false, pin:IsMouseMotionEnabled() and true or false }
   end
   pin:SetMouseClickEnabled(false)
-  pin:SetMouseMotionEnabled(false)
+  -- hover on: a pin keeps the hovering Blizzard gave it (quest objectives and quest areas show their tooltips), no clicks
+  if self.db.hover then pin:SetMouseMotionEnabled(self.pinMouse[pin][2]) else pin:SetMouseMotionEnabled(false) end
 end
 
 function mod:PinsRestore()
@@ -895,11 +923,16 @@ function mod:ZoneStyle()
   -- invisible until the first position pass is done (no flash of the whole, unmasked zone)
   TAlpha(set, "z.alpha.wmf", wmf, self.zoneRevealed and 1 or 0)
   TAlpha(set, "z.alpha.sc", sc, clamp(tonumber(db.zoneAlpha) or 0.45, 0, 1))
-  TStrata(set, "z.strata", wmf, "BACKGROUND")      -- behind the Minimap layer and the HUD
+  -- behind the Minimap layer and the HUD. With hover on and the HUD hidden for this map, in front instead: the faded HUD
+  -- frames are invisible but still catch the pointer, and would keep it from the map's pins.
+  local front = db.hover and db.hudZone ~= "keep"
+  TStrata(set, "z.strata", wmf, front and "HIGH" or "BACKGROUND")
 
-  -- click-through (pins are handled in PinDisable)
+  -- click-through (pins are handled in PinDisable). Hover on: the canvas answers the pointer (Blizzard's quest area
+  -- tooltips ask whether the pointer is on the canvas), still without clicks.
   TMouse(set, "z.mouse.wmf", wmf, false)
-  TMouse(set, "z.mouse.sc", sc, false)
+  TweakDrop(set, db.hover and "z.mouse.sc" or "z.hover.sc")
+  if db.hover then THover(set, "z.hover.sc", sc) else TMouse(set, "z.mouse.sc", sc, false) end
   TWheel(set, "z.wheel.sc", sc, false)
 
   -- geometry: the map frame has the panel's size and the scroll container fills it
@@ -1548,8 +1581,8 @@ local function Status()
   s = s .. string.format(" | corner=%s host=%s size=%.2f pos=%d,%d alpha=%.2f rotate=%s mask=%s",
     db.corner and "on" or "off", tostring(mod.host), db.cornerSize, db.cornerX, db.cornerY,
     db.cornerAlpha, db.cornerRotate and "on" or "off", db.cornerMask)
-  s = s .. string.format(" | loop: anchor=%s layer=%s sizes=%.2f/%.2f hud local=%s zone=%s (%d frame(s) faded)",
-    tostring(db.anchor), tostring(db.localLayer), tonumber(db.localSize) or 0, tonumber(db.zoneSize) or 0, tostring(db.hudLocal), tostring(db.hudZone), #mod.barTweaks.order)
+  s = s .. string.format(" | loop: hover=%s anchor=%s layer=%s sizes=%.2f/%.2f hud local=%s zone=%s (%d frame(s) faded)",
+    db.hover and "on" or "off", tostring(db.anchor), tostring(db.localLayer), tonumber(db.localSize) or 0, tonumber(db.zoneSize) or 0, tostring(db.hudLocal), tostring(db.hudZone), #mod.barTweaks.order)
   if mod.lastError then s = s .. " | last error: " .. mod.lastError end
   return s
 end
@@ -1642,6 +1675,10 @@ QB:RegisterSlash(mod, "overlay", function(rest)
       db.zoneSize = clamp(n2, 0.1, 1.5)
     end
     mod:Layout()
+  elseif sub == "hover" and (arg == "on" or arg == "off") then
+    db.hover = (arg == "on")
+    if mod.localOn then mod:LocalUpdate() end
+    if mod.zoneOn then mod:ReapplyZone() end
   elseif sub == "layer" and (arg == "over" or arg == "under") then
     db.localLayer = arg
     if mod.localOn then mod:LocalUpdate() end
@@ -1651,6 +1688,7 @@ QB:RegisterSlash(mod, "overlay", function(rest)
       mod:ApplyBars(false)
       if which == "local" then db.hudLocal = what else db.hudZone = what end
       mod:ApplyBars(mod:BarsWanted())
+      if mod.zoneOn then mod:ReapplyZone() end       -- (the overland map sits in front of a hidden HUD, behind a kept one)
     else
       QB:Usage("/qb overlay hud local|zone keep|hide   (what happens to the HUD while that map is open)")
     end
@@ -1722,7 +1760,7 @@ QB:RegisterSlash(mod, "overlay", function(rest)
     Diag()
     return
   elseif sub ~= "" and sub ~= "status" then
-    QB:Usage("/qb overlay corner ... (the small minimap) | cycle | off | local | zone | anchor corner|offset | sizes <local> [zone] | layer over|under | hud local|zone keep|hide | shape rect|circle | size <n> | aspect <n> | pos <x> <y> | alpha <local> [zone] | zoom <n> | rotate on|off | ground hybrid|native|auto | bars actions|all|none | icons <n> | mask | diag")
+    QB:Usage("/qb overlay corner ... (the small minimap) | cycle | off | local | zone | anchor corner|offset | sizes <local> [zone] | layer over|under | hover on|off | hud local|zone keep|hide | shape rect|circle | size <n> | aspect <n> | pos <x> <y> | alpha <local> [zone] | zoom <n> | rotate on|off | ground hybrid|native|auto | bars actions|all|none | icons <n> | mask | diag")
   end
   QB:Say(Status())
 end, "map overlay (cycle | off | local | zone | shape | size | alpha | rotate | ground | bars | icons | mask | diag)")
