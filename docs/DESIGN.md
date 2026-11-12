@@ -521,13 +521,13 @@ green by itself there.
   `/qb camera map zoom <local> <zone>`. Same test: the overland step faded 46 frames but the cooldown icons stayed, so the game's
   own cooldown viewers are faded too; and the Menu drawer's background is nearly opaque so the tracking list reads over the quest
   tracker.
-- **Map camera: fixed distances (v0.29.1, Cesar 2026-11-12).** "Character zoom. It needs to be a specific value. I found wierd
+- **Map camera: fixed distances (v0.30.1, Cesar 2026-11-12).** "Character zoom. It needs to be a specific value. I found wierd
   behaviour and I think it has something to do with other camera adjustments form the map itself or other addons like dialogUI."
   The maps now go to absolute camera distances (`mapZoomLocal` 15, `mapZoomZone` 50 = as far as it goes) instead of steps from
   wherever the camera was, and the camera is checked after it stops and corrected (a few times at most; the wheel stays the
   player's). Nothing is corrected while a dialogue is open; it resumes when the dialogue closes. `mapZoomRest` (0 = as before) is
   the distance to return to: `/qb camera map rest <n>|here|off`. Not verified in the client.
-- **Hover on the large maps (v0.29.2, Cesar 2026-11-12).** "The bigger minimap and both overland maps should allow tooltips on quest
+- **Hover on the large maps (v0.30.1, Cesar 2026-11-12).** "The bigger minimap and both overland maps should allow tooltips on quest
   objectives and questing areas." Setting `hover` (default on, `/qb overlay hover on|off`): the large local map, the overland
   canvas and its pins answer the pointer resting on them and let every click through (`SetMouseMotionEnabled(true)`,
   `SetMouseClickEnabled(false)`); the small map stays fully click-through. With hover on and the HUD hidden for the overland
@@ -551,3 +551,14 @@ green by itself there.
   Same day: with a relay addon that has `WoWAI.RegisterContext` (wow-relay PR no. 24) the place is attached automatically
   under any message sent to the relay (`/ask ...`) when it has changed, so no special command is needed; `/qb guide ask`
   stays for an older relay addon and to force the place into a message.
+- **v0.30.0, the guide read aloud, with a control (4BI-42).** Cesar, 2026-11-12: "have the instructions ... read to me while
+  questing", "Let's use ElevenLabs for the guide too", "a 'reader control' that can pause/play, skip and disable the reader".
+  Every 1.5 s the guide module looks at RestedXP's active steps; one not read yet this session goes to the relay's voice
+  helper as a queued reading in the voice slot `guide` (wow-relay PR no. 25: queue, skip, pause, resume), so it waits for a
+  quest being read instead of cutting it. A small dark bar (Pause / Skip / Voice on) drives it, as do
+  `/qb guide read on|off`, `pause`, `play`, `skip`, `bar on|off|reset`. Pause replays the line from its start (the rig's
+  player cannot continue in the middle). The quest text itself is still read by the quest reader's Play. Not verified in
+  the client or on the rig.
+  Same day: the bar also shows what the voice costs, "41.2k / 100.0k credits · 212 avg": ElevenLabs credits used of the
+  account's total and the average of a paid reading this month, from the relay addon's `WoWAI.VoiceUsage` (wow-relay PR
+  no. 25). The numbers arrive with whatever the game next reads from the bridge, so they can be minutes behind.
