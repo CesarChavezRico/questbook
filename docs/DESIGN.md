@@ -531,3 +531,8 @@ green by itself there.
   ("QuestBook is the active theme", "the saved table is the one in use"), and Cesar dragged the guide window lower because
   the shipped place sat under the buffs. The shipped guide no longer holds window positions, so `/qb layout apply` leaves
   RestedXP's windows where he puts them. Why the first write (v0.28.0) did not show is still not confirmed.
+- **v0.29.0, where the guide is, and asking about it (4BI-42).** Cesar, 2026-11-12: "A way to discuss the guide with you
+  through the relay ... get from the guide the step I am on so we can discuss it". `/qb guide step [n]` prints RestedXP's
+  active steps (with what is done) and the next n (default 3); `/qb guide ask <question>` sends the question to the relay's
+  current chat with that place under it, cut to fit one message. Read from RestedXP's memory at the moment of asking; nothing
+  of the guide is stored. Field names come from its source; not verified in the client.
