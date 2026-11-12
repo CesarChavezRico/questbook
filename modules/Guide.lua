@@ -366,7 +366,7 @@ QB:RegisterSlash(mod, "guide", function(rest)
     Present() and "loaded" or "NOT loaded", THEME_NAME,
     active == THEME_NAME and "is the active theme" or (active and ("offered; the active theme is \"" .. tostring(active) .. "\"") or "offered")))
   QB:Say("guide: the steps are " .. (mod.db.read and (mod.paused and "read aloud, paused now" or "read aloud") or "not read aloud")
-    .. " | /qb guide read on|off, pause, play, skip, bar on|off")
+    .. " | /qb guide read on, read off, pause, play, skip, bar on, bar off")
   QB:Say("guide: " .. (mod.attaching and "the step you are on goes with your messages to the relay (/ask ...) when it has changed"
     or "the relay addon does not take attachments (or is not loaded): use /qb guide ask <question>"))
   -- Which settings RestedXP is using, for telling why a write did not show (v0.28.4): its profile's name, and whether the
