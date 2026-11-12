@@ -28,8 +28,12 @@ local mod = QB:NewModule("camera", {
   -- The map loop (Cesar, 2026-11-11: "We still zoom to the right when stepping into map mode. lets change that by keeping the char
   -- centered but zoom progressivly out, with the zoom out of the map, with the overland being the farthest out the camera will allow"):
   mapShift = false,   -- the sideways shift for the MAPS (the quest reader keeps its shift); off = the character stays centred
-  zoomLocal = 8,      -- RELATIVE zoom out while the large local map is open
-  zoomZone = 50,      -- RELATIVE zoom out while the overland map is open; 50 is more than any camera allows, so: as far as it goes
+  -- Cesar, 2026-11-12: "Character zoom. It needs to be a specific value. I found wierd behaviour and I think it has something to
+  -- do with other camera adjustments form the map itself or other addons like dialogUI". So the maps go to ABSOLUTE distances
+  -- (v0.28.2's zoomLocal / zoomZone were steps from wherever the camera happened to be, which another addon could have moved).
+  mapZoomLocal = 15,  -- ABSOLUTE camera distance while the large local map is open
+  mapZoomZone = 50,   -- ABSOLUTE, the overland map; 50 is more than any camera allows, so: as far as it goes
+  mapZoomRest = 0,    -- ABSOLUTE distance to return to when the maps close; 0 = the distance the camera had before
   readerZoom = 3,     -- the same, while the QUEST READER is what is open (negative zooms IN, 0 = no zoom change)
   ease = 0.35,        -- seconds
   shift = true,       -- /qb camera on|off: master switch for the shift itself
@@ -46,6 +50,9 @@ local RETARGET_EASE = 0.15 -- ease time when zoom or mount changes while shifted
 local RETARGET_EPS = 0.02  -- minimum offset change that triggers a retarget
 local YIELD_RESUME = 0.8   -- seconds to wait after a dialogue closes: its camera moves back first
 local YIELD_MAX = 120      -- a dialogue that never reports closing does not hold the camera forever
+local SEEK_POLL = 0.25     -- seconds between looks at the zoom while going to a distance
+local SEEK_TRIES = 4       -- corrections before giving up (the camera's own limit, or another addon that insists)
+local SEEK_EPS = 0.3       -- close enough
 
 mod.engaged = false        -- CVars are currently overridden (backup exists)
 mod.releasing = false      -- easing back to the original, restore at the end
@@ -147,8 +154,10 @@ function mod:RestoreAll()
     self.easing = false
     if self.driver then self.driver:SetScript("OnUpdate", nil) end
     if self.oldZoom then
-      self:ZoomTo(self.oldZoom)
+      local rest = (self.zoomedForMap and tonumber(self.db.mapZoomRest) or 0)
+      self:SeekZoom(rest > 0 and rest or self.oldZoom)
       self.oldZoom = nil
+      self.zoomedForMap = nil
     end
   end
 end
@@ -166,6 +175,42 @@ function mod:ZoomTo(goal)
     pcall(CameraZoomOut, -diff)
   end
 end
+
+-- Go to a distance and make sure the camera ends there. CameraZoomIn / CameraZoomOut are steps, and GetCameraZoom reads the
+-- camera mid-glide, so one step computed while another zoom (ours, the wheel's, a dialogue addon's) is still gliding lands
+-- somewhere else. So: step, wait until the camera has stopped, look again, correct; a few times at most, and the wheel is the
+-- player's again afterwards. Nothing is corrected while a dialogue owns the camera.
+function mod:SeekZoom(goal)
+  self.seekGoal = goal
+  self.seekTries = 0
+  self.seekLast = nil
+  self.seekAcc = 0
+  if not self.yielding then self:ZoomTo(goal) end
+  if self.seeker then self.seeker:SetScript("OnUpdate", self.SeekOnUpdate) end
+end
+
+function mod:StopSeek()
+  self.seekGoal = nil
+  if self.seeker then self.seeker:SetScript("OnUpdate", nil) end
+end
+
+function mod:SeekStep(elapsed)
+  if not self.seekGoal then return self:StopSeek() end
+  if self.yielding then self.seekLast = nil return end
+  self.seekAcc = (self.seekAcc or 0) + elapsed
+  if self.seekAcc < SEEK_POLL then return end
+  self.seekAcc = 0
+  local z = Zoom()
+  local last = self.seekLast
+  self.seekLast = z
+  if not last or math.abs(z - last) > 0.05 then return end      -- still gliding
+  if math.abs(z - self.seekGoal) <= SEEK_EPS or self.seekTries >= SEEK_TRIES then return self:StopSeek() end
+  self.seekTries = self.seekTries + 1
+  self.seekLast = nil
+  self:ZoomTo(self.seekGoal)
+end
+
+mod.SeekOnUpdate = function(_, elapsed) QB:Safe(mod, mod.SeekStep, mod, elapsed) end
 
 -- ---------------------------------------------------------------- easing
 
@@ -242,8 +287,10 @@ function mod:Resume(token, delay)
     if token ~= self.yieldToken or not self.yielding then return end
     self.yielding = false
     self.acc = 0
+    if self.seekGoal then self:SeekZoom(self.seekGoal) end     -- the dialogue moved the zoom: go where we were going
     if not self.engaged then return end
     self.cur = tonumber(GetCV(CVAR_SHOULDER)) or self.cur
+    if not self.releasing and self.oldZoom then self:SeekZoom(self:GoalZoom()) end
     if self.releasing then
       self:StartEase(self:Original(), self.db.ease)
     else
@@ -257,13 +304,24 @@ end
 -- ---------------------------------------------------------------- engage / release
 
 -- How far to go out (or in, if negative) from the player's own zoom: the reader's own setting while the quest reader is
--- what is open, else the map's.
+-- what is open, else the shifted map's.
 function mod:RelativeZoom()
   if self.readerOpen and self.overlayState == "off" then return tonumber(self.db.readerZoom) or 0 end
   if self.db.mapShift then return tonumber(self.db.zoomOut) or 0 end
-  if self.overlayState == "local" then return tonumber(self.db.zoomLocal) or 0 end
-  if self.overlayState == "zone" then return tonumber(self.db.zoomZone) or 0 end
   return 0
+end
+
+-- The distance the camera should be at now. A centred map (mapShift off) names an ABSOLUTE distance; everything else is a
+-- step from the distance the camera had when we took it (self.oldZoom).
+function mod:GoalZoom()
+  local goal = self.db.zoomGoal
+  if type(goal) == "number" and goal > 0 then return goal end
+  if not self.db.mapShift and not (self.readerOpen and self.overlayState == "off") then
+    local abs = (self.overlayState == "local" and tonumber(self.db.mapZoomLocal))
+      or (self.overlayState == "zone" and tonumber(self.db.mapZoomZone)) or nil
+    if abs and abs > 0 then self.zoomedForMap = true return abs end
+  end
+  return (self.oldZoom or Zoom()) + self:RelativeZoom()
 end
 
 function mod:Engage()
@@ -281,20 +339,14 @@ function mod:Engage()
     for name, val in pairs(OVERRIDE_CVARS) do SetCV(name, val) end
     self.engaged = true
     self.cur = tonumber(GetCV(CVAR_SHOULDER)) or 0
-    local goal = self.db.zoomGoal
-    local out = self:RelativeZoom()
-    if type(goal) == "number" and goal > 0 then
-      self.oldZoom = Zoom()
-      self:ZoomTo(goal)
-    else
-      -- remembered even when this first step does not zoom: the next one (local map -> overland map) starts from it
-      self.oldZoom = Zoom()
-      if out ~= 0 then self:ZoomTo(self.oldZoom + out) end      -- the client clamps at its own limits
-    end
-  elseif self.oldZoom and not (type(self.db.zoomGoal) == "number" and self.db.zoomGoal > 0) then
-    -- already shifted and something changed hands (the map and the quest reader trade places, each with its own
-    -- zoom): go to the new one from the same starting point. A no-op when the goal is where the camera is.
-    self:ZoomTo(self.oldZoom + self:RelativeZoom())
+    -- remembered even when this first step does not zoom: the next one (local map -> overland map) starts from it.
+    -- A zoom of ours still on its way back (the map closed a moment ago) is where the camera is going, not where it is.
+    self.oldZoom = self.seekGoal or Zoom()
+    self:SeekZoom(self:GoalZoom())                               -- the client clamps at its own limits
+  elseif self.oldZoom then
+    -- already engaged and something changed hands (local map -> overland map, or the map and the quest reader trade
+    -- places): go to the new distance. A no-op when the camera is already there.
+    self:SeekZoom(self:GoalZoom())
   end
   self:StartEase(self:Target(), self.db.ease)
   if self.driver then self.driver:SetScript("OnUpdate", DriverOnUpdate) end
@@ -338,6 +390,7 @@ function mod:OnInit()
     return
   end
   self.driver = CreateFrame("Frame")
+  self.seeker = CreateFrame("Frame")
 end
 
 function mod:OnEnable()
@@ -417,8 +470,9 @@ end, mod)
 local function Status()
   local db = mod.db
   return string.format(
-    "camera: shift=%s maps: shift=%s zoom local=%s zone=%s | strength=%.2f side=%+d zoomOut=%s readerZoom=%s zoomGoal=%s ease=%.2fs mountMult=%.2f | overlay=%s engaged=%s offset=%.3f%s",
-    db.shift and "on" or "off", db.mapShift and "on" or "off", tostring(db.zoomLocal), tostring(db.zoomZone), db.strength, db.side,
+    "camera: shift=%s maps: shift=%s zoom local=%s zone=%s rest=%s now=%.1f | strength=%.2f side=%+d zoomOut=%s readerZoom=%s zoomGoal=%s ease=%.2fs mountMult=%.2f | overlay=%s engaged=%s offset=%.3f%s",
+    db.shift and "on" or "off", db.mapShift and "on" or "off", tostring(db.mapZoomLocal), tostring(db.mapZoomZone),
+    (tonumber(db.mapZoomRest) or 0) > 0 and tostring(db.mapZoomRest) or "as before", Zoom(), db.strength, db.side,
     (db.zoomOut and db.zoomOut > 0) and tostring(db.zoomOut) or "off",
     (db.readerZoom and db.readerZoom ~= 0) and tostring(db.readerZoom) or "off",
     (db.zoomGoal and db.zoomGoal > 0) and tostring(db.zoomGoal) or "off",
@@ -441,25 +495,30 @@ QB:RegisterSlash(mod, "camera", function(rest)
     -- relative, like zoomout, for the quest reader; negative zooms in
     db.readerZoom = math.max(-10, math.min(n, 30))
     if mod.engaged and not mod.releasing and mod.oldZoom and mod.readerOpen and mod.overlayState == "off" then
-      mod:ZoomTo(mod.oldZoom + db.readerZoom)
+      mod:SeekZoom(mod:GoalZoom())
     end
   elseif sub == "zoomout" and n then
     -- relative: how far to pull the camera back while the overlay is open (0 = off); takes
     -- effect the next time the overlay opens, or now if it is open
     db.zoomOut = math.max(0, math.min(n, 30))
-    if mod.engaged and not mod.releasing and mod.oldZoom then mod:ZoomTo(mod.oldZoom + db.zoomOut) end
+    if mod.engaged and not mod.releasing and mod.oldZoom then mod:SeekZoom(mod:GoalZoom()) end
   elseif sub == "map" then
-    -- /qb camera map shift on|off | zoom <local> <zone>
+    -- /qb camera map shift on|off | zoom <local> <zone> | rest <n>|here|off
     local what, v1, v2 = arg:lower():match("^(%S*)%s*(%S*)%s*(%S*)$")
     if what == "shift" and (v1 == "on" or v1 == "off") then
       db.mapShift = (v1 == "on")
       mod:Sync()
     elseif what == "zoom" and tonumber(v1) then
-      db.zoomLocal = math.max(0, math.min(tonumber(v1), 50))
-      if tonumber(v2) then db.zoomZone = math.max(0, math.min(tonumber(v2), 50)) end
-      if mod.engaged and not mod.releasing and mod.oldZoom and mod.overlayState ~= "off" then mod:ZoomTo(mod.oldZoom + mod:RelativeZoom()) end
+      db.mapZoomLocal = math.max(0, math.min(tonumber(v1), 50))     -- 0 = that map leaves the zoom alone
+      if tonumber(v2) then db.mapZoomZone = math.max(0, math.min(tonumber(v2), 50)) end
+      if mod.engaged and not mod.releasing and mod.oldZoom and mod.overlayState ~= "off" then mod:SeekZoom(mod:GoalZoom()) end
+    elseif what == "rest" and (tonumber(v1) or v1 == "here" or v1 == "off") then
+      -- the distance to come back to when the maps close: a number, "here" (where the camera is now), or "off" (as before)
+      if v1 == "here" then db.mapZoomRest = math.floor(Zoom() * 10 + 0.5) / 10
+      elseif v1 == "off" then db.mapZoomRest = 0
+      else db.mapZoomRest = math.max(0, math.min(tonumber(v1), 50)) end
     else
-      QB:Usage("/qb camera map shift on|off | zoom <local> <zone>   (how far the camera pulls back for each map; 50 = as far as it goes)")
+      QB:Usage("/qb camera map shift on|off | zoom <local> <zone> | rest <n>|here|off   (camera distances: for each map, 50 = as far as it goes; rest = where it returns to)")
     end
   elseif sub == "zoom" and n then
     db.zoomGoal = math.max(0, n)
@@ -475,7 +534,7 @@ QB:RegisterSlash(mod, "camera", function(rest)
     db.shift = true
     mod:Sync()
   elseif sub ~= "" and sub ~= "status" then
-    QB:Usage("/qb camera map shift on|off | map zoom <local> <zone> | flip | strength <n> | zoomout <n> | readerzoom <n> | zoom <n|0> | ease <s> | mount <n> | on | off")
+    QB:Usage("/qb camera map shift on|off | map zoom <local> <zone> | map rest <n>|here|off | flip | strength <n> | zoomout <n> | readerzoom <n> | zoom <n|0> | ease <s> | mount <n> | on | off")
   end
   QB:Say(Status())
 end, "camera shift tied to the map overlay and the quest reader (flip | strength <n> | zoomout <n> | readerzoom <n> | zoom <n> | on | off)")

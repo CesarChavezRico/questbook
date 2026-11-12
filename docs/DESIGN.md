@@ -521,6 +521,18 @@ green by itself there.
   `/qb camera map zoom <local> <zone>`. Same test: the overland step faded 46 frames but the cooldown icons stayed, so the game's
   own cooldown viewers are faded too; and the Menu drawer's background is nearly opaque so the tracking list reads over the quest
   tracker.
+- **Map camera: fixed distances (v0.30.1, Cesar 2026-11-12).** "Character zoom. It needs to be a specific value. I found wierd
+  behaviour and I think it has something to do with other camera adjustments form the map itself or other addons like dialogUI."
+  The maps now go to absolute camera distances (`mapZoomLocal` 15, `mapZoomZone` 50 = as far as it goes) instead of steps from
+  wherever the camera was, and the camera is checked after it stops and corrected (a few times at most; the wheel stays the
+  player's). Nothing is corrected while a dialogue is open; it resumes when the dialogue closes. `mapZoomRest` (0 = as before) is
+  the distance to return to: `/qb camera map rest <n>|here|off`. Not verified in the client.
+- **Hover on the large maps (v0.30.1, Cesar 2026-11-12).** "The bigger minimap and both overland maps should allow tooltips on quest
+  objectives and questing areas." Setting `hover` (default on, `/qb overlay hover on|off`): the large local map, the overland
+  canvas and its pins answer the pointer resting on them and let every click through (`SetMouseMotionEnabled(true)`,
+  `SetMouseClickEnabled(false)`); the small map stays fully click-through. With hover on and the HUD hidden for the overland
+  map, the map moves to strata HIGH, because the faded HUD frames still catch the pointer. Cost: while a large map is open,
+  the pointer over it does not reach the world (no mouseover of units through the map). Not verified in the client.
 - **v0.28.4, RestedXP settings go into the profile in use (4BI-42).** First client test, 2026-11-11: after
   `/qb layout apply`, the check said "RestedXP already in place" while RestedXP still reported the theme "RXP Blue" and its
   window had not moved. So the values written by name into `RXPSettings.profiles` were not in the table RestedXP reads. The
