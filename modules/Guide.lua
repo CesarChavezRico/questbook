@@ -17,6 +17,7 @@ local Style = QB.Style
 
 local mod = QB:NewModule("guide", {
   read = true,          -- read each new step of the guide aloud (the relay's ElevenLabs voice, slot "guide")
+  quests = true,        -- with the reader on, a quest's own text is read when the quest is accepted (queued behind the guide's lines)
   bar = true,           -- show the reader's control (Pause / Skip / Voice on)
   barPos = false,       -- { point, x, y } once it has been dragged; false = its default place
 })
@@ -72,7 +73,7 @@ local function StepLines(step, out, marks)
       local text = Clean(e.text) or Clean(e.rawtext) or Clean(e.tooltipText)
       if text then
         local mark = ""
-        if marks then mark = e.completed and "[done] " or (e.skip and "[skipped] " or "[ ] ") end
+        if marks then mark = e.textOnly and "[note] " or (e.completed and "[done] " or (e.skip and "[skipped] " or "[ ] ")) end
         local gate = ""
         if type(e.level) == "number" and e.xp ~= nil then gate = string.format(" (level gate: level %d)", e.level) end
         out[#out + 1] = "  " .. mark .. text .. gate
@@ -236,7 +237,11 @@ local function StepSpeech(step)
   local parts = {}
   if type(step) ~= "table" or type(step.elements) ~= "table" then return nil end
   for _, e in ipairs(step.elements) do
-    if type(e) == "table" and not e.completed and not e.skip then
+    -- A line of plain instruction ("Buy the following items ...", "You can run Stockades instead") is a text-only element,
+    -- and RestedXP marks those complete from the start: they are read all the same. Only a real task that is already
+    -- done or skipped is left out. (v0.30.4; first client run, 2026-11-12: "we are reading only the part of the
+    -- instruction of the quest objectives, not the instructions".)
+    if type(e) == "table" and (e.textOnly or not (e.completed or e.skip)) then
       local text = Clean(e.text) or Clean(e.rawtext) or Clean(e.tooltipText)
       if text then
         text = text:gsub("%[(.-)%]", "%1")                  -- [Lean Wolf Flank] is read as its name
@@ -370,6 +375,9 @@ end
 
 function mod:Skip() Control("skip") end
 
+-- Should a quest's own text be read when it is accepted? (asked by the quest reader's QUEST_ACCEPTED handler)
+function mod:ReadsQuests() return mod.active and mod.db and mod.db.read and mod.db.quests and not mod.paused and true or false end
+
 function mod:SetRead(on)
   mod.db.read = on and true or false
   if not mod.db.read then Control("stop"); mod.paused = false end
@@ -418,6 +426,9 @@ local function ReaderSlash(sub, tail)
   if sub == "read" then
     if tail == "on" or tail == "off" then mod:SetRead(tail == "on") elseif tail ~= "" then QB:Usage("/qb guide read on | off") end
     QB:Say("guide: the steps are " .. (mod.db.read and "read aloud (the relay's voice slot \"guide\")" or "not read aloud"))
+  elseif sub == "quests" then
+    if tail == "on" or tail == "off" then mod.db.quests = tail == "on" elseif tail ~= "" then QB:Usage("/qb guide quests on | off") end
+    QB:Say("guide: a quest's text is " .. (mod.db.quests and "read when you accept it (while the reader is on)" or "not read by itself (the quest reader's Talk still reads it)"))
   elseif sub == "pause" then mod:SetPaused(true); QB:Say("guide: reading paused (/qb guide play)")
   elseif sub == "play" then mod:SetPaused(false); QB:Say("guide: reading goes on")
   elseif sub == "skip" then mod:Skip(); QB:Say("guide: skipped")
@@ -436,8 +447,8 @@ QB:RegisterSlash(mod, "guide", function(rest)
   sub = (sub or ""):lower()
   if sub == "step" then return ShowStep(tail) end
   if sub == "ask" then return Ask(tail) end
-  if sub == "read" or sub == "pause" or sub == "play" or sub == "skip" or sub == "bar" then return ReaderSlash(sub, tail) end
-  if sub ~= "" and sub ~= "status" then QB:Usage("/qb guide | step [steps ahead] | ask <your question> | read on|off | pause | play | skip | bar on|off|reset") end
+  if sub == "read" or sub == "quests" or sub == "pause" or sub == "play" or sub == "skip" or sub == "bar" then return ReaderSlash(sub, tail) end
+  if sub ~= "" and sub ~= "status" then QB:Usage("/qb guide | step [steps ahead] | ask <your question> | read on|off | quests on|off | pause | play | skip | bar on|off|reset") end
   local active
   local s = _G.RXP and _G.RXP.settings and _G.RXP.settings.profile
   if type(s) == "table" then active = s.activeTheme end

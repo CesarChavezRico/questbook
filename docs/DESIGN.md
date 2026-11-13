@@ -567,3 +567,9 @@ green by itself there.
   could not tell whether turning them in was extra experience or experience the guide counts on later. The guide's place
   now carries the experience line and two lists: ready quests the guide turns in at a later step, and ready quests not in
   the rest of the loaded chapter. Not verified in the client.
+- **v0.30.4, the reader reads the instructions and the quest (4BI-42).** First client run of the reader, 2026-11-12: "we are
+  reading only the part of the instruction of the quest objectives, not the instructions and not the quest text". Cause:
+  the guide's plain instruction lines are text-only elements, which RestedXP marks complete from the start, and the reader
+  left out everything complete. They are read now; only a real task that is done or skipped is left out. And with the
+  reader on, an accepted quest's own text is queued in the giver's voice (`/qb guide quests on|off`, default on); with an
+  older relay addon it is only prefetched, as before. Not verified in the client.

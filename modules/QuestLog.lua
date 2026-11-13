@@ -577,6 +577,29 @@ function mod:Prefetch(questID)
   end
 end
 
+-- The guide reader (modules/Guide.lua, 4BI-42) is on: read the accepted quest's text by itself, QUEUED behind whatever is
+-- being read (a guide line, another quest), in the giver's voice. Cesar, 2026-11-12: "have the instructions AND the quest
+-- involved read to me while questing". A relay addon without "queue" only gets the prefetch, as before: a "play" here
+-- would cut the guide's line. The Talk link does not follow a queued reading (the bridge plays it when its turn comes).
+function mod:QueueRead(questID)
+  if not questID then return false end
+  local _, quests = ScanLog()
+  for _, e in ipairs(quests) do
+    if e.questID == questID then
+      local desc = GetQuestText(e)
+      if not desc or desc == UNAVAILABLE then return false end
+      WhenRelayReady(function()
+        local ok, sent, err = pcall(_G.WoWAI.SendTts, "queue", VoiceSlot(questID), "q" .. tostring(questID), SpokenText(e, desc), GiverMeta(questID, e.title))
+        if not (ok and sent) and (not ok or err == "bad action") then
+          pcall(_G.WoWAI.SendTts, "prefetch", VoiceSlot(questID), "q" .. tostring(questID), SpokenText(e, desc), GiverMeta(questID, e.title))
+        end
+      end, function() end, true)
+      return true
+    end
+  end
+  return false
+end
+
 -- ---------------------------------------------------------------- the page
 --
 -- Everything is laid out in physical pixels (Style.Px), on a torn-paper page (Style.Paper). From the top: the title
@@ -1037,9 +1060,13 @@ mod.events.SUPER_TRACKING_CHANGED = QueueRefresh
 mod.events.QUEST_REMOVED = QueueRefresh
 -- a quest was accepted: with the relay voice, have its audio made now (after the giver has been recorded)
 mod.events.QUEST_ACCEPTED = function(self, _, questID)
-  if self.db.engine ~= "relay" then return end
   local qid = questID
-  if C_Timer and C_Timer.After then C_Timer.After(1.5, Guard(function() mod:Prefetch(qid) end)) else self:Prefetch(qid) end
+  -- the guide reader on: the quest is read by itself, queued (whatever the voice engine of the Talk link is)
+  local function Go()
+    local ok, reads = QB:Call("guide", "ReadsQuests")
+    if ok and reads then mod:QueueRead(qid) elseif self.db.engine == "relay" then mod:Prefetch(qid) end
+  end
+  if C_Timer and C_Timer.After then C_Timer.After(1.5, Guard(Go)) else Go() end
 end
 mod.events.PLAYER_STARTED_MOVING = function(self) self:OnStartedMoving() end
 mod.events.VOICE_CHAT_TTS_PLAYBACK_STARTED = function() SetSpeaking(true) end

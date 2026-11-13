@@ -116,6 +116,25 @@ local n = #tts; __runTimers(); assert(#tts == n, "off: nothing is read")
 SlashCmdList.QUESTBOOK("guide read on"); __take(); __runTimers(); assert(tts[#tts][3] == "g7", "on again: reading goes on")
 SlashCmdList.QUESTBOOK("guide bar off"); assert(said("hidden") and not QuestBookReaderBar:IsShown(), "the control can be hidden")
 SlashCmdList.QUESTBOOK("guide bar on"); __take(); assert(QuestBookReaderBar:IsShown(), "and shown")
+-- v0.30.4: plain instruction lines (text-only elements, which RestedXP marks complete from the start) are read too
+RXP.currentGuide.steps[8] = { index = 8, active = true, elements = {
+  { text = "Talk to Auctioneer Jaxon", textOnly = true, completed = true },
+  { text = "Buy the following items", textOnly = true, completed = true },
+  { text = "Bronze Tube: 0/1", tag = "collect" }, { text = "Flask of Oil: 5/5", tag = "collect", completed = true } } }
+__runTimers()
+assert(tts[#tts][3] == "g8" and tts[#tts][4] == "Talk to Auctioneer Jaxon. Buy the following items. Bronze Tube: 0/1.", "instructions are read, a finished task is not: " .. tostring(tts[#tts][4]))
+SlashCmdList.QUESTBOOK("guide step"); local marks = table.concat(__take(), "\n")
+assert(marks:find("[note] Buy the following items", 1, true) and marks:find("[done] Flask of Oil: 5/5", 1, true), "the step print tells a note from a finished task")
+-- v0.30.4: with the reader on, an accepted quest's own text is queued in the giver's voice slot (mock quest 100, "Wolves")
+n = #tts
+__fire("QUEST_ACCEPTED", 2, 100); __runTimers()
+assert(#tts == n + 1 and tts[#tts][1] == "queue" and tts[#tts][3] == "q100" and tts[#tts][2] ~= "guide" and tts[#tts][4]:find("^Wolves%. "), "the quest is read by itself, queued: " .. tostring(tts[#tts][1]) .. " " .. tostring(tts[#tts][3]))
+SlashCmdList.QUESTBOOK("guide quests off"); assert(said("not read by itself"), "quests off")
+n = #tts; __fire("QUEST_ACCEPTED", 2, 100); __runTimers(); assert(#tts == n, "quests off (and the Talk engine is the game's): nothing is sent")
+SlashCmdList.QUESTBOOK("guide quests on"); __take()
+SlashCmdList.QUESTBOOK("guide pause"); __take(); n = #tts
+__fire("QUEST_ACCEPTED", 2, 100); __runTimers(); assert(#tts == n, "paused: an accepted quest is not queued")
+SlashCmdList.QUESTBOOK("guide play"); __take()
 -- the usage indicator on the bar: from the relay addon when it has the numbers
 time = time or os.time
 assert(QuestBookReaderBar.usage:GetText() == "credits: not known yet", "no numbers yet: " .. tostring(QuestBookReaderBar.usage:GetText()))
@@ -128,7 +147,7 @@ WoWAI.VoiceUsage = function() return { used = 900, total = 150000, avg = 90, mad
 __runTimers(); assert(QuestBookReaderBar.usage:GetText() == "900 / 150.0k credits \194\183 90 avg", "follows the numbers: " .. tostring(QuestBookReaderBar.usage:GetText()))
 -- an older relay addon without "queue": falls back to play
 WoWAI.SendTts = function(action, slot, ref, text) if action == "queue" then return false, "bad action" end tts[#tts + 1] = { action, slot, ref, text }; return true end
-RXP.currentGuide.steps[8] = { index = 8, active = true, elements = { { text = "Eight" } } }
-__runTimers(); assert(tts[#tts][1] == "play" and tts[#tts][3] == "g8", "no queue in the relay addon: play")
+RXP.currentGuide.steps[9] = { index = 9, active = true, elements = { { text = "Eight" } } }
+__runTimers(); assert(tts[#tts][1] == "play" and tts[#tts][3] == "g9", "no queue in the relay addon: play")
 RXP, WoWAI = nil, nil
 print("guide: ok")
