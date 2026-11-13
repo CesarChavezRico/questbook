@@ -1,6 +1,9 @@
 -- The relay voice (4BI-38): the reader asks the WoW AI bridge to speak, by voice slot (chosen by the quest giver);
 -- Stop, prefetch at accept, the fallback to the game's voice. WoWAI is a stub here. Stubbed API.
 __fire("ADDON_LOADED", "QuestBook"); __loggedIn = true; __fire("PLAYER_LOGIN")
+-- (this file is about the Talk link and the prefetch: the guide reader, which would read an accepted quest by itself, is off;
+--  its own scenarios are in guide.lua)
+SlashCmdList.QUESTBOOK("guide quests off"); __take()
 local function slash(s) SlashCmdList.QUESTBOOK(s) end
 local function click(b) b.__scripts.OnClick(b) end
 local Q, G = QB.modules.questlog, QB.modules.giver
