@@ -83,6 +83,45 @@ local function StepLines(step, out, marks)
   return n
 end
 
+-- The quests in the log that are ready to turn in, set against the REST of the loaded guide (v0.30.3). First client use,
+-- 2026-11-12: at a level gate ("Grind to 29845+/34000xp") with 12 quests ready, the answer could not say whether turning
+-- them in was extra experience or experience the guide had already counted for later ("What I can't see is whether those
+-- turn-ins are later steps in the guide"). A turn-in line of the guide is an element with tag "turnin" and a questId.
+-- Only the loaded chapter is known: a quest the next chapter turns in shows as "not in the rest".
+local function ReadyLines(guide, from, out)
+  local okS, quests = QB:Call("questlog", "Scan")
+  if not okS or type(quests) ~= "table" then return end
+  local at = {}
+  for i = from, #guide.steps do
+    local step = guide.steps[i]
+    if type(step) == "table" and type(step.elements) == "table" then
+      for _, e in ipairs(step.elements) do
+        if type(e) == "table" and e.tag == "turnin" and type(e.questId) == "number" and not at[e.questId] then at[e.questId] = i end
+      end
+    end
+  end
+  local later, extra = {}, {}
+  for _, q in ipairs(quests) do
+    local ready = false
+    if C_QuestLog and C_QuestLog.ReadyForTurnIn then
+      local ok, r = pcall(C_QuestLog.ReadyForTurnIn, q.questID); ready = ok and r and true or false
+    elseif C_QuestLog and C_QuestLog.IsComplete then
+      local ok, r = pcall(C_QuestLog.IsComplete, q.questID); ready = ok and r and true or false
+    end
+    if ready then
+      local title = Clean(q.title) or ("quest " .. tostring(q.questID))
+      if at[q.questID] then later[#later + 1] = string.format("%s (step %d)", title, at[q.questID]) else extra[#extra + 1] = title end
+    end
+  end
+  if type(UnitXP) == "function" and type(UnitXPMax) == "function" and type(UnitLevel) == "function" then
+    local okX, xp, max, level = pcall(function() return UnitXP("player"), UnitXPMax("player"), UnitLevel("player") end)
+    if okX and type(xp) == "number" and type(max) == "number" then out[#out + 1] = string.format("Experience now: %d of %d at level %s", xp, max, tostring(level)) end
+  end
+  if #later + #extra == 0 then out[#out + 1] = "Quests ready to turn in: none"; return end
+  if #later > 0 then out[#out + 1] = "Ready to turn in, and the guide turns them in later (their experience is already in its plan): " .. table.concat(later, "; ") end
+  if #extra > 0 then out[#out + 1] = "Ready to turn in, and NOT in the rest of this guide chapter (extra experience): " .. table.concat(extra, "; ") end
+end
+
 -- The guide's place as lines of text: the active steps with what is done, then `ahead` steps after them. nil and why when
 -- there is nothing to read.
 local function Where(ahead)
@@ -111,6 +150,8 @@ local function Where(ahead)
     last = pointer
   end
   if last == 0 then return nil, "RestedXP has a guide but no active step" end
+  local okR = pcall(ReadyLines, guide, pointer or last, out)
+  if not okR then out[#out + 1] = "(the ready quests could not be read)" end
   for i = last + 1, math.min(last + (ahead or 3), #guide.steps) do
     out[#out + 1] = string.format("Step %d (next):", i)
     if StepLines(guide.steps[i], out, false) == 0 then out[#out + 1] = "  (no text)" end

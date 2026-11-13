@@ -45,6 +45,14 @@ assert(out:find("Step 2 (active, stays until done):", 1, true) and out:find("[do
 assert(out:find("[ ] Grind to level 25 (level gate: level 25)", 1, true), "a level gate is named")
 assert(out:find("Step 4 (next):", 1, true) and out:find("Turn in Seasoned Wolf Kabobs", 1, true) and out:find("Step 5 %(next%):\n.-%(no text%)") and out:find("Step 6 (next)", 1, true) and not out:find("Step 7", 1, true), "three steps ahead by default: " .. out)
 assert(not out:find("old step", 1, true) and not out:find("|T", 1, true) and not out:find("|H", 1, true), "nothing behind, no codes")
+-- v0.30.3: the ready quests against the rest of the guide (the mock log: 100 Wolves, 101 Kobolds ready, 102 Harvest)
+assert(out:find("Experience now: %d+ of %d+ at level"), "experience line: " .. out)
+assert(out:find("NOT in the rest of this guide chapter (extra experience): Kobolds", 1, true) and not out:find("turns them in later", 1, true), "a ready quest the guide does not turn in: " .. out)
+RXP.currentGuide.steps[6].elements[2] = { tag = "turnin", questId = 101, text = "Turn in Kobolds" }
+RXP.currentGuide.steps[1].elements[2] = { tag = "turnin", questId = 101 }
+SlashCmdList.QUESTBOOK("guide step"); out = table.concat(__take(), "\n")
+assert(out:find("the guide turns them in later (their experience is already in its plan): Kobolds (step 6)", 1, true) and not out:find("extra experience", 1, true), "a ready quest the guide turns in later, steps behind the pointer ignored: " .. out)
+RXP.currentGuide.steps[6].elements[2], RXP.currentGuide.steps[1].elements[2] = nil, nil
 SlashCmdList.QUESTBOOK("guide step 1"); out = table.concat(__take(), "\n"); assert(out:find("Step 4 (next)", 1, true) and not out:find("Step 5", 1, true), "steps ahead as asked")
 -- no step marked active: the pointer's step is the current one
 RXP.currentGuide.steps[2].active, RXP.currentGuide.steps[3].active = nil, nil

@@ -562,3 +562,8 @@ green by itself there.
   Same day: the bar also shows what the voice costs, "41.2k / 100.0k credits · 212 avg": ElevenLabs credits used of the
   account's total and the average of a paid reading this month, from the relay addon's `WoWAI.VoiceUsage` (wow-relay PR
   no. 25). The numbers arrive with whatever the game next reads from the bridge, so they can be minutes behind.
+- **v0.30.3, the ready quests set against the rest of the guide (4BI-42).** First client use, 2026-11-12: `/qb guide step`
+  and `/qb guide ask` work (step 132 of the 24-27 chapter read correctly). At a level gate with 12 quests ready, the answer
+  could not tell whether turning them in was extra experience or experience the guide counts on later. The guide's place
+  now carries the experience line and two lists: ready quests the guide turns in at a later step, and ready quests not in
+  the rest of the loaded chapter. Not verified in the client.
