@@ -53,6 +53,8 @@ local YIELD_MAX = 120      -- a dialogue that never reports closing does not hol
 local SEEK_POLL = 0.25     -- seconds between looks at the zoom while going to a distance
 local SEEK_TRIES = 4       -- corrections before giving up (the camera's own limit, or another addon that insists)
 local SEEK_EPS = 0.3       -- close enough
+local WATCH_POLL = 0.5     -- seconds between looks at the camera while we do not hold it
+local SETTLE = 2.0         -- seconds after a dialogue closes before the camera's distance is trusted as the player's own
 
 mod.engaged = false        -- CVars are currently overridden (backup exists)
 mod.releasing = false      -- easing back to the original, restore at the end
@@ -160,6 +162,35 @@ function mod:RestoreAll()
       self.zoomedForMap = nil
     end
   end
+end
+
+-- ---------------------------------------------------------------- the player's own zoom
+
+-- "The player's own zoom" is what the reader steps out from and what everything returns to. Read at the instant we take the
+-- camera it can be anything: a dialogue addon's close-up, or a zoom still on its way back (Cesar, 2026-11-15: the zoom bug
+-- "is still there but with the left camera, maybe an unintended interaction with the dialogUI zoom?"). So it is watched while we
+-- do NOT hold the camera: the distance counts once it has stood still, with no dialogue open and none just closed.
+function mod:Watch(elapsed)
+  self.watchAcc = (self.watchAcc or 0) + elapsed
+  if self.yielding then self.sinceDialogue = 0 else self.sinceDialogue = (self.sinceDialogue or SETTLE) + elapsed end
+  if self.watchAcc < WATCH_POLL then return end
+  self.watchAcc = 0
+  local z = Zoom()
+  local last = self.watchLast
+  self.watchLast = z
+  self.steady = last ~= nil and math.abs(z - last) <= 0.05
+  if self.engaged or self.seekGoal or self.yielding or self.sinceDialogue < SETTLE then return end
+  if self.steady then self.ownZoom = z end
+end
+
+mod.WatchOnUpdate = function(_, elapsed) QB:Safe(mod, mod.Watch, mod, elapsed) end
+
+-- The distance to count from when we take the camera: the camera's own, unless a dialogue has it, has just let it go, or it
+-- is moving, in which case the last distance it stood still at.
+function mod:OwnZoom()
+  local busy = self.yielding or (self.sinceDialogue or SETTLE) < SETTLE or self.steady == false
+  if busy and self.ownZoom then return self.ownZoom end
+  return Zoom()
 end
 
 -- ---------------------------------------------------------------- zoom goal
@@ -341,7 +372,7 @@ function mod:Engage()
     self.cur = tonumber(GetCV(CVAR_SHOULDER)) or 0
     -- remembered even when this first step does not zoom: the next one (local map -> overland map) starts from it.
     -- A zoom of ours still on its way back (the map closed a moment ago) is where the camera is going, not where it is.
-    self.oldZoom = self.seekGoal or Zoom()
+    self.oldZoom = self.seekGoal or self:OwnZoom()
     self:SeekZoom(self:GoalZoom())                               -- the client clamps at its own limits
   elseif self.oldZoom then
     -- already engaged and something changed hands (local map -> overland map, or the map and the quest reader trade
@@ -391,6 +422,7 @@ function mod:OnInit()
   end
   self.driver = CreateFrame("Frame")
   self.seeker = CreateFrame("Frame")
+  self.watcher = CreateFrame("Frame")
 end
 
 function mod:OnEnable()
@@ -408,6 +440,8 @@ function mod:OnEnable()
     QB:Say("camera: restored camera settings left over from a previous session")
   end
 
+  if self.watcher then self.watcher:SetScript("OnUpdate", self.WatchOnUpdate) end
+
   -- If the overlay is already open (module switched on mid-session), follow it.
   local ov = QB.modules.overlay
   if ov and ov.active and type(ov.GetState) == "function" then
@@ -419,6 +453,7 @@ function mod:OnEnable()
 end
 
 function mod:OnDisable()
+  if self.watcher then self.watcher:SetScript("OnUpdate", nil) end
   self:Release(true)
   if self.unregisteredPopup then
     self.unregisteredPopup = false
