@@ -31,15 +31,22 @@ local mod = QB:NewModule("overlay", {
   -- the second replaces the HUD with the overland map, the third goes back. Both large maps open on the small map's spot.
   anchor = "corner",   -- where the large maps open: "corner" = centred on the small map | "offset" = offsetX / offsetY (the old way)
   localSize = 0.62,    -- height of the large local map, fraction of screen height (anchor "corner")
-  zoneSize = 0.78,     -- height of the overland map, likewise (Cesar, first client test 2026-11-11: both "larger" / "bigger")
+  zoneSize = 0.62,     -- height of the overland map, likewise (0.78 after the first client test; "a little smaller", 2026-11-16)
+  -- Cesar, 2026-11-16: "let's move the map overlay to the right next (towards the center of the screen) to the quest log. Lets
+  -- make it a little smaller and less faded". The overland map gets a place of its own: its centre as fractions of the screen
+  -- from the middle (x toward the right, y upward). The values sit it left of EllesmereUI's quest tracker on a 3440 x 1440 screen,
+  -- tops level. zonePlace "anchor" = it opens where `anchor` says, like the local map.
+  zonePlace = "own",   -- "own" (zoneX, zoneY) | "anchor"
+  zoneX = 0.224,
+  zoneY = 0.054,
   hudLocal = "keep",   -- the HUD while the local map is open: "keep" (the map lies over it) | "hide"
   localLayer = "over", -- the large local map draws "over" the HUD (Cesar: "a render on top of our HUD") | "under" it, as a background
   -- Cesar, 2026-11-12: "The bigger minimap and both overland maps should allow tooltips on quest objectives and questing areas".
   hover = true,        -- the large maps answer the mouse HOVERING (tooltips); clicks still pass through to the game
-  hudZone = "hide",    -- the HUD while the overland map is open: "hide" (the map takes its place) | "keep"
+  hudZone = "keep",    -- the HUD while the overland map is open: "keep" (the map is beside it now) | "hide" (it takes its place)
   aspect = 1.25,       -- Zone rect width / height (the minimap is always square; circle is 1)
   localAlpha = 0.55,
-  zoneAlpha = 0.45,
+  zoneAlpha = 0.7,     -- (0.45 until 2026-11-16: "less faded")
   zoneZoom = 2.0,      -- Zone layer magnification over "whole zone fits the panel"
   rotate = true,       -- "local" rotates with facing (native ground only); "zone" is always north-up
   ground = "auto",     -- Local ground: "native" (the real minimap) | "hybrid" (painted zone art, north-up) |
@@ -297,6 +304,13 @@ function mod:Geometry()
   -- scales (the first client run showed pins off in position and direction)
   if db.shape ~= "circle" and self.mode ~= "local" then aspect = clamp(tonumber(db.aspect) or 1.25, 0.5, 3) end
   local w = h * aspect
+  -- the overland map's own place, when it has one: kept on screen
+  if self.mode == "zone" and db.zonePlace ~= "anchor" and tonumber(db.zoneX) and tonumber(db.zoneY) then
+    local zh = math.max(64, clamp(tonumber(db.zoneSize) or 0.62, 0.1, 1.5) * H)
+    local zw = zh * aspect
+    local mx, my = math.max(0, W / 2 - zw / 2), math.max(0, H / 2 - zh / 2)
+    return zw, zh, clamp(db.zoneX * W, -mx, mx), clamp(db.zoneY * H, -my, my)
+  end
   if not corner then return w, h, (tonumber(db.offsetX) or 0) * W, (tonumber(db.offsetY) or 0) * H end
   -- centred on the small map (its top-right corner hangs cornerX, cornerY from the screen's), then kept on screen
   local s = math.max(48, clamp(tonumber(db.cornerSize) or 0.16, 0.05, 0.5) * H)
@@ -1146,8 +1160,11 @@ function mod:BarsWanted() return self.state ~= "off" or self.readerOn end
 -- The small minimap is for the times no map is open: not with the big minimap (it IS the minimap then) and not with the
 -- overland map either (Cesar, 2026-10-17: "I think we want to remove the minimap in both the big mini and overland").
 -- It also gives way to the quest reader (setting).
+-- 2026-11-16: with the overland map beside the HUD and the HUD kept, the small map stays too; it left only because the
+-- overland map used to take the HUD's place.
 function mod:CornerShown()
-  return self.host == "corner" and self.state == "off" and not (self.readerOn and self.readerHide.minimap)
+  local resting = self.state == "off" or (self.state == "zone" and self.db.hudZone == "keep")
+  return self.host == "corner" and resting and not (self.readerOn and self.readerHide.minimap)
 end
 
 function mod:ApplyUnitFrames()
@@ -1483,6 +1500,14 @@ function mod:OnInit()
     if db.zoneSize == 0.5 then db.zoneSize = 0.78 end
     db.v = 5
   end
+  -- v0.31.0: the overland map moves beside the quest tracker, a little smaller and less faded (Cesar, 2026-11-16). Only values
+  -- that are still the old defaults move; anything Cesar set himself stays. The HUD is kept: the map no longer sits on it.
+  if (db.v or 0) < 6 then
+    if db.zoneSize == 0.78 then db.zoneSize = 0.62 end
+    if db.zoneAlpha == 0.45 then db.zoneAlpha = 0.7 end
+    if db.hudZone == "hide" then db.hudZone = "keep" end
+    db.v = 6
+  end
 end
 
 -- The markers module is retired (Cesar, 2026-11-11: "we should retire the quest's markers ... we are missing out on functionality").
@@ -1667,6 +1692,10 @@ QB:RegisterSlash(mod, "overlay", function(rest)
   elseif sub == "anchor" and (arg == "corner" or arg == "offset") then
     db.anchor = arg
     mod:Layout()
+  elseif sub == "zonepos" and (arg == "corner" or (n1 and n2)) then
+    if arg == "corner" then db.zonePlace = "anchor"
+    else db.zonePlace, db.zoneX, db.zoneY = "own", clamp(n1, -0.5, 0.5), clamp(n2, -0.5, 0.5) end
+    mod:Layout()
   elseif sub == "sizes" and n1 then
     if n1 > 1.5 then n1 = n1 / 100 end
     db.localSize = clamp(n1, 0.1, 1.5)
@@ -1760,7 +1789,7 @@ QB:RegisterSlash(mod, "overlay", function(rest)
     Diag()
     return
   elseif sub ~= "" and sub ~= "status" then
-    QB:Usage("/qb overlay corner ... (the small minimap) | cycle | off | local | zone | anchor corner|offset | sizes <local> [zone] | layer over|under | hover on|off | hud local|zone keep|hide | shape rect|circle | size <n> | aspect <n> | pos <x> <y> | alpha <local> [zone] | zoom <n> | rotate on|off | ground hybrid|native|auto | bars actions|all|none | icons <n> | mask | diag")
+    QB:Usage("/qb overlay corner ... (the small minimap) | cycle | off | local | zone | anchor corner|offset | zonepos <x> <y>|corner | sizes <local> [zone] | layer over|under | hover on|off | hud local|zone keep|hide | shape rect|circle | size <n> | aspect <n> | pos <x> <y> | alpha <local> [zone] | zoom <n> | rotate on|off | ground hybrid|native|auto | bars actions|all|none | icons <n> | mask | diag")
   end
   QB:Say(Status())
 end, "map overlay (cycle | off | local | zone | shape | size | alpha | rotate | ground | bars | icons | mask | diag)")
