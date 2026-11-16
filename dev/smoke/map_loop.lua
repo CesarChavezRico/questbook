@@ -13,13 +13,15 @@ __fire("ADDON_LOADED", "QuestBook"); __loggedIn = true; __fire("PLAYER_LOGIN")
 local function slash(s) SlashCmdList.QUESTBOOK(s) end
 local O = QB.modules.overlay
 local W, H = UIParent:GetWidth(), UIParent:GetHeight()
-assert(O.db.v == 5 and O.db.shape == "circle" and O.db.anchor == "corner", "migrated to the loop's defaults")
+assert(O.db.v == 6 and O.db.shape == "circle" and O.db.anchor == "corner", "migrated to the loop's defaults")
+-- this scenario is the loop as first built: the overland map in place of the HUD, on the small map's spot (since v0.31.0 it opens beside the quest tracker)
+SlashCmdList.QUESTBOOK("overlay hud zone hide"); SlashCmdList.QUESTBOOK("overlay zonepos corner"); __take()
 local s = 0.2 * H
 local smallX, smallY = W / 2 - 1314 - s / 2, H / 2 - 784 - s / 2          -- the small map's centre, from the screen centre
 local function centre() local p = { O.panel:GetPoint(1) }; return p[4], p[5] end
 
 -- sizes saved by v0.28.0 (its defaults) grow once; a size the player chose stays
-assert(O.db.localSize == 0.62 and O.db.zoneSize == 0.78, "the new sizes")
+assert(O.db.localSize == 0.62 and O.db.zoneSize == 0.62, "the sizes after both moves (0.78 then 0.62 for the overland map)")
 
 -- rest
 assert(O.state == "off" and O.cornerPanel:IsShown(), "at rest the small map shows")
@@ -43,7 +45,7 @@ assert(MainActionBar:GetAlpha() == 1, "the game's own bars too")
 -- second press: the overland map replaces the HUD
 O:Cycle(); __tick(3)
 assert(O.state == "zone", "second press opens the overland map")
-assert(math.abs(O.panel:GetHeight() - 0.78 * H) < 0.5, "overland map: 0.78 of the screen")
+assert(math.abs(O.panel:GetHeight() - 0.62 * H) < 0.5, "overland map: 0.62 of the screen")
 local _, zy = centre()
 assert(zy - O.panel:GetHeight() / 2 >= -H / 2 - 0.5, "kept on screen at the bottom")
 for n, f in pairs(elle) do assert(f:GetAlpha() == 0, n .. " faded under the overland map") end

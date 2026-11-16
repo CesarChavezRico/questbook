@@ -21,6 +21,8 @@ function pin:IsMouseClickEnabled() return self.click end
 function WorldMapFrame:ExecuteOnAllPins(fn) fn(pin) end
 
 __fire("ADDON_LOADED", "QuestBook"); __loggedIn = true; __fire("PLAYER_LOGIN")
+-- the layering below is the overland map IN PLACE of the HUD (hud zone hide); since v0.31.0 the default keeps the HUD
+SlashCmdList.QUESTBOOK("overlay hud zone hide"); __take()
 local function slash(s) SlashCmdList.QUESTBOOK(s) end
 local O = QB.modules.overlay
 __tick(3)

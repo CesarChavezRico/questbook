@@ -3,7 +3,7 @@ QuestBookDB = { mod = { overlay = { ground = "hybrid", shape = "rect", cornerMas
 __fire("ADDON_LOADED", "QuestBook"); __loggedIn = true; __fire("PLAYER_LOGIN")
 local O = QB.modules.overlay
 assert(O.db.ground == "auto", "migrated to auto, got " .. tostring(O.db.ground))
-assert(O.db.v == 5)
+assert(O.db.v == 6)
 -- the map loop (v0.28.0): a saved "rect" was only the old default, the large maps are circles now
 assert(O.db.shape == "circle", "shape migrated: " .. tostring(O.db.shape))
 -- (sizes: none saved here, so the defaults apply; a saved 0.45 / 0.5 is covered below)
