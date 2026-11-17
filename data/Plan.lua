@@ -5,7 +5,7 @@ QB.planData = {
   v = 2,
   name = "Thara, level 24",
   macros = {
-    { name = "QB Top M", body = "#showtooltip\n/cast [form:bear] Bash; [noform] Regrowth" },
+    { name = "QB Top M", body = "#showtooltip\n/cast [form:cat] Ravage; [form:bear] Bash; [noform] Regrowth" },
     { name = "QB Top I", body = "#showtooltip\n/cast [form:bear/cat] Feral Charge; [noform] Healing Touch" },
     { name = "QB Home M", body = "#showtooltip\n/cast [form:cat] Rake; [noform] Rejuvenation" },
     { name = "QB Thumb 1", body = "#showtooltip\n/cast [form:cat] Ferocious Bite; [form:bear] Enrage; [noform] Thorns" },

@@ -321,6 +321,22 @@ for slot, w in pairs(shippedPlan.slots) do
   if w.kind == "macro" then assert(names[w.name], "macro seat without a macro: " .. tostring(w.name)) end
 end
 
+-- 14. only the macros: a new form shifts the numbers, the macros are rewritten, and no button is touched
+formSpells = { 5487, 768 }
+M.db.plan = { v = 2, macros = { { name = "QB Only", body = "/cast [form:cat] Rake; [noform] Wrath" } }, slots = { [50] = { kind = "spell", name = "Claw" } } }
+slots[50] = { "spell", 300 }                               -- the player put Moonfire where the plan says Claw
+slash("bars macros")
+text = table.concat(__take(), "\n")
+assert(text:find("bars macros: 1 new, 0 rewritten, 0 already right. No button was touched.", 1, true), "macros only: " .. text)
+assert(macros[GetMacroIndexByName("QB Only")][3] == "/cast [form:2] Rake; [noform] Wrath" and slots[50][2] == 300, "the macro is made, the button is not reset")
+formSpells = { 5487, 1066, 768 }                           -- Aquatic Form learned: cat is 3 now
+slash("bars macros")
+assert(said("bars macros: 0 new, 1 rewritten, 0 already right"), "rewritten for the new form")
+assert(macros[GetMacroIndexByName("QB Only")][3] == "/cast [form:3] Rake; [noform] Wrath" and slots[50][2] == 300, "cat is form 3, the button still untouched")
+slash("bars macros"); assert(said("0 new, 0 rewritten, 1 already right"), "a second run changes nothing")
+__combat = true; slash("bars macros"); assert(said("not in combat"), "refuses in combat"); __combat = false
+M.db.plan.macros = nil; slash("bars macros"); assert(said("the plan has no macros"), "no macros: says so")
+
 M.db.plan.slots = { [1] = { kind = "spell", name = "Wrath" } }
 slash("bars"); assert(said("bars: plan 1 button"), "status counts the valid plan entries")
 slash("bars what"); assert(said("/qb bars .*dump.*check.*apply.*undo"), "usage")
