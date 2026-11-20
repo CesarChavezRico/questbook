@@ -573,3 +573,13 @@ green by itself there.
   left out everything complete. They are read now; only a real task that is done or skipped is left out. And with the
   reader on, an accepted quest's own text is queued in the giver's voice (`/qb guide quests on|off`, default on); with an
   older relay addon it is only prefetched, as before. Not verified in the client.
+- **v0.32.0, sync: the character and the guide written down for planning away from the game (4BI-42).** Cesar,
+  2026-11-20: "Can I export the steps and give it to you so we can better plan offline?", "add my bags to the dump so you
+  can recommend items to destroy or sell". Two saved tables, apart on purpose. `QuestBookState` is the character (guide
+  place, level, experience, money, hearth, quest log with objectives and what is ready, finished quests, bags with vendor
+  prices, gear with durability, the bank as last seen); it is rewritten at every unload and holds no guide text, so it can
+  travel by itself after each session. `QuestBookGuide` holds each RestedXP chapter that has been loaded, every step with
+  every plain value its elements have (copied whole, because the field names are only known from the source); it is paid
+  content, exported once per chapter and per imported file, sent by hand, never committed. The imported file is named by
+  the two numbers of its header (how many guides, the file's id), which RestedXP keeps in `db.profile.guideLength` and
+  `guideId`: other numbers mean a new version. `/qb sync`, `now`, `guide`, `auto on|off`. Not verified in the client.
