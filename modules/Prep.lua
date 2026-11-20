@@ -34,6 +34,7 @@ local Style = QB.Style
 
 local mod = QB:NewModule("prep", {
   limit = 20,           -- minutes flagged away before the counter turns red (the game's own disconnect time is not known here)
+  poll = 25,            -- seconds between asking the relay for waiting questions while prep is on (each ask uses one reply slot)
 })
 
 local ANSWER_MAX = 20000        -- bytes of one answer, over all its parts
@@ -373,6 +374,7 @@ end
 -- first client test (2026-11-20) delivered four questions at login, a moment before the bridge was connected, and every
 -- answer was lost to "the bridge is not connected". A record that cannot go now is tried again every second, the relay
 -- is asked to reconnect (at most every 45 s), and after ten minutes it is given up, with a line in the chat.
+local Poll                      -- (defined below: asks the relay for waiting questions while prep is on)
 local outbox = {}               -- { id = , text = , at = } in order
 local KEEP = 600
 local CONNECT_GAP = 45
@@ -429,6 +431,26 @@ local function Inbound(id, body)
   mod.lastAt = (GetTime and GetTime()) or 0
   if refused then mod.refused = mod.refused + 1 else mod.answered = mod.answered + 1 end
   Send(id, text)
+end
+
+-- In prep, ask the relay for waiting questions ourselves. Client test, 2026-11-20: the relay's own signal for a waiting
+-- push did not fire, so questions were only picked up at a reload, and a reload ends prep: free Lua could never arrive in
+-- prep state. Each ask loads one of the relay addon's 200 reply slots of this UI session, so it is done only while prep is
+-- on, every POLL_EVERY seconds: about an hour and a half of prep per reload at the default.
+local POLL_EVERY = 25
+local lastPoll
+mod.polls, mod.pollWhy = 0, nil
+
+Poll = function()
+  if not mod.on then return end
+  local W = _G.WoWAI
+  if not (type(W) == "table" and type(W.CheckPush) == "function") then return end
+  local now = (GetTime and GetTime()) or 0
+  if lastPoll and now - lastPoll < (tonumber(mod.db.poll) or POLL_EVERY) then return end
+  lastPoll = now
+  local ok, took, why = pcall(W.CheckPush)
+  mod.polls = mod.polls + 1
+  mod.pollWhy = (ok and took) and nil or tostring(why or took)
 end
 
 -- ---------------------------------------------------------------- the away counter
@@ -490,7 +512,7 @@ function mod:OnEnable()
     mod.listening = ok and took ~= false
   end
   Build()
-  if not ticker and C_Timer and C_Timer.NewTicker then ticker = C_Timer.NewTicker(1, function() QB:Safe(mod, Flush); QB:Safe(mod, Paint) end) end
+  if not ticker and C_Timer and C_Timer.NewTicker then ticker = C_Timer.NewTicker(1, function() QB:Safe(mod, Flush); QB:Safe(mod, Poll); QB:Safe(mod, Paint) end) end
 end
 
 function mod:OnDisable()
@@ -529,6 +551,6 @@ QB:RegisterSlash(mod, "prep", function(rest)
     QB:Say(string.format("prep: %s; questions %s; %d answered, %d refused since the UI loaded%s",
       mod.on and "ON (free Lua is answered, in the fence)" or "off: play state (fixed questions only)",
       mod.listening and "can arrive through the relay addon" or "cannot arrive (the relay addon has no door for them)",
-      mod.answered, mod.refused, #outbox > 0 and string.format("; %d answer record(s) waiting for the relay (%s)", #outbox, tostring(outbox[1].why or "not tried yet")) or ""))
+      mod.answered, mod.refused, (mod.on and mod.pollWhy and ("; the last ask for questions failed: " .. mod.pollWhy) or "") .. (#outbox > 0 and string.format("; %d answer record(s) waiting for the relay (%s)", #outbox, tostring(outbox[1].why or "not tried yet")) or "")))
   end
 end, "prep: Nibble questions the game for planning a session: on | off (reloads) | limit <minutes> | run <lua> | ask q <name>")
