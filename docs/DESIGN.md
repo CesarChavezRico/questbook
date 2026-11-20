@@ -589,3 +589,15 @@ green by itself there.
   a kind, and gear had no names: this client has no global `GetItemInfo`, so `C_Item.GetItemInfo` is asked first. The
   imported file's header numbers were not where RestedXP's source suggested (an empty table came out): a chapter is now
   told apart by its own `version` and `guideId`, which is also what decides a re-export. Not verified in the client.
+- **v0.33.0, prep: Nibble questions the game (4BI-46).** Cesar, 2026-11-20: "a way for you to 'question' the game for the
+  information needed for offline prep of a game session"; "a 'prep state' ... where errors are harmless and we move to 'play
+  state' when I am sitting at the rig"; "an away counter will help me keep it alive". Questions arrive through the relay
+  addon (`WoWAI.RegisterInbound`, kind `qbask`; wow-relay 4BI-45) and are answered with `WoWAI.SendData("answer", ...)`, in
+  parts when long. A fixed question (`q state | bags | quests | guide a b | items ids | completed ids`) is answered in
+  either state. Free Lua (`lua` on the first line) is answered only in prep state, which only `/qb prep on` typed at the
+  client switches on (memory only; `/qb prep off` reloads the UI, because such code taints what it touched). Free Lua runs
+  in pcall inside a fence: its own environment, the game's reading functions by name (Get / Is / Has / Can / Unit / Num /
+  Does / Find / Ready / Are, minus known exceptions), read-only views of the game's and the addons' tables with their
+  functions hidden (reading functions of C_ namespaces excepted), copies of string / table / math. The fence is a rule of
+  thumb, not a proof, and an endless loop hangs the client. The away counter shows how long the character has been flagged
+  away and sends no input. `/qb prep run <lua>` tries the fence from the chat box. Not verified in the client.
