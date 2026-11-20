@@ -111,6 +111,15 @@ __runTimers(); assert(#sent == n0 and connects == 1, "still waiting; no second r
 slash("prep"); assert(said("2 answer record%(s%) waiting for the relay %(the bridge is not connected%)"), "status says what waits and why")
 up = true; __runTimers()
 assert(#sent == n0 + 2 and P.Waiting() == 0 and sent[n0 + 1][2] == "m3.0" and sent[n0 + 2][3] == "ok 7", "sent in order once the relay is back")
+-- v0.33.2: in prep the relay is asked for waiting questions on a timer (its own signal did not fire in the client); not in play state
+local checks = 0
+WoWAI.CheckPush = function() checks = checks + 1; return true, 0 end
+QuestBookDB.mod.prep.poll = 0
+__runTimers(); __runTimers(); assert(checks == 2, "prep on: asked on the ticker: " .. checks)
+WoWAI.CheckPush = function() checks = checks + 1; return false, "no reply slots left this session (reload the UI)" end
+__runTimers(); slash("prep"); assert(said("the last ask for questions failed: no reply slots left"), "a failed ask is said in the status")
+P.on = false; local c0 = checks; __runTimers(); __runTimers(); assert(checks == c0, "play state: never asked")
+P.on = true; QuestBookDB.mod.prep.poll = 25; WoWAI.CheckPush = nil
 -- a message cannot switch prep on: there is no question that does it
 slash("prep off"); __take(); reloaded = 0; P.on = false
 inbound("m2.0", "q prep on"); inbound("m2.1", "lua\nSlashCmdList.QUESTBOOK('prep on')")

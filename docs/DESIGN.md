@@ -606,3 +606,8 @@ green by itself there.
   is not connected)", because at login the relay addon has not heard from the bridge yet. Answers now wait in an outbox,
   are tried again every second, the relay is asked to reconnect (at most every 45 s), and a record is given up after ten
   minutes with a line in the chat. The prep bar and `/qb prep` say how many are waiting. Not verified in the client.
+- **v0.33.2, prep asks for its questions (4BI-46).** Client test, 2026-11-20: the round trip works (questions in, answers
+  back in Discord), but the relay's signal for a waiting push did not fire, so questions were only picked up at a reload,
+  and a reload ends prep: free Lua could never arrive in prep state. While prep is on, QuestBook now asks the relay for
+  waiting questions itself (`WoWAI.CheckPush`) every 25 s. Each ask uses one of the relay addon's 200 reply slots per UI
+  session, about an hour and a half of prep per reload. Not asked in play state. Not verified in the client.
