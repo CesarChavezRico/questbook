@@ -262,10 +262,18 @@ local function ReadBank()
   if #list > 0 then bankSeen = { at = Call("time"), bags = list } end
 end
 
-function mod:WriteState()
-  local prev = _G.QuestBookState
-  local s = { v = VERSION, at = Call("time"), addon = QB.version }
-  s.name = Call("UnitName", "player"); s.realm = Call("GetRealmName")
+-- The realm's name: GetRealmName came back empty on Cesar's client in every file since v0.33.0.
+local function Realm()
+  local r = Call("GetRealmName")
+  if type(r) ~= "string" or r == "" then r = Call("GetNormalizedRealmName") end
+  if type(r) ~= "string" or r == "" then return nil end
+  return r
+end
+
+-- Read the character from the game, now.
+local function Read(how)
+  local s = { v = VERSION, at = Call("time"), addon = QB.version, how = how }
+  s.name = Call("UnitName", "player"); s.realm = Realm()
   s.level = Call("UnitLevel", "player")
   s.xp = Call("UnitXP", "player"); s.xpMax = Call("UnitXPMax", "player"); s.rested = Call("GetXPExhaustion")
   s.money = Call("GetMoney")
@@ -276,18 +284,102 @@ function mod:WriteState()
   s.completed = Completed()
   s.bags = Bags(0, 4)
   s.gear = Gear()
-  s.bank = bankSeen or (type(prev) == "table" and prev.bank) or nil
+  return s
+end
+
+-- A HOLLOW read (4BI-47). Seven state files of 2026-11-20 showed it: a state written at a real logout had money 0,
+-- experience 0, no bags, no gear, no finished quests and no objectives (7.0 KB), while one written by a /reload in the
+-- world was whole (21.3 KB). At a real logout the client no longer answers these reads, each guarded call quietly gives
+-- nil or zero, and the hollow state replaced the good one. So: the state is taken WHILE IN THE WORLD and kept in memory
+-- (`snap`), refreshed when bags, quests, money, experience, gear or the zone change (at most every few seconds) and once
+-- a minute; at unload the snapshot is what is written and the game is not read again; and a hollow read never replaces
+-- a whole state, in memory or in the file.
+local function Hollow(s)
+  if type(s) ~= "table" then return true end
+  if type(s.bags) ~= "table" or #s.bags == 0 then return true end
+  if type(s.xpMax) ~= "number" or s.xpMax <= 0 then return true end
+  return false
+end
+
+local snap                      -- the last whole state read in the world
+local dirty, lastTake, enabledAt = true, nil, nil
+local TAKE_GAP = 5              -- seconds between two reads caused by events
+local TAKE_EVERY = 60           -- seconds between two reads with no event
+local SETTLE = 6                -- seconds after the UI loads before the first read (the quest log fills in late: a read in
+                                -- the first second after login held 26 of 40 quests, seen twice on 2026-11-20)
+
+local function WithBank(s)
+  local prev = _G.QuestBookState
+  s.bank = bankSeen or (snap and snap.bank) or (type(prev) == "table" and prev.bank) or nil
+  return s
+end
+
+-- Take a snapshot now if the read is whole. Returns the snapshot in memory (the new one, or the one kept).
+local function Take(how)
+  local s = Read(how or "world")
+  lastTake = (GetTime and GetTime()) or 0
+  dirty = false
+  if not Hollow(s) then snap = WithBank(s) end
+  return snap, s
+end
+
+-- true once the UI has been up long enough for the quest log to be whole (the prep module waits for this to answer)
+function mod:Settled()
+  local now = (GetTime and GetTime()) or 0
+  return enabledAt ~= nil and now - enabledAt >= SETTLE
+end
+
+local function Tick()
+  local now = (GetTime and GetTime()) or 0
+  if not enabledAt or now - enabledAt < SETTLE then return end
+  if not lastTake or (dirty and now - lastTake >= TAKE_GAP) or now - lastTake >= TAKE_EVERY then Take("world") end
+end
+
+-- The state for now: a fresh read when it is whole, else the last whole one. Written into QuestBookState (it reaches the
+-- file at the next unload). Used by /qb sync now and by the prep module's fixed questions.
+function mod:WriteState()
+  local kept, fresh = Take("world")
+  local s = kept or WithBank(fresh)
+  if Hollow(s) and not Hollow(_G.QuestBookState) then return _G.QuestBookState end     -- never a hollow one over a whole one
   _G.QuestBookState = s
   return s
 end
 
 -- ---------------------------------------------------------------- when
 
+local function Dirty() dirty = true end
+mod.events.BAG_UPDATE_DELAYED = Dirty
+mod.events.QUEST_LOG_UPDATE = Dirty
+mod.events.PLAYER_MONEY = Dirty
+mod.events.PLAYER_XP_UPDATE = Dirty
+mod.events.PLAYER_LEVEL_UP = Dirty
+mod.events.PLAYER_EQUIPMENT_CHANGED = Dirty
+mod.events.ZONE_CHANGED_NEW_AREA = Dirty
+
+local ticker
+function mod:OnEnable()
+  enabledAt = (GetTime and GetTime()) or 0
+  if not ticker and C_Timer and C_Timer.NewTicker then ticker = C_Timer.NewTicker(2, function() QB:Safe(mod, Tick) end) end
+end
+function mod:OnDisable()
+  if ticker then ticker:Cancel(); ticker = nil end
+end
+
 mod.events.BANKFRAME_OPENED = function() ReadBank() end
 mod.events.PLAYERBANKSLOTS_CHANGED = function() if bankSeen then ReadBank() end end
 mod.events.PLAYER_LOGOUT = function(self)
   if not self.db.auto then return end
-  self:WriteState()
+  -- The snapshot from memory. Only when there is none (the UI unloaded within seconds of loading) is the game read here,
+  -- and that read is kept only if it is whole: at a real logout it is hollow, and then the stored state stays as it is.
+  local s = snap
+  if not s then
+    local fresh = Read("unload")
+    if not Hollow(fresh) then s = WithBank(fresh) end
+  end
+  if s then
+    s.written = Call("time")
+    _G.QuestBookState = s
+  end
   if self.db.guideAuto then
     local guide = CurrentGuide()
     if guide then

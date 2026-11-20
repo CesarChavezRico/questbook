@@ -18,6 +18,9 @@ RXP = { currentGuide = { group = "G", name = "35-37 Desolace", steps = {
     { index = 2, active = true, elements = { { text = "Kill satyrs", tag = "complete", questId = 1458, completed = true } } } } },
   SetStep = function() error("must never be reachable") end, settings = { profile = { windowScale = 1.25 } } }
 local function A(body) return (P:Answer(body)) end
+-- a clock the scenario moves: questions are answered once the UI has settled (4BI-47)
+local clock = 5000
+GetTime = function() return clock end
 
 -- play state: free Lua is refused, fixed questions are answered
 assert(A("lua\nreturn 1"):find("^refused: free Lua is answered only in prep state"), "play state refuses free Lua")
@@ -91,7 +94,11 @@ WoWAI = { DATA_MAX = 700, RegisterInbound = function(kind, fn) if kind == "qbask
   SendData = function(kind, ref, text) sent[#sent + 1] = { kind, ref, text }; return true, #sent end }
 QB:Disable("prep"); QB:Enable("prep"); __take()
 assert(type(inbound) == "function" and P.on == false, "registered; and switching the module off and on leaves play state")
+-- right after the UI loads, a question waits: the quest log is not whole yet (26 of 40 quests seen in the client)
+QB:Disable("sync"); QB:Enable("sync"); __take()
 inbound("m1.0", "lua\nreturn 2")
+assert(#sent == 0, "not answered in the first seconds after the UI loads")
+clock = clock + 10; __runTimers()
 assert(#sent == 1 and sent[1][1] == "answer" and sent[1][2] == "m1.0" and sent[1][3]:find("^refused"), "play state: the refusal is the answer")
 slash("prep on"); __take()
 inbound("m1.1", "lua\nreturn 2"); assert(sent[2][3] == "ok 2" and sent[2][2] == "m1.1", "prep: answered")

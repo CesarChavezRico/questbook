@@ -611,3 +611,13 @@ green by itself there.
   and a reload ends prep: free Lua could never arrive in prep state. While prep is on, QuestBook now asks the relay for
   waiting questions itself (`WoWAI.CheckPush`) every 25 s. Each ask uses one of the relay addon's 200 reply slots per UI
   session, about an hour and a half of prep per reload. Not asked in play state. Not verified in the client.
+- **v0.34.0, sync: the state is taken in the world, never at logout (4BI-47).** Found from seven state files posted on
+  2026-11-20: a state written at a real logout was hollow (money 0, experience 0, no bags, no gear, no finished quests;
+  7.0 KB) and replaced the whole one (21.3 KB) written by a reload in the world. At a real logout the client no longer
+  answers these reads and each guarded call quietly gives nil or zero. Now the state is read while in the world and kept
+  in memory, refreshed when bags, quests, money, experience, gear or the zone change (at most every 5 s) and once a
+  minute; at unload the snapshot in memory is written and the game is not read again; a hollow read (no bags, or no
+  experience ceiling) never replaces a whole state, in memory or in the file. Each state says how it was taken (`how`)
+  and when it was written (`written`). The realm falls back to `GetNormalizedRealmName` (it was blank). And nothing is read
+  or answered in the first 6 s after the UI loads: a read in the first second held 26 of 40 quests, twice; the prep module
+  holds questions until then. Not verified in the client.
