@@ -601,3 +601,8 @@ green by itself there.
   functions hidden (reading functions of C_ namespaces excepted), copies of string / table / math. The fence is a rule of
   thumb, not a proof, and an endless loop hangs the client. The away counter shows how long the character has been flagged
   away and sends no input. `/qb prep run <lua>` tries the fence from the chat box. Not verified in the client.
+- **v0.33.1, prep: answers wait for the relay (4BI-46).** First client test, 2026-11-20: the questions reached the game
+  (four of them, delivered at login) and were answered, but every answer was lost: "an answer could not be sent (the bridge
+  is not connected)", because at login the relay addon has not heard from the bridge yet. Answers now wait in an outbox,
+  are tried again every second, the relay is asked to reconnect (at most every 45 s), and a record is given up after ten
+  minutes with a line in the chat. The prep bar and `/qb prep` say how many are waiting. Not verified in the client.

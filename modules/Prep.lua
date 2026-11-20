@@ -369,33 +369,66 @@ function mod:Answer(body)
   return "refused: not a question this addon knows (first line: \"lua\", or \"q state | bags | quests | guide <from> <to> | items <ids> | completed <ids>\")", true
 end
 
--- Send an answer back through the relay addon, in parts when it is long. Returns true, or false and why.
+-- Answers go back through the relay addon, in parts when long. They wait in an outbox until the relay takes them: the
+-- first client test (2026-11-20) delivered four questions at login, a moment before the bridge was connected, and every
+-- answer was lost to "the bridge is not connected". A record that cannot go now is tried again every second, the relay
+-- is asked to reconnect (at most every 45 s), and after ten minutes it is given up, with a line in the chat.
+local outbox = {}               -- { id = , text = , at = } in order
+local KEEP = 600
+local CONNECT_GAP = 45
+local lastConnect
+
+local function Flush()
+  if #outbox == 0 then return end
+  local W = _G.WoWAI
+  local now = (GetTime and GetTime()) or 0
+  while outbox[1] do
+    local rec = outbox[1]
+    if now - rec.at > KEEP then
+      table.remove(outbox, 1)
+      QB:Say("prep: an answer could not be sent in ten minutes and was dropped (" .. tostring(rec.why or "the relay did not take it") .. ")")
+    else
+      if not (type(W) == "table" and type(W.SendData) == "function") then rec.why = "the relay addon has no SendData"; return end
+      local ok, sent, why = pcall(W.SendData, "answer", rec.id, rec.text)
+      if ok and sent then
+        table.remove(outbox, 1)
+      else
+        rec.why = tostring(why or sent)
+        if type(W.IsConnected) == "function" and type(W.Connect) == "function" then
+          local okC, connected = pcall(W.IsConnected)
+          if okC and not connected and (not lastConnect or now - lastConnect >= CONNECT_GAP) then lastConnect = now; pcall(W.Connect) end
+        end
+        return
+      end
+    end
+  end
+end
+
 local function Send(id, text)
   local W = _G.WoWAI
-  if not (type(W) == "table" and type(W.SendData) == "function") then return false, "the relay addon has no SendData" end
-  local room = math.max(400, (tonumber(W.DATA_MAX) or 2400) - 60)
+  local room = math.max(400, (tonumber(type(W) == "table" and W.DATA_MAX) or 2400) - 60)
+  local now = (GetTime and GetTime()) or 0
   if #text <= room then
-    local ok, sent, why = pcall(W.SendData, "answer", tostring(id), text)
-    return ok and sent and true or false, tostring(why or sent)
+    outbox[#outbox + 1] = { id = tostring(id), text = text, at = now }
+  else
+    local parts = {}
+    local i = 1
+    while i <= #text and #parts < PARTS_MAX do parts[#parts + 1] = text:sub(i, i + room - 1); i = i + room end
+    if i <= #text then parts[#parts] = parts[#parts]:sub(1, room - 40) .. " <cut: too many parts>" end
+    for n, p in ipairs(parts) do
+      outbox[#outbox + 1] = { id = tostring(id), text = string.format("part=%d/%d\n%s", n, #parts, p), at = now }
+    end
   end
-  local parts = {}
-  local i = 1
-  while i <= #text and #parts < PARTS_MAX do parts[#parts + 1] = text:sub(i, i + room - 1); i = i + room end
-  if i <= #text then parts[#parts] = parts[#parts]:sub(1, room - 40) .. " <cut: too many parts>" end
-  for n, p in ipairs(parts) do
-    local ok, sent, why = pcall(W.SendData, "answer", tostring(id), string.format("part=%d/%d\n%s", n, #parts, p))
-    if not (ok and sent) then return false, tostring(why or sent) end
-  end
-  return true
+  Flush()
 end
+mod.Waiting = function() return #outbox end
 
 -- A question arrived (the relay addon calls this once per question).
 local function Inbound(id, body)
   local text, refused = mod:Answer(body)
   mod.lastAt = (GetTime and GetTime()) or 0
   if refused then mod.refused = mod.refused + 1 else mod.answered = mod.answered + 1 end
-  local ok, why = Send(id, text)
-  if not ok then QB:Say("prep: an answer could not be sent (" .. tostring(why) .. ")") end
+  Send(id, text)
 end
 
 -- ---------------------------------------------------------------- the away counter
@@ -417,6 +450,7 @@ local function Paint()
   if away and not awaySince then awaySince = now elseif not away then awaySince = nil end
   local text = string.format("PREP  |  %d answered", mod.answered)
   if mod.refused > 0 then text = text .. string.format(", %d refused", mod.refused) end
+  if #outbox > 0 then text = text .. string.format(", %d waiting to be sent", #outbox) end
   if mod.lastAt then text = text .. "  |  last question " .. Clock(now - mod.lastAt) .. " ago" end
   local r, g, b = 0.92, 0.89, 0.82
   if awaySince then
@@ -456,7 +490,7 @@ function mod:OnEnable()
     mod.listening = ok and took ~= false
   end
   Build()
-  if not ticker and C_Timer and C_Timer.NewTicker then ticker = C_Timer.NewTicker(1, function() QB:Safe(mod, Paint) end) end
+  if not ticker and C_Timer and C_Timer.NewTicker then ticker = C_Timer.NewTicker(1, function() QB:Safe(mod, Flush); QB:Safe(mod, Paint) end) end
 end
 
 function mod:OnDisable()
@@ -492,9 +526,9 @@ QB:RegisterSlash(mod, "prep", function(rest)
     QB:Usage("prep: " .. text)
   else
     if sub ~= "" and sub ~= "status" then QB:Usage("/qb prep | on | off | limit <minutes> | run <lua> | ask q <name>") end
-    QB:Say(string.format("prep: %s; questions %s; %d answered, %d refused since the UI loaded",
+    QB:Say(string.format("prep: %s; questions %s; %d answered, %d refused since the UI loaded%s",
       mod.on and "ON (free Lua is answered, in the fence)" or "off: play state (fixed questions only)",
       mod.listening and "can arrive through the relay addon" or "cannot arrive (the relay addon has no door for them)",
-      mod.answered, mod.refused))
+      mod.answered, mod.refused, #outbox > 0 and string.format("; %d answer record(s) waiting for the relay (%s)", #outbox, tostring(outbox[1].why or "not tried yet")) or ""))
   end
 end, "prep: Nibble questions the game for planning a session: on | off (reloads) | limit <minutes> | run <lua> | ask q <name>")
