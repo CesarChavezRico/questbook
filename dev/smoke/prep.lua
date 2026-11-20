@@ -143,6 +143,65 @@ slash("prep limit 5"); assert(said("turns red after 5 minutes"), "limit")
 -- typed at the client: the same path, for trying the fence
 slash("prep run return 6 * 7"); assert(said("prep: ok 42"), "run")
 slash("prep ask q state"); assert(said("prep: ok {"), "ask")
+-- v0.35.0: a whole number past 2^31 - 1 is written out (the client's "%d" refused RestedXP's guide ids and the answer was lost)
+assert(A("lua\nreturn 2426870665, { id = 2598704232 }, -3000000000, 7, 1.5") == 'ok [2426870665,{"id":2598704232},-3000000000,7,1.5]', "large whole numbers: " .. A("lua\nreturn 2426870665, { id = 2598704232 }, -3000000000, 7, 1.5"))
+-- v0.35.0: the chapters RestedXP knows, and the steps of one it has not opened (read by RestedXP's own FetchGuide)
+local fetched, loaded = 0, 0
+local cur = RXP.currentGuide
+cur.group, cur.version, cur.guideId, cur.next = "RXP (A)", 24, 2598704232, "36-38 Stranglethorn Vale II"
+local stv = { group = "RXP (A)", name = "36-38 Stranglethorn Vale II", version = 7, guideId = 2426870665, next = "38-40 Dustwallow" }
+local prev = { group = "RXP (A)", name = "33-35 Shimmering Flats", version = 3, guideId = 11 }
+local low = { group = "RXP (A)", name = "1-6 Teldrassil", version = 1, guideId = 12 }
+local other = { group = "Free (H)", name = "36-38 Stranglethorn Vale II", version = 2, guideId = 13 }
+local broken = { group = "RXP (A)", name = "40-41 Broken", version = 1, guideId = 14 }
+RXP.guides = { ["RXP (A)||35-37 Desolace"] = cur, ["RXP (A)||36-38 Stranglethorn Vale II"] = stv, ["RXP (A)||33-35 Shimmering Flats"] = prev,
+  ["RXP (A)||1-6 Teldrassil"] = low, ["Free (H)||36-38 Stranglethorn Vale II"] = other, ["RXP (A)||40-41 Broken"] = broken, [1] = { empty = true, name = "" } }
+RXP.db = { profile = { guideLength = 106, guideId = 541251347 } }
+RXP.LoadGuide = function() loaded = loaded + 1 end
+RXP.FetchGuide = function(self, g)
+  assert(self == RXP, "called as a method")
+  if g == broken then return nil end
+  fetched = fetched + 1
+  local read = { group = g.group, name = g.name, version = g.version, guideId = g.guideId, next = g.next, steps = {} }
+  for i = 1, 30 do read.steps[i] = { elements = { { text = "|cFFFCDC00Accept|r Quest " .. i, tag = "accept", questId = 1000 + i, completed = true } }, active = (i == 2) } end
+  RXP.guides[g.group .. "||" .. g.name] = read
+  return read
+end
+local ch = A("q chapters")
+assert(ch:find('"current":"RXP (A) / 35-37 Desolace"', 1, true) and ch:find('"known":6', 1, true) and ch:find('"file":{"guides":106,"id":541251347}', 1, true), "q chapters, the head: " .. ch)
+assert(ch:find('"name":"33-35 Shimmering Flats"', 1, true) and ch:find('"version":"7:2426870665"', 1, true) and ch:find('"next":"38-40 Dustwallow"', 1, true) and not ch:find("Free (H)", 1, true), "q chapters: the group in the window, with versions: " .. ch)
+assert(ch:find('"current":true,"group":"RXP (A)","name":"35-37 Desolace","next":"36-38 Stranglethorn Vale II","steps":2,"version":"24:2598704232"', 1, true), "the chapter in the window is marked and counted: " .. ch)
+assert(ch:find("1%-6 Teldrassil.*33%-35.*35%-37.*36%-38.*40%-41"), "in level order: " .. ch)
+local rng = A("q chapters 35 38")
+assert(rng:find("35-37 Desolace", 1, true) and rng:find("36-38 Stranglethorn", 1, true) and rng:find("33-35 Shimmering", 1, true) and not rng:find("Teldrassil", 1, true) and not rng:find("40-41", 1, true), "q chapters <from> <to>: " .. rng)
+assert(A("q chapters all"):find("Free (H)", 1, true) and A("q chapters free"):find("Free (H)", 1, true) and not A("q chapters free"):find('"name":"35-37 Desolace"', 1, true), "all, and a piece of text")
+assert(fetched == 0, "listing reads no chapter")
+-- play state: a chapter not read yet is not read; the one in the window is answered
+P.on = false
+assert(A("q chapter 1 25 36-38 Stranglethorn Vale II"):find("^error RestedXP has not read that chapter this session") and fetched == 0, "play state: RestedXP is not asked to read a chapter")
+local own = A("q chapter 1 2 35-37 Desolace")
+assert(own:find('"evaluated":true', 1, true) and own:find('"current":true', 1, true) and own:find('"count":2', 1, true) and own:find('"done":true', 1, true) and own:find('"active":true', 1, true), "the chapter in the window: " .. own)
+P.on = true
+local s1 = A("q chapter 1 25 36-38 Stranglethorn Vale II")
+assert(fetched == 1 and loaded == 0, "prep: read once by RestedXP, never loaded into its window")
+assert(s1:find('"chapter":"RXP (A) / 36-38 Stranglethorn Vale II"', 1, true) and s1:find('"count":30', 1, true) and s1:find('"version":"7:2426870665"', 1, true) and s1:find('"read":true', 1, true) and s1:find('"evaluated":false', 1, true), "the head of the answer: " .. s1)
+assert(s1:find('"text":"Accept Quest 25"', 1, true) and s1:find('"quest":1001', 1, true) and not s1:find("Quest 26", 1, true) and not s1:find('"done"', 1, true) and not s1:find('"active"', 1, true), "25 steps, and nothing claimed about done or active: " .. s1)
+local s2 = A("q chapter 26 50 stranglethorn")
+assert(fetched == 1 and s2:find('"text":"Accept Quest 30"', 1, true) and s2:find('"step":26', 1, true) and not s2:find('"read"', 1, true), "the rest, by a piece of the name, without reading again: " .. s2)
+assert(RXP.currentGuide == cur and A("q guide 1 2"):find("35-37 Desolace", 1, true), "the chapter in the window is still the one")
+local hd = A("q chapter 33-35 Shimmering Flats")
+assert(fetched == 2 and hd:find('"count":30', 1, true) and not hd:find('"steps"', 1, true), "no numbers: the head and the count: " .. hd)
+assert(A("q chapter 1 5 3"):find("^error %d+ chapters fit"), "a piece that fits several: " .. A("q chapter 1 5 3"))
+assert(A("q chapter 1 5 Winterspring"):find("^error no chapter fits"), "no such chapter")
+assert(A("q chapter"):find("^error which chapter"), "no name")
+assert(A("q chapter 1 5 40-41 Broken"):find("^error RestedXP could not read that chapter"), "a chapter RestedXP cannot read")
+RXP.FetchGuide = function() error("bad guide") end
+assert(A("q chapter 1 5 1-6 Teldrassil"):find("^error RestedXP failed reading that chapter:.*bad guide"), "RestedXP's error is the answer")
+RXP.FetchGuide = nil
+assert(A("q chapter 1 5 1-6 Teldrassil"):find("^error this RestedXP has no FetchGuide"), "an older RestedXP")
+local keep = RXP.guides; RXP.guides = nil
+assert(A("q chapters"):find("^error RestedXP is not loaded") and A("q chapter x"):find("^error RestedXP is not loaded"), "no list of chapters")
+RXP.guides = keep
 -- leaving prep reloads the UI
 slash("prep off"); assert(said("reloading the UI") and reloaded == 1 and P.on == false, "off reloads")
 slash("prep off"); assert(said("already off") and reloaded == 1, "off twice does nothing")
