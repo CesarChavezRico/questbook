@@ -621,3 +621,20 @@ green by itself there.
   and when it was written (`written`). The realm falls back to `GetNormalizedRealmName` (it was blank). And nothing is read
   or answered in the first 6 s after the UI loads: a read in the first second held 26 of 40 quests, twice; the prep module
   holds questions until then. Not verified in the client.
+- **v0.35.0, prep: any chapter of the guide, without opening it (4BI-46).** Cesar, 2026-11-20, preparing the import of
+  RestedXP's updated guide from work: "the idea of giving you access to the game was to avoid exactly this type of
+  scenarios. I dont want to have to navigate in the game while am at work". The questions saw only the chapter in
+  RestedXP's window, and free Lua cannot open another: the fence hides every function of an addon. Two fixed questions,
+  answered by the addon itself. `q chapters [all | <from> <to> | <text>]` lists the chapters' heads (name, group,
+  `version:guideId`, next chapter, step count when read) and the imported file's two numbers; by default the group of
+  the chapter in the window, in level order. `q chapter [<from> <to>] <name>` gives 25 steps of any chapter. A chapter
+  RestedXP has not read this session is read by RestedXP's own `FetchGuide`, the call its window makes when a chapter is
+  selected; it is not loaded into the window, so the place in the current chapter stays. That read happens only in prep
+  state. For a chapter that is not the one in the window the answer claims nothing about done or active
+  (`evaluated: false`): RestedXP has not checked it against the character. QuestBook unpacks nothing itself. From
+  RestedXP's public source (`main`, 2026-11-20; the pinned addon is v4.11.35). Not verified in the client.
+- **v0.35.0, prep: large whole numbers in an answer (4BI-46).** Client, 2026-11-20: a free question listing chapter ids
+  came back as "error encode: integer overflow attempting to store 2426870665". The answer writer used `%d`, which this
+  client refuses past 2,147,483,647, and RestedXP's guide ids are that large. Such numbers are now written with `%.0f`.
+  The offline harness runs a newer Lua whose `%d` takes them, so the test checks the digits, not the client's refusal.
+  Not verified in the client.

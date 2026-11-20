@@ -9,7 +9,8 @@
 -- WoWAI.SendData("answer", ...). A question is a few lines of text; its first line says what it is:
 --
 --   q <name> [arguments]     a FIXED question, answered in either state: state | bags | quests | guide <from> <to> |
---                            items <id,id,...> | completed <id,id,...>
+--                            items <id,id,...> | completed <id,id,...> | chapters [all | <from> <to> | <text>] |
+--                            chapter [<from> <to>] <name>   (a chapter RestedXP has not read yet: prep state only)
 --   lua                      FREE Lua on the lines that follow, answered ONLY in prep state
 --
 -- THE RULES (the ticket's, kept here because this file is where they are enforced):
@@ -207,7 +208,11 @@ local function Json(v, depth, budget, seen)
     local s = Quote(v); budget.left = budget.left - #s; return s
   elseif t == "number" then
     if v ~= v or v == math.huge or v == -math.huge then return "null" end
-    local s = (v == math.floor(v) and math.abs(v) < 1e15) and string.format("%d", v) or string.format("%.6g", v)
+    -- (client, 2026-11-20: "%d" refuses a whole number past 2^31 - 1, "integer overflow attempting to store 2426870665",
+    --  and RestedXP's guide ids are that large: the whole answer was lost. "%.0f" writes the same digits.)
+    local s
+    if v == math.floor(v) and math.abs(v) < 1e15 then s = math.abs(v) < 2147483648 and string.format("%d", v) or string.format("%.0f", v)
+    else s = string.format("%.6g", v) end
     budget.left = budget.left - #s; return s
   elseif t == "boolean" then budget.left = budget.left - 5; return v and "true" or "false"
   elseif t ~= "table" then return "null" end
@@ -324,15 +329,12 @@ FIXED.items = function(args)
   for _, id in ipairs(IdList(args)) do out[#out + 1] = ItemFacts(id) end
   return out
 end
--- guide <from> <to>: the text of those steps of the loaded chapter (at most 25 steps), with which elements are done
-FIXED.guide = function(args)
-  local rxp = _G.RXP
-  local guide = type(rxp) == "table" and rxp.currentGuide
-  if type(guide) ~= "table" or type(guide.steps) ~= "table" then return nil, "no guide is loaded in RestedXP" end
-  local a, b = tostring(args or ""):match("(%d+)%D+(%d+)")
-  a, b = tonumber(a) or tonumber(tostring(args or ""):match("%d+")) or 1, tonumber(b)
+-- The text of steps a..b of a chapter (at most 25). `live` = the chapter is the one loaded in RestedXP's window, so its
+-- elements have been evaluated against the character: only then do "done" and "active" mean anything.
+local function StepsOut(guide, a, b, live)
+  local steps = {}
+  a = math.max(1, a or 1)
   b = math.min(b or a, a + 24, #guide.steps)
-  local out = { chapter = tostring(guide.group or "?") .. " / " .. tostring(guide.name or "?"), steps = {} }
   for i = a, b do
     local step = guide.steps[i]
     local lines = {}
@@ -340,12 +342,133 @@ FIXED.guide = function(args)
       for _, e in ipairs(step.elements) do
         if type(e) == "table" and type(e.text) == "string" and e.text ~= "" then
           local text = e.text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", ""):gsub("|H.-|h(.-)|h", "%1")
-          lines[#lines + 1] = { text = text, tag = e.tag, quest = e.questId, done = e.completed and not e.textOnly or nil }
+          lines[#lines + 1] = { text = text, tag = e.tag, quest = e.questId, done = live and e.completed and not e.textOnly or nil }
         end
       end
     end
-    out.steps[#out.steps + 1] = { step = i, active = type(step) == "table" and step.active or nil, lines = lines }
+    steps[#steps + 1] = { step = i, active = live and type(step) == "table" and step.active or nil, lines = lines }
   end
+  return steps
+end
+
+-- guide <from> <to>: the text of those steps of the loaded chapter (at most 25 steps), with which elements are done
+FIXED.guide = function(args)
+  local rxp = _G.RXP
+  local guide = type(rxp) == "table" and rxp.currentGuide
+  if type(guide) ~= "table" or type(guide.steps) ~= "table" then return nil, "no guide is loaded in RestedXP" end
+  local a, b = tostring(args or ""):match("(%d+)%D+(%d+)")
+  a, b = tonumber(a) or tonumber(tostring(args or ""):match("%d+")) or 1, tonumber(b)
+  return { chapter = tostring(guide.group or "?") .. " / " .. tostring(guide.name or "?"), steps = StepsOut(guide, a, b, true) }
+end
+
+-- The chapters RestedXP knows (4BI-46, Cesar 2026-11-20: "the idea of giving you access to the game was to avoid exactly
+-- this type of scenarios. I dont want to have to navigate in the game while am at work"). The questions above see only
+-- the chapter in RestedXP's window, and free Lua cannot open another one: the fence hides every function of an addon.
+-- So these two are answered by the addon itself.
+-- From RestedXP's public source (GuideLoader.lua, GuideWindow.lua, RXPGuides.lua; main, 2026-11-20; not the pinned
+-- v4.11.35): RXP.guides maps "group||name" to a chapter. A chapter never opened this session is its head alone (name,
+-- group, version ...) with no `steps`; its text sits compressed in the profile. RXP:FetchGuide(chapter) is what the
+-- window calls when a chapter is selected: it reads the text with RestedXP's own code, puts the read chapter in
+-- RXP.guides in place of the head, and returns it. It does NOT load it into the window (that is LoadGuide), so the
+-- place in the current chapter is untouched. We never unpack anything ourselves.
+-- UNVERIFIED (client only): all of it.
+local function ChapterKey(g) return tostring(g.group or "?") .. " / " .. tostring(g.name or "?") end
+local function ChapterVersion(g) return tostring(g.version or "?") .. ":" .. tostring(g.guideId or "?") end
+local function Levels(name)
+  local lo, hi = tostring(name or ""):match("^%s*(%d+)%s*%-%s*(%d+)")
+  return tonumber(lo), tonumber(hi)
+end
+local function Chapters()
+  local rxp = _G.RXP
+  if type(rxp) ~= "table" or type(rxp.guides) ~= "table" then return nil, "RestedXP is not loaded, or holds no list of chapters (RXP.guides)" end
+  local list, seen = {}, {}
+  for _, g in pairs(rxp.guides) do
+    if type(g) == "table" and type(g.name) == "string" and g.name ~= "" and not g.empty and not seen[g] then seen[g] = true; list[#list + 1] = g end
+  end
+  table.sort(list, function(a, b)
+    local ga, gb = tostring(a.group or ""), tostring(b.group or "")
+    if ga ~= gb then return ga < gb end
+    local la, lb = Levels(a.name), Levels(b.name)
+    if la and lb and la ~= lb then return la < lb end
+    return tostring(a.name) < tostring(b.name)
+  end)
+  return list, rxp
+end
+
+-- chapters [all | <from> <to> | <text>]: the chapters' heads. No argument: the group of the chapter in the window.
+-- Two numbers: of that group, the chapters whose level range (the "35-37" a name starts with) touches from..to.
+FIXED.chapters = function(args)
+  local list, rxp = Chapters()
+  if not list then return nil, rxp end
+  args = tostring(args or ""):gsub("^%s+", ""):gsub("%s+$", "")
+  local current = type(rxp.currentGuide) == "table" and rxp.currentGuide or nil
+  local group = current and current.group
+  local from, to = args:match("^(%d+)%D+(%d+)$")
+  from, to = tonumber(from), tonumber(to)
+  local text = (not from and args ~= "" and args:lower() ~= "all") and args:lower() or nil
+  local out = {}
+  for _, g in ipairs(list) do
+    local keep
+    if text then keep = ChapterKey(g):lower():find(text, 1, true) ~= nil
+    elseif args:lower() == "all" then keep = true
+    else
+      keep = (group == nil) or g.group == group
+      if keep and from then
+        local lo, hi = Levels(g.name)
+        keep = lo ~= nil and lo <= to and (hi or lo) >= from
+      end
+    end
+    if keep then
+      out[#out + 1] = { name = g.name, group = g.group, version = ChapterVersion(g), next = type(g.next) == "string" and g.next or nil,
+        steps = type(g.steps) == "table" and #g.steps or nil, current = (g == current) or nil }
+    end
+  end
+  local p = type(rxp.db) == "table" and rxp.db.profile
+  return { current = current and ChapterKey(current) or nil, known = #list, chapters = out,
+    file = type(p) == "table" and (p.guideLength ~= nil or p.guideId ~= nil) and { guides = p.guideLength, id = p.guideId } or nil }
+end
+
+-- chapter [<from> <to>] <name>: steps from..to (25 at most) of any chapter; without numbers, its head and step count.
+-- <name> is the chapter's name, or "group / name", or a piece of either that fits one chapter only.
+FIXED.chapter = function(args)
+  local list, rxp = Chapters()
+  if not list then return nil, rxp end
+  args = tostring(args or ""):gsub("^%s+", ""):gsub("%s+$", "")
+  local a, b, name = args:match("^(%d+)%s+(%d+)%s+(.+)$")
+  if not name then name = args end
+  if name == "" then return nil, "which chapter? q chapter [<from> <to>] <name>" end
+  local want = name:lower()
+  local current = type(rxp.currentGuide) == "table" and rxp.currentGuide or nil
+  local found = {}
+  for _, g in ipairs(list) do if g.name:lower() == want or ChapterKey(g):lower() == want then found[#found + 1] = g end end
+  if #found == 0 then for _, g in ipairs(list) do if ChapterKey(g):lower():find(want, 1, true) then found[#found + 1] = g end end end
+  if #found > 1 and current then          -- the same name in several groups: the group in the window wins
+    local mine = {}
+    for _, g in ipairs(found) do if g.group == current.group then mine[#mine + 1] = g end end
+    if #mine > 0 then found = mine end
+  end
+  if #found == 0 then return nil, "no chapter fits \"" .. name .. "\" (q chapters lists them)" end
+  if #found > 1 then
+    local names = {}
+    for i = 1, math.min(#found, 8) do names[i] = ChapterKey(found[i]) end
+    return nil, #found .. " chapters fit \"" .. name .. "\": " .. table.concat(names, "; ")
+  end
+  local g = found[1]
+  local read
+  if type(g.steps) ~= "table" then
+    -- reading a chapter is RestedXP's work (it unpacks and parses the text): a moment of load, and code of another addon
+    -- run on a message's word. Kept to prep state, where nobody is playing.
+    if not mod.on then return nil, "RestedXP has not read that chapter this session; it is asked to only in prep state (/qb prep on)" end
+    if type(rxp.FetchGuide) ~= "function" then return nil, "this RestedXP has no FetchGuide" end
+    local ok, got = pcall(rxp.FetchGuide, rxp, g)
+    if not ok then return nil, "RestedXP failed reading that chapter: " .. tostring(got) end
+    if type(got) ~= "table" or type(got.steps) ~= "table" then return nil, "RestedXP could not read that chapter" end
+    g, read = got, true
+  end
+  local live = (g == current)
+  local out = { chapter = ChapterKey(g), version = ChapterVersion(g), count = #g.steps, next = type(g.next) == "string" and g.next or nil,
+    current = live or nil, read = read, evaluated = live }
+  if a then out.steps = StepsOut(g, tonumber(a), tonumber(b), live) end
   return out
 end
 
@@ -367,7 +490,7 @@ function mod:Answer(body)
     if not ok2 then return "error encode: " .. tostring(text) end
     return "ok " .. text
   end
-  return "refused: not a question this addon knows (first line: \"lua\", or \"q state | bags | quests | guide <from> <to> | items <ids> | completed <ids>\")", true
+  return "refused: not a question this addon knows (first line: \"lua\", or \"q state | bags | quests | guide <from> <to> | items <ids> | completed <ids> | chapters | chapter [<from> <to>] <name>\")", true
 end
 
 -- Answers go back through the relay addon, in parts when long. They wait in an outbox until the relay takes them: the
