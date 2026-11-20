@@ -27,6 +27,7 @@ local mod = QB:NewModule("sync", {
 })
 
 local VERSION = 1
+local ItemInfo                  -- (defined with the bags)
 local TEXT_MAX = 400            -- characters of one guide text kept
 local FIELDS_MAX = 40           -- plain values kept per guide element
 
@@ -58,7 +59,9 @@ local function Scalars(t)
     if tk == "string" or tk == "number" then
       if tv == "string" then out[k] = Plain(v); n = n + 1
       elseif tv == "number" or tv == "boolean" then out[k] = v; n = n + 1
-      elseif tv == "table" and k ~= "step" and k ~= "parent" and k ~= "elements" then
+      -- (first real export, 2026-11-20: every element carries `element`, a reference to itself, which doubled the file, and
+      --  `frame`, its row in RestedXP's window)
+      elseif tv == "table" and k ~= "step" and k ~= "parent" and k ~= "elements" and k ~= "element" and k ~= "frame" then
         local list, m = {}, 0
         for k2, v2 in pairs(v) do
           local t2 = type(v2)
@@ -78,11 +81,18 @@ local function GuideKey(guide) return tostring(guide.group or "?") .. " / " .. t
 
 -- The string RestedXP imported, as it names it (its GuideLoader keeps the header's two numbers): how many guides the file
 -- held and the file's id. A new download with other numbers is a new version.
+-- First real export, 2026-11-20: those two were not there on Cesar's client (an empty table came out), so nil when absent.
+-- What does identify a chapter is in its own head, which the export copies: `version` (24 for "35-37 Desolace") and
+-- `guideId`; Version() below is what the re-export test uses.
 local function Imported()
   local rxp = _G.RXP
   local p = type(rxp) == "table" and type(rxp.db) == "table" and rxp.db.profile
-  if type(p) ~= "table" then return nil end
+  if type(p) ~= "table" or (p.guideLength == nil and p.guideId == nil) then return nil end
   return { guides = p.guideLength, id = p.guideId }
+end
+
+local function Version(guide)
+  return tostring(guide.version or "?") .. ":" .. tostring(guide.guideId or "?")
 end
 
 local function CurrentGuide()
@@ -116,7 +126,7 @@ function mod:ExportGuide()
   if type(store.chapters) ~= "table" then store.chapters = {} end
   local key = GuideKey(guide)
   local head = Scalars(guide)
-  store.chapters[key] = { key = key, guide = head, steps = steps, count = #steps, imported = Imported(), at = Call("time") }
+  store.chapters[key] = { key = key, guide = head, steps = steps, count = #steps, version = Version(guide), imported = Imported(), at = Call("time") }
   store.v = VERSION
   return key, #steps
 end
@@ -135,7 +145,7 @@ local function GuidePlace()
   for i, step in ipairs(guide.steps) do
     if type(step) == "table" and step.active then active[#active + 1] = i end
   end
-  return { chapter = GuideKey(guide), step = pointer, steps = #guide.steps, active = active, imported = Imported() }
+  return { chapter = GuideKey(guide), step = pointer, steps = #guide.steps, active = active, version = Version(guide), next = guide.next, imported = Imported() }
 end
 
 local function QuestLog()
@@ -179,6 +189,17 @@ local function Completed()
   return nil
 end
 
+-- An item's facts. First real export, 2026-11-20: no item had a vendor price or a kind, and gear had no names: this client
+-- has no global GetItemInfo, so C_Item.GetItemInfo first (the same values in the same order).
+ItemInfo = function(id)
+  local C = _G.C_Item
+  if type(C) == "table" and type(C.GetItemInfo) == "function" then
+    local r = { pcall(C.GetItemInfo, id) }
+    if r[1] and r[2] ~= nil then return unpack(r, 2) end
+  end
+  return Call("GetItemInfo", id)
+end
+
 -- One container: its size and what is in it. Items of the same kind in several slots are kept apart (count per slot).
 local function ReadBag(bag)
   local C = _G.C_Container
@@ -201,7 +222,7 @@ local function ReadBag(bag)
     end
     if id then
       used = used + 1
-      local name, _, q2, _, _, itemType, itemSubType, _, _, _, sell = Call("GetItemInfo", id)
+      local name, _, q2, _, _, itemType, itemSubType, _, _, _, sell = ItemInfo(id)
       items[#items + 1] = { id = id, slot = slot, count = count or 1, name = name or (type(link) == "string" and link:match("%[(.-)%]")) or nil,
         quality = quality or q2, kind = itemType, sub = itemSubType, sell = sell, bound = bound and true or nil }
     end
@@ -224,7 +245,7 @@ local function Gear()
     local id = Call("GetInventoryItemID", "player", slot)
     if id then
       local cur, max = Call("GetInventoryItemDurability", slot)
-      local name, _, quality = Call("GetItemInfo", id)
+      local name, _, quality = ItemInfo(id)
       out[#out + 1] = { slot = slot, id = id, name = name, quality = quality, durability = cur, durabilityMax = max }
     end
   end
@@ -272,9 +293,7 @@ mod.events.PLAYER_LOGOUT = function(self)
     if guide then
       local store = _G.QuestBookGuide
       local have = type(store) == "table" and type(store.chapters) == "table" and store.chapters[GuideKey(guide)]
-      local now = Imported()
-      local same = have and (not now or (type(have.imported) == "table" and have.imported.id == now.id and have.imported.guides == now.guides))
-      if not (have and same and have.count == #guide.steps) then self:ExportGuide() end
+      if not (have and have.version == Version(guide) and have.count == #guide.steps) then self:ExportGuide() end
     end
   end
 end
@@ -301,8 +320,10 @@ QB:RegisterSlash(mod, "sync", function(rest)
     local store = _G.QuestBookGuide
     if type(store) == "table" and type(store.chapters) == "table" then for _ in pairs(store.chapters) do chapters = chapters + 1 end end
     local imp = Imported()
-    QB:Say(string.format("sync: state %s; %d guide chapter(s) exported; imported guide file: %s",
+    local guide = CurrentGuide()
+    QB:Say(string.format("sync: state %s; %d guide chapter(s) exported; chapter now: %s%s",
       mod.db.auto and "written at every unload" or "written only on request", chapters,
-      imp and imp.id and string.format("%s guides, id %s", tostring(imp.guides or "?"), tostring(imp.id)) or "not known"))
+      guide and string.format("\"%s\", version %s", GuideKey(guide), tostring(guide.version or "?")) or "none loaded",
+      imp and imp.id and string.format("; imported file: %s guides, id %s", tostring(imp.guides or "?"), tostring(imp.id)) or ""))
   end
 end, "sync: the character (QuestBookState) and the guide (QuestBookGuide) written to the settings file for planning away from the game: now | guide | auto on|off")
