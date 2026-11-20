@@ -2,9 +2,9 @@
 ## Title: QuestBook
 ## Notes: A readable quest log that replaces Blizzard's, plus a map overlay (minimap or world map beside your character), a text strip and drawers for the menu, bags and addons. /qb or bind a key.
 ## Author: Cesar & Nibble
-## Version: 0.31.0
+## Version: 0.32.0
 ## OptionalDeps: EllesmereUI, EllesmereUIQuestTracker
-## SavedVariables: QuestBookDB
+## SavedVariables: QuestBookDB, QuestBookState, QuestBookGuide
 ## X-License: MIT
 
 Core.lua
@@ -26,4 +26,5 @@ data\Layout.lua
 data\Guide.lua
 data\Plates.lua
 modules\Guide.lua
+modules\Sync.lua
 modules\Kit.lua
