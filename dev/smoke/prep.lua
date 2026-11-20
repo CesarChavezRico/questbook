@@ -100,6 +100,17 @@ assert(#sent == 5 and sent[3][3]:find("^part=1/3\n") and sent[5][3]:find("^part=
 local joined = (sent[3][3]:gsub("^part=%d/%d\n", "")) .. (sent[4][3]:gsub("^part=%d/%d\n", "")) .. (sent[5][3]:gsub("^part=%d/%d\n", ""))
 assert(joined == 'ok "' .. string.rep("y", 1500) .. '"', "the parts join back to the answer")
 slash("prep"); assert(said("ON %(free Lua is answered, in the fence%); questions can arrive through the relay addon; 2 answered, 1 refused"), "status counts")
+-- v0.33.1: an answer the relay cannot take now waits and is sent when it can (first client test: four answers lost at login)
+local up, connects, n0 = false, 0, #sent
+WoWAI.SendData = function(kind, ref, text) if not up then return false, "the bridge is not connected" end sent[#sent + 1] = { kind, ref, text }; return true, #sent end
+WoWAI.IsConnected = function() return up end
+WoWAI.Connect = function() connects = connects + 1 end
+inbound("m3.0", "q completed 5"); inbound("m3.1", "lua\nreturn 7")
+assert(#sent == n0 and P.Waiting() == 2 and connects == 1 and not said("could not be sent"), "not connected: the answers wait, the relay is asked to reconnect once, nothing is said")
+__runTimers(); assert(#sent == n0 and connects == 1, "still waiting; no second reconnect so soon")
+slash("prep"); assert(said("2 answer record%(s%) waiting for the relay %(the bridge is not connected%)"), "status says what waits and why")
+up = true; __runTimers()
+assert(#sent == n0 + 2 and P.Waiting() == 0 and sent[n0 + 1][2] == "m3.0" and sent[n0 + 2][3] == "ok 7", "sent in order once the relay is back")
 -- a message cannot switch prep on: there is no question that does it
 slash("prep off"); __take(); reloaded = 0; P.on = false
 inbound("m2.0", "q prep on"); inbound("m2.1", "lua\nSlashCmdList.QUESTBOOK('prep on')")
