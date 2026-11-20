@@ -583,3 +583,9 @@ green by itself there.
   content, exported once per chapter and per imported file, sent by hand, never committed. The imported file is named by
   the two numbers of its header (how many guides, the file's id), which RestedXP keeps in `db.profile.guideLength` and
   `guideId`: other numbers mean a new version. `/qb sync`, `now`, `guide`, `auto on|off`. Not verified in the client.
+- **v0.32.1, sync after its first real export (4BI-42).** Cesar's file of 2026-11-20 (Thara, level 35, "35-37 Desolace",
+  94 steps, 40 quests, 36 bag items) confirmed the export in the client and showed three defects. Every guide element
+  carried `element`, a reference to itself, which doubled the file: left out, with `frame`. No item had a vendor price or
+  a kind, and gear had no names: this client has no global `GetItemInfo`, so `C_Item.GetItemInfo` is asked first. The
+  imported file's header numbers were not where RestedXP's source suggested (an empty table came out): a chapter is now
+  told apart by its own `version` and `guideId`, which is also what decides a re-export. Not verified in the client.
