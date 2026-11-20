@@ -68,11 +68,34 @@ __fire("PLAYER_LOGOUT")
 assert(QuestBookState and QuestBookState.guide.step == 2 and QuestBookGuide and QuestBookGuide.chapters["Speedrun Guide 30-40 / 35-36 Desolace"], "unload writes both the first time")
 local at = QuestBookGuide.chapters["Speedrun Guide 30-40 / 35-36 Desolace"]; at.mark = true
 __fire("PLAYER_LOGOUT"); assert(QuestBookGuide.chapters["Speedrun Guide 30-40 / 35-36 Desolace"].mark, "the same chapter of the same file is not exported again")
-RXP.db.profile.guideId, RXP.db.profile.guideLength = nil, nil; __fire("PLAYER_LOGOUT")
+RXP.db.profile.guideId, RXP.db.profile.guideLength = nil, nil; slash("sync now"); __take(); __fire("PLAYER_LOGOUT")
 assert(QuestBookGuide.chapters["Speedrun Guide 30-40 / 35-36 Desolace"].mark and QuestBookState.guide.imported == nil, "RestedXP without the header numbers (Cesar's client): no empty table, and no re-export for that")
 RXP.currentGuide.version = 8; __fire("PLAYER_LOGOUT")
 assert(not QuestBookGuide.chapters["Speedrun Guide 30-40 / 35-36 Desolace"].mark and QuestBookGuide.chapters["Speedrun Guide 30-40 / 35-36 Desolace"].version == "8:?", "a new version of the chapter: exported again")
 slash("sync auto off"); __take(); QuestBookState = nil; __fire("PLAYER_LOGOUT"); assert(QuestBookState == nil, "auto off: nothing at unload")
 slash("sync auto on"); __take()
+-- 4BI-47: the state is taken in the world and kept; at a real logout the game no longer answers, and that hollow read
+-- must never replace a whole state. (A clock the scenario moves, for the timers.)
+local now = 1000
+GetTime = function() return now end
+QB:Disable("sync"); QB:Enable("sync"); __take()
+local function gold() return QuestBookState and QuestBookState.money end
+GetMoney = function() return 500 end
+__runTimers(); now = now + 3; __runTimers()
+slash("sync now"); __take(); assert(gold() == 500 and QuestBookState.how == "world", "a read in the world, marked so")
+-- an event marks it stale; the timer takes it again once the UI has settled, not sooner than every few seconds
+GetMoney = function() return 777 end
+now = now + 10; __fire("PLAYER_MONEY"); __runTimers()
+QuestBookState = nil; __fire("PLAYER_LOGOUT")
+assert(gold() == 777 and QuestBookState.written, "unload writes the snapshot kept in memory, taken after the change")
+-- a real logout: money, experience, bags, gear and finished quests all read as nothing
+local realC, realMax = C_Container, UnitXPMax
+C_Container = { GetContainerNumSlots = function() return 0 end, GetContainerItemInfo = function() return nil end }
+UnitXPMax = function() return 0 end
+GetMoney = function() return 0 end
+QuestBookState = nil; __fire("PLAYER_LOGOUT")
+assert(gold() == 777 and #QuestBookState.bags == 2, "at a real logout the game is not read again: the whole snapshot is written")
+slash("sync now"); __take(); assert(gold() == 777 and #QuestBookState.bags == 2, "a hollow read on request keeps the last whole state too")
+C_Container, UnitXPMax = realC, realMax
 slash("sync zzz"); assert(said("/qb sync || now"), "usage")
 print("sync: ok")

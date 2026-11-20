@@ -425,12 +425,29 @@ local function Send(id, text)
 end
 mod.Waiting = function() return #outbox end
 
--- A question arrived (the relay addon calls this once per question).
-local function Inbound(id, body)
+-- A question arrived (the relay addon calls this once per question). It is answered once the UI has settled: questions
+-- delivered in the first second after login got a partial quest log (26 of 40 quests, twice on 2026-11-20; 4BI-47).
+local inbox = {}
+local function AnswerNow(id, body)
   local text, refused = mod:Answer(body)
   mod.lastAt = (GetTime and GetTime()) or 0
   if refused then mod.refused = mod.refused + 1 else mod.answered = mod.answered + 1 end
   Send(id, text)
+end
+local function Settled()
+  local S = QB.modules.sync
+  if S and S.active and type(S.Settled) == "function" then return S:Settled() end
+  return true
+end
+local function Drain()
+  if #inbox == 0 or not Settled() then return end
+  local list = inbox
+  inbox = {}
+  for _, q in ipairs(list) do AnswerNow(q[1], q[2]) end
+end
+local function Inbound(id, body)
+  inbox[#inbox + 1] = { id, body }
+  Drain()
 end
 
 -- In prep, ask the relay for waiting questions ourselves. Client test, 2026-11-20: the relay's own signal for a waiting
@@ -512,7 +529,7 @@ function mod:OnEnable()
     mod.listening = ok and took ~= false
   end
   Build()
-  if not ticker and C_Timer and C_Timer.NewTicker then ticker = C_Timer.NewTicker(1, function() QB:Safe(mod, Flush); QB:Safe(mod, Poll); QB:Safe(mod, Paint) end) end
+  if not ticker and C_Timer and C_Timer.NewTicker then ticker = C_Timer.NewTicker(1, function() QB:Safe(mod, Drain); QB:Safe(mod, Flush); QB:Safe(mod, Poll); QB:Safe(mod, Paint) end) end
 end
 
 function mod:OnDisable()
