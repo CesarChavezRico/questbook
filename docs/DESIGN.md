@@ -317,6 +317,41 @@ The level box's own "4" and the icon art itself were fine.
   `SetRoundLayoutToNearestPixel` and the pixel arithmetic give 1 px lines, and that tiling the 256 px grain with
   `SetTexture(file, "REPEAT", "REPEAT")` shows no visible repeat.
 
+### The story while questing (v0.36.0; 4BI-38)
+
+Cesar, 2026-11-23: "a better way to read the quest that I am working on (based on the guide step). I feel like I am losing a lot of
+content just by running around following the guide and I have time to listen while actually doing the quest"; chose "1 with 3"; and
+asked for the texts of earlier quests of a chain. *Written, not yet seen in game.*
+
+- **When a quest is read.** Before: at accept (five quests at a hub queued minutes of story while still picking up). Now: once, when
+  an active guide step WORKS the quest, behind the step's own line. A work line is a RestedXP element tagged `complete` with that
+  `questId` (not yet completed); a quest with no such line (a delivery) is read on its `turnin` line. At accept the audio is only made
+  ready (`prefetch`), so it starts at once later. A quest the loaded guide never works (`guide:WorksLater`) is read at accept as before.
+  What was read is kept in `guide.told` so a reload does not repeat it. Tags and `questId` are from RestedXP's source
+  (`functions.lua` accept / complete / turnin, `GuideLoader.lua` sets `element.tag`; commit 608f4c3, read 2026-11-23). UNVERIFIED in the client.
+- **The hand-in is read.** `modules/Story.lua` takes `GetRewardText()` and who is speaking (the `npc` unit) while the reward dialog is
+  up (`QUEST_COMPLETE`) and, when the quest is really handed in (`QUEST_TURNED_IN` with the same quest number), queues the words in
+  that NPC's voice slot (`questlog:QueueWords`, ref `t<questID>`). `/qb guide turnins on|off`. UNVERIFIED in the client: that these
+  calls answer on Forever and that the event carries the quest number.
+- **The words are kept.** The game gives a quest's text only while it is in the log or its dialog is open, so an earlier quest of a
+  chain can only be replayed if its words were kept when they passed. `story` keeps title, accept text, hand-in text, giver, receiver,
+  zone and times per quest, in order, newest 600 (about 1 to 2 KB each). Quests done before v0.36.0 have nothing. No UI yet: the page
+  that reads from it ("the story so far" for a quest's chain) is not designed. Open: how a chain is known. Candidates: the client's
+  `C_QuestLine` (documented in the shared API dump, unverified on Forever), RestedXP's quest data (its Forever `DB/forever/quest.lua`
+  has no prerequisite fields as of 608f4c3), or simply the same giver / the order done.
+
+### The story so far (v0.37.0; 4BI-38)
+
+Cesar, 2026-11-23: the texts of earlier quests of a chain, started "from the reader bar while running ... to fill empty running or
+questing time", from a quest database ("yes build it" after a spike on a Forever database). *Written, not yet seen in game.*
+The reader bar has a **Story** link (`/qb guide story [questID]`). It sends `WoWAI.SendTts("story", "", "q<id>", "", who)`: the quest
+the active guide step works (a `complete` line first, then `turnin`, then `accept`; else the game's active quest) and who is playing
+(name, race, class, sex). Everything else is the bridge's (wow-relay `bridge/story.js`): it walks the chain back and queues the
+earlier quests' accept and hand-in words, from what it has read before and from quest data downloaded on the rig. The game is not
+told what will be read (the strip is one way): when there is nothing, the narrator says so. An older relay addon answers
+"bad action" and the chat line says to update it. The `story` module's own record (v0.36.0) is not used by this yet: the bridge keeps
+its own copy of what it reads.
+
 ### The relay voice (v0.17.0; 4BI-38 steps 2 and 4, the QuestBook side)
 
 - **Direction** (Cesar, 2026-10-18): a much better voice than the game's text-to-speech. The audio plays OUTSIDE the game: with
@@ -573,3 +608,68 @@ green by itself there.
   left out everything complete. They are read now; only a real task that is done or skipped is left out. And with the
   reader on, an accepted quest's own text is queued in the giver's voice (`/qb guide quests on|off`, default on); with an
   older relay addon it is only prefetched, as before. Not verified in the client.
+- **v0.32.0, sync: the character and the guide written down for planning away from the game (4BI-42).** Cesar,
+  2026-11-20: "Can I export the steps and give it to you so we can better plan offline?", "add my bags to the dump so you
+  can recommend items to destroy or sell". Two saved tables, apart on purpose. `QuestBookState` is the character (guide
+  place, level, experience, money, hearth, quest log with objectives and what is ready, finished quests, bags with vendor
+  prices, gear with durability, the bank as last seen); it is rewritten at every unload and holds no guide text, so it can
+  travel by itself after each session. `QuestBookGuide` holds each RestedXP chapter that has been loaded, every step with
+  every plain value its elements have (copied whole, because the field names are only known from the source); it is paid
+  content, exported once per chapter and per imported file, sent by hand, never committed. The imported file is named by
+  the two numbers of its header (how many guides, the file's id), which RestedXP keeps in `db.profile.guideLength` and
+  `guideId`: other numbers mean a new version. `/qb sync`, `now`, `guide`, `auto on|off`. Not verified in the client.
+- **v0.32.1, sync after its first real export (4BI-42).** Cesar's file of 2026-11-20 (Thara, level 35, "35-37 Desolace",
+  94 steps, 40 quests, 36 bag items) confirmed the export in the client and showed three defects. Every guide element
+  carried `element`, a reference to itself, which doubled the file: left out, with `frame`. No item had a vendor price or
+  a kind, and gear had no names: this client has no global `GetItemInfo`, so `C_Item.GetItemInfo` is asked first. The
+  imported file's header numbers were not where RestedXP's source suggested (an empty table came out): a chapter is now
+  told apart by its own `version` and `guideId`, which is also what decides a re-export. Not verified in the client.
+- **v0.33.0, prep: Nibble questions the game (4BI-46).** Cesar, 2026-11-20: "a way for you to 'question' the game for the
+  information needed for offline prep of a game session"; "a 'prep state' ... where errors are harmless and we move to 'play
+  state' when I am sitting at the rig"; "an away counter will help me keep it alive". Questions arrive through the relay
+  addon (`WoWAI.RegisterInbound`, kind `qbask`; wow-relay 4BI-45) and are answered with `WoWAI.SendData("answer", ...)`, in
+  parts when long. A fixed question (`q state | bags | quests | guide a b | items ids | completed ids`) is answered in
+  either state. Free Lua (`lua` on the first line) is answered only in prep state, which only `/qb prep on` typed at the
+  client switches on (memory only; `/qb prep off` reloads the UI, because such code taints what it touched). Free Lua runs
+  in pcall inside a fence: its own environment, the game's reading functions by name (Get / Is / Has / Can / Unit / Num /
+  Does / Find / Ready / Are, minus known exceptions), read-only views of the game's and the addons' tables with their
+  functions hidden (reading functions of C_ namespaces excepted), copies of string / table / math. The fence is a rule of
+  thumb, not a proof, and an endless loop hangs the client. The away counter shows how long the character has been flagged
+  away and sends no input. `/qb prep run <lua>` tries the fence from the chat box. Not verified in the client.
+- **v0.33.1, prep: answers wait for the relay (4BI-46).** First client test, 2026-11-20: the questions reached the game
+  (four of them, delivered at login) and were answered, but every answer was lost: "an answer could not be sent (the bridge
+  is not connected)", because at login the relay addon has not heard from the bridge yet. Answers now wait in an outbox,
+  are tried again every second, the relay is asked to reconnect (at most every 45 s), and a record is given up after ten
+  minutes with a line in the chat. The prep bar and `/qb prep` say how many are waiting. Not verified in the client.
+- **v0.33.2, prep asks for its questions (4BI-46).** Client test, 2026-11-20: the round trip works (questions in, answers
+  back in Discord), but the relay's signal for a waiting push did not fire, so questions were only picked up at a reload,
+  and a reload ends prep: free Lua could never arrive in prep state. While prep is on, QuestBook now asks the relay for
+  waiting questions itself (`WoWAI.CheckPush`) every 25 s. Each ask uses one of the relay addon's 200 reply slots per UI
+  session, about an hour and a half of prep per reload. Not asked in play state. Not verified in the client.
+- **v0.34.0, sync: the state is taken in the world, never at logout (4BI-47).** Found from seven state files posted on
+  2026-11-20: a state written at a real logout was hollow (money 0, experience 0, no bags, no gear, no finished quests;
+  7.0 KB) and replaced the whole one (21.3 KB) written by a reload in the world. At a real logout the client no longer
+  answers these reads and each guarded call quietly gives nil or zero. Now the state is read while in the world and kept
+  in memory, refreshed when bags, quests, money, experience, gear or the zone change (at most every 5 s) and once a
+  minute; at unload the snapshot in memory is written and the game is not read again; a hollow read (no bags, or no
+  experience ceiling) never replaces a whole state, in memory or in the file. Each state says how it was taken (`how`)
+  and when it was written (`written`). The realm falls back to `GetNormalizedRealmName` (it was blank). And nothing is read
+  or answered in the first 6 s after the UI loads: a read in the first second held 26 of 40 quests, twice; the prep module
+  holds questions until then. Not verified in the client.
+- **v0.35.0, prep: any chapter of the guide, without opening it (4BI-46).** Cesar, 2026-11-20, preparing the import of
+  RestedXP's updated guide from work: "the idea of giving you access to the game was to avoid exactly this type of
+  scenarios. I dont want to have to navigate in the game while am at work". The questions saw only the chapter in
+  RestedXP's window, and free Lua cannot open another: the fence hides every function of an addon. Two fixed questions,
+  answered by the addon itself. `q chapters [all | <from> <to> | <text>]` lists the chapters' heads (name, group,
+  `version:guideId`, next chapter, step count when read) and the imported file's two numbers; by default the group of
+  the chapter in the window, in level order. `q chapter [<from> <to>] <name>` gives 25 steps of any chapter. A chapter
+  RestedXP has not read this session is read by RestedXP's own `FetchGuide`, the call its window makes when a chapter is
+  selected; it is not loaded into the window, so the place in the current chapter stays. That read happens only in prep
+  state. For a chapter that is not the one in the window the answer claims nothing about done or active
+  (`evaluated: false`): RestedXP has not checked it against the character. QuestBook unpacks nothing itself. From
+  RestedXP's public source (`main`, 2026-11-20; the pinned addon is v4.11.35). Not verified in the client.
+- **v0.35.0, prep: large whole numbers in an answer (4BI-46).** Client, 2026-11-20: a free question listing chapter ids
+  came back as "error encode: integer overflow attempting to store 2426870665". The answer writer used `%d`, which this
+  client refuses past 2,147,483,647, and RestedXP's guide ids are that large. Such numbers are now written with `%.0f`.
+  The offline harness runs a newer Lua whose `%d` takes them, so the test checks the digits, not the client's refusal.
+  Not verified in the client.
