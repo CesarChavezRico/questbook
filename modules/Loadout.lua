@@ -674,14 +674,29 @@ QB:RegisterSlash(mod, "layout", function(rest)
   end
 end, "layout: put the layouts shipped with the addon in place: EllesmereUI, RestedXP (check, apply, undo)")
 
+-- Only the plan's macros: made or rewritten, and no button is touched. For the day a new form shifts the form numbers
+-- (Cesar, 2026-11-16: "I got water form and the macros broke"; /qb bars apply fixed them and also reset buttons he had
+-- changed by hand, which he did not want).
+function mod:Macros()
+  local plan = Plan()
+  if not plan or type(plan.macros) ~= "table" or #plan.macros == 0 then QB:Say("bars macros: the plan has no macros"); return false end
+  if QB:InCombat() then QB:Say("bars: not in combat: the game blocks changing macros during a fight"); return false end
+  UpgradePlan(plan)
+  local made, changed, lines = SyncMacros(false)
+  QB:Say(string.format("bars macros: %d new, %d rewritten, %d already right. No button was touched.", made, changed, #plan.macros - made - changed - #lines))
+  Report(lines)
+  return #lines == 0
+end
+
 QB:RegisterSlash(mod, "bars", function(rest)
   local sub = (rest or ""):lower():match("^(%S*)")
   if sub == "dump" then mod:Dump()
   elseif sub == "check" then mod:Run(true)
   elseif sub == "apply" then mod:Run(false)
   elseif sub == "undo" then mod:Undo()
+  elseif sub == "macros" then mod:Macros()
   else
-    if sub ~= "" and sub ~= "status" then QB:Usage("/qb bars | dump | check | apply | undo") end
+    if sub ~= "" and sub ~= "status" then QB:Usage("/qb bars | dump | check | apply | undo | macros") end
     local entries = PlanSlots()
     local _, from = Plan()
     local undo = mod.db and mod.db.undo
@@ -690,4 +705,4 @@ QB:RegisterSlash(mod, "bars", function(rest)
     QB:Say(string.format("bars: plan %s | dump %s | undo %s | dump, check, apply, undo",
       entries and (#entries .. " button(s) from " .. tostring(from)) or "none", (mod.db and mod.db.dump) and "saved" or "none", nu > 0 and (nu .. " button(s)") or "none"))
   end
-end, "bars: fill the action buttons from a plan written offline (dump, check, apply, undo)")
+end, "bars: fill the action buttons from a plan written offline (dump, check, apply, undo, macros)")

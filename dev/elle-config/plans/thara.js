@@ -10,7 +10,7 @@ module.exports = {
   name: 'Thara, level 24',
   // one macro per seat that changes with the form and is not on action bar 1
   macros: [
-    ['QB Top M', '/cast [form:bear] Bash; [noform] Regrowth'],
+    ['QB Top M', '/cast [form:cat] Ravage; [form:bear] Bash; [noform] Regrowth'],   // Ravage: Cesar, 2026-11-16, level 32
     ['QB Top I', '/cast [form:bear/cat] Feral Charge; [noform] Healing Touch'],
     ['QB Home M', '/cast [form:cat] Rake; [noform] Rejuvenation'],
     ['QB Thumb 1', '/cast [form:cat] Ferocious Bite; [form:bear] Enrage; [noform] Thorns'],
