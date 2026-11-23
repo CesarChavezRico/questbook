@@ -356,13 +356,19 @@ local SLOT_CREATURE_TYPES = { Beast = true, Dragonkin = true, Demon = true, Elem
   Undead = false, Aberration = true, Critter = true, ["Wild Pet"] = true }
 
 -- The slot for a quest: narrator | male | female | creature.
-local function VoiceSlot(questID)
-  local ok, rec = QB:Call("giver", "Get", questID)
-  if not (ok and rec) then return "narrator" end
+-- The slot for a speaker record ({ sex, type }, as the giver module keeps them): narrator when there is none.
+local function SlotFor(rec)
+  if type(rec) ~= "table" then return "narrator" end
   local t = rec.type
   if t and t ~= "Humanoid" and SLOT_CREATURE_TYPES[t] then return "creature" end
   if rec.sex == 2 then return "male" elseif rec.sex == 3 then return "female" end
   return "narrator"
+end
+mod.SlotFor = function(_, rec) return SlotFor(rec) end
+
+local function VoiceSlot(questID)
+  local ok, rec = QB:Call("giver", "Get", questID)
+  return SlotFor(ok and rec or nil)
 end
 mod.VoiceSlot = function(_, questID) return VoiceSlot(questID) end
 
@@ -560,8 +566,9 @@ function mod:RelayStarted(chars)
 end
 
 -- When a quest is accepted, have the bridge make its audio now (the giver is recorded a moment later, so wait for it).
-function mod:Prefetch(questID)
-  if self.db.engine ~= "relay" or not self.db.prefetch or not questID then return end
+function mod:Prefetch(questID, force)
+  if not questID then return end
+  if not force and (self.db.engine ~= "relay" or not self.db.prefetch) then return end
   local _, quests = ScanLog()
   for _, e in ipairs(quests) do
     if e.questID == questID then
@@ -598,6 +605,30 @@ function mod:QueueRead(questID)
     end
   end
   return false
+end
+
+-- A quest's title and description while it is in the log (for the story module, which keeps them), or nil.
+function mod:TextFor(questID)
+  local _, quests = ScanLog()
+  for _, e in ipairs(quests) do
+    if e.questID == questID then
+      local desc = GetQuestText(e)
+      if not desc or desc == UNAVAILABLE then return nil end
+      return e.title, desc
+    end
+  end
+  return nil
+end
+
+-- Any words, queued behind what is being read, in the voice of a speaker record (the story module: the words an NPC says
+-- when a quest is handed in). No "play" fallback: a relay addon without the queue would cut the reading in progress.
+function mod:QueueWords(ref, text, speaker, title)
+  if type(text) ~= "string" or text == "" then return false end
+  local meta = (type(speaker) == "table" and speaker.name) and { npc = speaker.npc, giver = speaker.name, sex = speaker.sex, type = speaker.type, zone = speaker.zone, title = title } or nil
+  WhenRelayReady(function()
+    pcall(_G.WoWAI.SendTts, "queue", SlotFor(speaker), tostring(ref), text, meta)
+  end, function() end, true)
+  return true
 end
 
 -- ---------------------------------------------------------------- the page
@@ -1064,7 +1095,12 @@ mod.events.QUEST_ACCEPTED = function(self, _, questID)
   -- the guide reader on: the quest is read by itself, queued (whatever the voice engine of the Talk link is)
   local function Go()
     local ok, reads = QB:Call("guide", "ReadsQuests")
-    if ok and reads then mod:QueueRead(qid) elseif self.db.engine == "relay" then mod:Prefetch(qid) end
+    if ok and reads then
+      -- v0.36.0: a quest the guide will put you to work on is read THEN (modules/Guide.lua), not in the middle of picking up
+      -- five quests at a hub; its audio is made now so it starts at once. A quest the guide never mentions is read here.
+      local okL, later = QB:Call("guide", "WorksLater", qid)
+      if okL and later then mod:Prefetch(qid, true) else mod:QueueRead(qid); QB:Call("guide", "MarkTold", qid) end
+    elseif self.db.engine == "relay" then mod:Prefetch(qid) end
   end
   if C_Timer and C_Timer.After then C_Timer.After(1.5, Guard(Go)) else Go() end
 end
