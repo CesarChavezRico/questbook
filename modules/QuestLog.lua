@@ -472,6 +472,7 @@ local function RelaySpeak(entry, desc)
   local text = SpokenText(entry, desc)
   local ok, err = _G.WoWAI.SendTts("play", VoiceSlot(entry.questID), "q" .. tostring(entry.questID), text, GiverMeta(entry.questID, entry.title))
   if not ok then return false, tostring(err) end
+  QB:Call("playlist", "PlayNow", "Quest", entry.title, #text, "q" .. tostring(entry.questID))
   relaySpeaking = true
   relayToken = relayToken + 1
   return true, nil, text
@@ -597,6 +598,7 @@ function mod:QueueRead(questID)
       if not desc or desc == UNAVAILABLE then return false end
       WhenRelayReady(function()
         local ok, sent, err = pcall(_G.WoWAI.SendTts, "queue", VoiceSlot(questID), "q" .. tostring(questID), SpokenText(e, desc), GiverMeta(questID, e.title))
+        if ok and sent then QB:Call("playlist", "Add", "Quest", e.title, #SpokenText(e, desc), "q" .. tostring(questID)) end
         if not (ok and sent) and (not ok or err == "bad action") then
           pcall(_G.WoWAI.SendTts, "prefetch", VoiceSlot(questID), "q" .. tostring(questID), SpokenText(e, desc), GiverMeta(questID, e.title))
         end
@@ -626,7 +628,8 @@ function mod:QueueWords(ref, text, speaker, title)
   if type(text) ~= "string" or text == "" then return false end
   local meta = (type(speaker) == "table" and speaker.name) and { npc = speaker.npc, giver = speaker.name, sex = speaker.sex, type = speaker.type, zone = speaker.zone, title = title } or nil
   WhenRelayReady(function()
-    pcall(_G.WoWAI.SendTts, "queue", SlotFor(speaker), tostring(ref), text, meta)
+    local ok, sent = pcall(_G.WoWAI.SendTts, "queue", SlotFor(speaker), tostring(ref), text, meta)
+    if ok and sent then QB:Call("playlist", "Add", "Hand-in", title or "", #text, tostring(ref)) end
   end, function() end, true)
   return true
 end

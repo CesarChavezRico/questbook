@@ -340,6 +340,7 @@ local function Look()
         spoken[key .. i] = true                             -- nothing to say (all done, or no words)
       else
         local ok, why = Speak("g" .. i, text)
+        if ok then QB:Call("playlist", "Add", "Guide", (#text > 60) and (text:sub(1, 59) .. "\226\128\166") or text, #text, "g" .. i) end
         if ok then spoken[key .. i] = true elseif why == "wait" or why == "norelay" then return end
         if not ok then spoken[key .. i] = true end          -- refused for another reason (too long ...): do not retry forever
       end
@@ -353,6 +354,11 @@ local function Control(action)
   local W = _G.WoWAI
   if not (type(W) == "table" and type(W.SendTts) == "function") then return false end
   local ok, sent = pcall(W.SendTts, action, "", "", "")
+  if ok and sent then
+    -- the queue display follows (modules/Playlist.lua)
+    if action == "skip" then QB:Call("playlist", "Skip") elseif action == "stop" then QB:Call("playlist", "Clear")
+    elseif action == "pause" then QB:Call("playlist", "SetPaused", true) elseif action == "resume" then QB:Call("playlist", "SetPaused", false) end
+  end
   return ok and sent and true or false
 end
 
@@ -391,9 +397,25 @@ local function PaintBar()
   bar.onoff:SetWarn(not mod.db.read)
   bar.pause:SetEnabled(mod.db.read); bar.skip:SetEnabled(mod.db.read)
   local x = Style.Px(12, bar)
-  for _, b in ipairs({ bar.pause, bar.skip, bar.story, bar.onoff }) do
-    b:ClearAllPoints(); b:SetPoint("LEFT", bar, "LEFT", x, 0)
-    x = x + b:GetWidth() + Style.Px(18, bar)
+  -- the Lore link (modules/Places.lua): hidden where the place has no story, in the attention colour for one not asked
+  -- for yet, "Lore (read)" for one already asked for
+  local okP, place = QB:Call("places", "Current")
+  place = okP and place or nil
+  bar.lore:SetShown(place ~= nil)
+  if place then
+    bar.lore:SetText(place.read and "Lore (read)" or "Lore")
+    bar.lore:SetWarn(not place.read)
+  end
+  -- the Queue link (modules/Playlist.lua): how many readings are playing or waiting; a click opens and closes the list
+  local okQ, n = QB:Call("playlist", "Count")
+  n = okQ and tonumber(n) or 0
+  bar.queue:SetText(n > 0 and ("Queue " .. n) or "Queue")
+  bar.queue:SetWarn(n > 0)
+  for _, b in ipairs({ bar.pause, bar.skip, bar.story, bar.lore, bar.queue, bar.onoff }) do
+    if b ~= bar.lore or place then
+      b:ClearAllPoints(); b:SetPoint("LEFT", bar, "LEFT", x, 0)
+      x = x + b:GetWidth() + Style.Px(18, bar)
+    end
   end
   bar.shownUsage = UsageText()
   bar.usage:SetText(bar.shownUsage)
@@ -467,6 +489,7 @@ function mod:Story(questID)
   if ok and sent then
     local title
     if C_QuestLog and C_QuestLog.GetTitleForQuestID then local okT, t = pcall(C_QuestLog.GetTitleForQuestID, qid); title = okT and t or nil end
+    QB:Call("playlist", "StoryAsked", title or ("quest " .. qid))
     QB:Say("story: asked for the earlier chapters of " .. tostring(title or ("quest " .. qid)) .. (from == "guide" and " (the guide's step)" or from == "active" and " (your active quest)" or ""))
     return true
   end
@@ -504,6 +527,12 @@ local function BuildBar()
   bar.pause = Style.InkLink(bar, 15, function() mod:SetPaused(not mod.paused) end, PAL)
   bar.skip = Style.InkLink(bar, 15, function() mod:Skip() end, PAL); bar.skip:SetText("Skip")
   bar.story = Style.InkLink(bar, 15, function() QB:Safe(mod, mod.Story, mod) end, PAL); bar.story:SetText("Story")
+  bar.lore = Style.InkLink(bar, 15, function() QB:Call("places", "Read") end, PAL); bar.lore:SetText("Lore")
+  bar.queue = Style.InkLink(bar, 15, function()
+    local okO = QB.modules.playlist and QB.modules.playlist.db and QB.modules.playlist.db.open
+    QB:Call("playlist", "SetOpen", not okO)
+  end, PAL)
+  bar.queue:SetText("Queue")
   bar.onoff = Style.InkLink(bar, 15, function() mod:SetRead(not mod.db.read) end, PAL)
   bar.usage = bar:CreateFontString(nil, "OVERLAY")
   bar.usage:SetFont(Style.FRIZ, Style.Px(13, bar), "")
@@ -516,6 +545,9 @@ function mod:OnEnable()
   BuildBar(); PaintBar()
   if not ticker and C_Timer and C_Timer.NewTicker then ticker = C_Timer.NewTicker(READ_EVERY, function() QB:Safe(mod, Look) end) end
 end
+
+QB:On("place_changed", function() if bar and mod.active then PaintBar() end end, mod)
+QB:On("playlist_changed", function() if bar and mod.active then PaintBar() end end, mod)
 
 function mod:OnDisable()
   Offer(nil); mod.attaching = false

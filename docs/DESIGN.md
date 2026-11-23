@@ -340,6 +340,34 @@ asked for the texts of earlier quests of a chain. *Written, not yet seen in game
   `C_QuestLine` (documented in the shared API dump, unverified on Forever), RestedXP's quest data (its Forever `DB/forever/quest.lua`
   has no prerequisite fields as of 608f4c3), or simply the same giver / the order done.
 
+### The queue display (v0.39.0; 4BI-38)
+
+Cesar, 2026-11-23: "let's add a 'playlist' display that shows the queue"; of the game's own list, the bridge's real one, or both, he
+chose both, and approved a mock-up. *Written, not yet seen in game.* A **Queue N** link on the reader bar opens a panel under it
+(`modules/Playlist.lua`; `/qb queue | open | close | sync`): one line per reading with its kind (Guide, Quest, Hand-in, Story, Lore),
+title and time left; the one playing is marked; a footer says how many more, about how long in all, and where the list came from.
+The game cannot watch the bridge's queue (the strip is one way; reading back costs one of the session's 200 reply slots), so:
+- **estimated**: the game lists what it asked for (guide step, quest, hand-in, place, the Talk link) and drops each when its estimated
+  time is up (14 characters a second; a place uses a usual length, a Story is one line of unknown length shown with "~"). Skip, Pause,
+  Play and Voice off change it at once.
+- **from the bridge**: the bridge's real list (`WoWAI.Playlist`, wow-relay) replaces it whenever a slot is read for any reason (free),
+  and one slot is spent on purpose `storySync` (8) seconds after a Story click and on the **Sync** link. The list is moved on by its
+  age, and what the game asked for after the bridge wrote it stays behind the bridge's items.
+Display only: a line cannot be clicked. Lengths from the bridge are exact for its mp3 output; the game's own are estimates.
+
+### The lore of a place (v0.38.0; 4BI-38)
+
+Cesar, 2026-11-23: "I am thinking about adding the zone lore to qb too"; of three options (install Spoken's Places addon, read each
+new place by itself, read on request) he chose on request, "with an indicator of already read". *Written, not yet seen in game.*
+The reader bar has a **Lore** link (`modules/Places.lua`; `/qb lore | read | forget`): hidden where the place has no story, "Lore" in the
+attention colour for a story not asked for yet, "Lore (read)" after. A click sends `WoWAI.SendTts("place", "", "p<uiMapID>", "",
+{ area = <name> })`; the bridge (wow-relay `bridge/places.js`) has the words and reads them in the narrator's voice. The place is the
+most specific one with a story: the area (`GetSubZoneText`), else its zone. The game only holds WHICH places have a story
+(`data/Places.lua`, names only, written by `dev/places/gen.js`: 54 zones, 871 areas) and which were asked for (`places.read`, saved;
+one list for all characters). "Read" means asked for: the strip is one way. The stories are from the Spoken addon's Places data
+(github.com/rusty-key/spoken-wow), text from warcraft.wiki.gg under CC BY-SA 4.0; they are not in this repository. UNVERIFIED in the
+client: that `GetSubZoneText()` gives the names the list uses and that the player's map (or a parent) is one of its zone map ids.
+
 ### The story so far (v0.37.0; 4BI-38)
 
 Cesar, 2026-11-23: the texts of earlier quests of a chain, started "from the reader bar while running ... to fill empty running or
