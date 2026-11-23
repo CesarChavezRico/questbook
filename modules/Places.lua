@@ -89,6 +89,8 @@ function mod:Read()
   local ok, sent, err = pcall(W.SendTts, "place", "", "p" .. tostring(cur.map), "", { area = cur.area })
   if ok and sent then
     self.db.read[cur.id] = true
+    QB:Call("playlist", "Add", "Lore", cur.name, (cur.area == "") and 900 or 325,
+      "p" .. tostring(cur.map) .. ((cur.area == "") and "" or (":" .. (Norm(cur.area):gsub(" ", "-")))))      -- a usual length (the game has no text); the bridge's own label for it
     QB:Say("lore: asked for the story of " .. tostring(cur.name) .. (cur.read and " (again)" or ""))
     QB:Fire("place_changed")
     return true
