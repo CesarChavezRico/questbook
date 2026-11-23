@@ -391,7 +391,7 @@ local function PaintBar()
   bar.onoff:SetWarn(not mod.db.read)
   bar.pause:SetEnabled(mod.db.read); bar.skip:SetEnabled(mod.db.read)
   local x = Style.Px(12, bar)
-  for _, b in ipairs({ bar.pause, bar.skip, bar.onoff }) do
+  for _, b in ipairs({ bar.pause, bar.skip, bar.story, bar.onoff }) do
     b:ClearAllPoints(); b:SetPoint("LEFT", bar, "LEFT", x, 0)
     x = x + b:GetWidth() + Style.Px(18, bar)
   end
@@ -424,6 +424,57 @@ end
 
 function mod:Skip() Control("skip") end
 
+-- ---------------------------------------------------------------- the story so far (v0.37.0)
+--
+-- Cesar, 2026-11-23: the texts of the earlier quests of a chain, "from the reader bar while running, all this is to fill empty
+-- running or questing time". The Story link asks the bridge (WoWAI.SendTts "story", wow-relay bridge/story.js) to read the
+-- EARLIER quests of the chain of the quest you are on: their accept text and hand-in words, oldest first, queued behind what
+-- is playing. The bridge has the chain and the words (what it has read before, and a Forever quest database on the rig); the
+-- game only says which quest and who is playing (to fill "$n", "$c", "$r" in database text).
+-- Which quest: the one the active guide step works (complete, then turnin, then accept), else the game's active quest.
+local STORY_TAGS = { "complete", "turnin", "accept" }
+
+function mod:StoryQuest()
+  local rxp = _G.RXP
+  local guide = type(rxp) == "table" and rxp.currentGuide
+  if type(guide) == "table" and type(guide.steps) == "table" then
+    for _, tag in ipairs(STORY_TAGS) do
+      for _, step in ipairs(guide.steps) do
+        if type(step) == "table" and step.active and type(step.elements) == "table" then
+          for _, e in ipairs(step.elements) do
+            if type(e) == "table" and e.tag == tag and type(e.questId) == "number" and not (e.completed or e.skip) then return e.questId, "guide" end
+          end
+        end
+      end
+    end
+  end
+  if C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID then
+    local ok, id = pcall(C_SuperTrack.GetSuperTrackedQuestID)
+    if ok and type(id) == "number" and id > 0 then return id, "active" end
+  end
+  return nil
+end
+
+function mod:Story(questID)
+  local qid, from = tonumber(questID), "asked"
+  if not qid then qid, from = mod:StoryQuest() end
+  if not qid then QB:Say("story: no quest to tell the story of (no quest on the guide's step, and no active quest)"); return false end
+  local W = _G.WoWAI
+  if not (type(W) == "table" and type(W.SendTts) == "function") then QB:Say("story: the WoW AI relay addon is not loaded"); return false end
+  local function U(fn, ...) if type(fn) ~= "function" then return nil end local ok, v = pcall(fn, ...); return ok and v or nil end
+  local who = { player = U(UnitName, "player"), prace = U(UnitRace, "player"), pclass = U(UnitClass, "player"), psex = U(UnitSex, "player") }
+  local ok, sent, err = pcall(W.SendTts, "story", "", "q" .. qid, "", who)
+  if ok and sent then
+    local title
+    if C_QuestLog and C_QuestLog.GetTitleForQuestID then local okT, t = pcall(C_QuestLog.GetTitleForQuestID, qid); title = okT and t or nil end
+    QB:Say("story: asked for the earlier chapters of " .. tostring(title or ("quest " .. qid)) .. (from == "guide" and " (the guide's step)" or from == "active" and " (your active quest)" or ""))
+    return true
+  end
+  if err == "bad action" then QB:Say("story: the relay addon on this machine is older than the story (update wow-relay and copy WoWAI into AddOns)")
+  else QB:Say("story: not sent (" .. tostring(err or sent) .. ")") end
+  return false
+end
+
 -- Should a quest's own text be read when it is accepted? (asked by the quest reader's QUEST_ACCEPTED handler)
 function mod:ReadsTurnIns() return mod.active and mod.db and mod.db.read and mod.db.turnins and not mod.paused and true or false end
 function mod:ReadsQuests() return mod.active and mod.db and mod.db.read and mod.db.quests and not mod.paused and true or false end
@@ -452,6 +503,7 @@ local function BuildBar()
   end)
   bar.pause = Style.InkLink(bar, 15, function() mod:SetPaused(not mod.paused) end, PAL)
   bar.skip = Style.InkLink(bar, 15, function() mod:Skip() end, PAL); bar.skip:SetText("Skip")
+  bar.story = Style.InkLink(bar, 15, function() QB:Safe(mod, mod.Story, mod) end, PAL); bar.story:SetText("Story")
   bar.onoff = Style.InkLink(bar, 15, function() mod:SetRead(not mod.db.read) end, PAL)
   bar.usage = bar:CreateFontString(nil, "OVERLAY")
   bar.usage:SetFont(Style.FRIZ, Style.Px(13, bar), "")
@@ -476,6 +528,8 @@ local function ReaderSlash(sub, tail)
   if sub == "read" then
     if tail == "on" or tail == "off" then mod:SetRead(tail == "on") elseif tail ~= "" then QB:Usage("/qb guide read on | off") end
     QB:Say("guide: the steps are " .. (mod.db.read and "read aloud (the relay's voice slot \"guide\")" or "not read aloud"))
+  elseif sub == "story" then
+    mod:Story(tonumber(tail))
   elseif sub == "turnins" then
     if tail == "on" or tail == "off" then mod.db.turnins = tail == "on" elseif tail ~= "" then QB:Usage("/qb guide turnins on | off") end
     QB:Say("guide: what the NPC says when you hand a quest in is " .. (mod.db.turnins and "read (while the reader is on)" or "not read"))
@@ -500,8 +554,8 @@ QB:RegisterSlash(mod, "guide", function(rest)
   sub = (sub or ""):lower()
   if sub == "step" then return ShowStep(tail) end
   if sub == "ask" then return Ask(tail) end
-  if sub == "read" or sub == "quests" or sub == "turnins" or sub == "pause" or sub == "play" or sub == "skip" or sub == "bar" then return ReaderSlash(sub, tail) end
-  if sub ~= "" and sub ~= "status" then QB:Usage("/qb guide | step [steps ahead] | ask <your question> | read on|off | quests on|off | turnins on|off | pause | play | skip | bar on|off|reset") end
+  if sub == "read" or sub == "quests" or sub == "turnins" or sub == "story" or sub == "pause" or sub == "play" or sub == "skip" or sub == "bar" then return ReaderSlash(sub, tail) end
+  if sub ~= "" and sub ~= "status" then QB:Usage("/qb guide | step [steps ahead] | ask <your question> | read on|off | quests on|off | turnins on|off | story [questID] | pause | play | skip | bar on|off|reset") end
   local active
   local s = _G.RXP and _G.RXP.settings and _G.RXP.settings.profile
   if type(s) == "table" then active = s.activeTheme end
