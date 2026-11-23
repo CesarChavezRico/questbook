@@ -14,6 +14,7 @@ Offline checks for when there is no game client at hand.
     node run.js ../.. voice.lua                         # the relay voice: slots by giver, Stop, prefetch, the fallback to the game's voice
     node run.js ../.. giver.lua                         # the quest giver: recorded at accept, capped, shown in the reader
     node run.js ../.. story.lua                         # the quest read on its guide work step, the hand-in read and kept
+    node run.js ../.. places.lua                        # the Lore link: hidden / new / read, and what it asks the bridge for
     node run.js ../.. xp.lua                            # the experience bar: fill, rested, tooltip, max level, Blizzard's bar, no strip
     node run.js ../.. elle.lua                          # the Play / Stop button on EllesmereUI's tracker rows (a stand-in for its plugin API)
     node run.js ../.. panel.lua                         # the settings section in EllesmereUI's panel (a stand-in for its plugin API and widget factory)
