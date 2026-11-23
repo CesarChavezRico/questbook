@@ -656,7 +656,7 @@ green by itself there.
   information needed for offline prep of a game session"; "a 'prep state' ... where errors are harmless and we move to 'play
   state' when I am sitting at the rig"; "an away counter will help me keep it alive". Questions arrive through the relay
   addon (`WoWAI.RegisterInbound`, kind `qbask`; wow-relay 4BI-45) and are answered with `WoWAI.SendData("answer", ...)`, in
-  parts when long. A fixed question (`q state | bags | quests | skills | guide a b | items ids | completed ids`) is answered in
+  parts when long. A fixed question (`q state | bags | quests | skills | recipes [profession] | guide a b | items ids | completed ids`) is answered in
   either state. Free Lua (`lua` on the first line) is answered only in prep state, which only `/qb prep on` typed at the
   client switches on (memory only; `/qb prep off` reloads the UI, because such code taints what it touched). Free Lua runs
   in pcall inside a fence: its own environment, the game's reading functions by name (Get / Is / Has / Can / Unit / Num /
@@ -711,3 +711,17 @@ green by itself there.
   a read that lists no skills keeps the last list (a collapsed header hides its lines in the classic API). The recipes known
   are not read: that needs the profession window open, and the module never opens a window. Not verified in the client: which
   of the three answers there, and whether "Riding" and similar lines under "Secondary Skills" should be listed (they are).
+- **v0.41.0, sync and prep: the recipes of a profession (4BI-49).** Cesar, 2026-11-23: "can you also access the recipes I have,
+  that way we can make more specific plans"; of two ways he chose the capture at the profession window. (v0.40.0's skills were
+  seen in the client that day: Leatherworking 161 of 225, Skinning 230 of 300, Cooking 149 of 225, First Aid 222 of 225,
+  Fishing 156 of 225.) The game lists a profession's recipes only while its window is open, and QuestBook never opens a window
+  and never crafts. When Cesar opens one (`TRADE_SKILL_SHOW`, and `TRADE_SKILL_LIST_UPDATE` when the list fills), 0.6 s later
+  the list is saved as `QuestBookState.recipes[<profession>]` = `{ name, id, at, skill, max, how, partial, count, list }`, each
+  recipe `{ name, id, diff, can, mats }` (`diff` orange / yellow / green / grey; `can` = how many from the bags now; `mats` =
+  item id and count). It stays until that window is opened again; a read with no recipes never replaces it; it travels with
+  every state like the bank does. Two ways to ask: `C_TradeSkillUI` (Forever's window is the modern `Blizzard_Professions`, read
+  in the Forever UI source; a linked, guild or NPC window is skipped; without `GetAllRecipeIDs` the filtered list is taken and
+  marked partial), else the classic `GetTradeSkill*` globals (a collapsed header marks the list partial; never expanded). The
+  fixed question `q recipes` answers a summary and the crafting professions never captured; `q recipes <profession>` answers
+  that list (without materials past 100 recipes, to stay under the answer's 20,000 characters). The classic "craft" window
+  (enchanting) is not read. Not verified in the client: which way answers, the modern field names, the event names.

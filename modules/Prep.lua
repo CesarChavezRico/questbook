@@ -8,8 +8,8 @@
 -- Questions arrive through the relay addon (WoWAI.RegisterInbound, kind "qbask": wow-relay 4BI-45), answers go back with
 -- WoWAI.SendData("answer", ...). A question is a few lines of text; its first line says what it is:
 --
---   q <name> [arguments]     a FIXED question, answered in either state: state | bags | quests | skills | guide <from> <to> |
---                            items <id,id,...> | completed <id,id,...> | chapters [all | <from> <to> | <text>] |
+--   q <name> [arguments]     a FIXED question, answered in either state: state | bags | quests | skills | recipes [<profession>] |
+--                            guide <from> <to> | items <id,id,...> | completed <id,id,...> | chapters [all | <from> <to> | <text>] |
 --                            chapter [<from> <to>] <name>   (a chapter RestedXP has not read yet: prep state only)
 --   lua                      FREE Lua on the lines that follow, answered ONLY in prep state
 --
@@ -321,6 +321,45 @@ FIXED.skills = function()
   if type(list) ~= "table" then return { known = false, skills = {} } end
   return { known = true, skills = list }
 end
+-- The recipes saved at the profession windows (4BI-49). `q recipes` alone: a summary per profession captured (count, when,
+-- the skill then, whether the list may be partial) and the crafting professions never captured. `q recipes <profession>`:
+-- that profession's list. A list is as old as the last time its window was opened: `at` says when.
+local CRAFTING = { [164] = true, [165] = true, [171] = true, [186] = true, [197] = true, [202] = true, [333] = true, [129] = true, [185] = true }
+FIXED.recipes = function(args)
+  local ok, saved = QB:Call("sync", "Recipes")
+  if not ok then return nil, "the sync module is off" end
+  saved = type(saved) == "table" and saved or {}
+  local want = (args or ""):gsub("^%s+", ""):gsub("%s+$", ""):lower()
+  if want ~= "" then
+    local hit
+    for name, cap in pairs(saved) do
+      if name:lower() == want then hit = cap break end
+      if not hit and name:lower():find(want, 1, true) == 1 then hit = cap end
+    end
+    if not hit then return { profession = want, captured = false, note = "not captured yet: open that profession's window once in the game" } end
+    local out = { profession = hit.name, captured = true, at = hit.at, skill = hit.skill, max = hit.max, count = hit.count, partial = hit.partial, how = hit.how }
+    -- a long list goes without its materials, so the answer stays whole (an answer is cut at 20,000 characters)
+    if #(hit.list or {}) > 100 then
+      out.matsLeftOut = true
+      out.recipes = {}
+      for i, r in ipairs(hit.list) do out.recipes[i] = { name = r.name, id = r.id, diff = r.diff, can = r.can } end
+    else
+      out.recipes = hit.list
+    end
+    return out
+  end
+  local out = { captured = {}, notCaptured = {} }
+  for name, cap in pairs(saved) do
+    out.captured[#out.captured + 1] = { profession = name, count = cap.count, at = cap.at, skill = cap.skill, max = cap.max, partial = cap.partial }
+  end
+  table.sort(out.captured, function(a, b) return tostring(a.profession) < tostring(b.profession) end)
+  local okS, skills = QB:Call("sync", "Skills")
+  for _, sk in ipairs(okS and type(skills) == "table" and skills or {}) do
+    if (sk.id == nil or CRAFTING[sk.id]) and not saved[sk.name] and sk.name ~= "Riding" then out.notCaptured[#out.notCaptured + 1] = sk.name end
+  end
+  out.note = "a list is as old as the last time its window was opened"
+  return out
+end
 FIXED.completed = function(args)
   local Q = _G.C_QuestLog
   local out = {}
@@ -498,7 +537,7 @@ function mod:Answer(body)
     if not ok2 then return "error encode: " .. tostring(text) end
     return "ok " .. text
   end
-  return "refused: not a question this addon knows (first line: \"lua\", or \"q state | bags | quests | skills | guide <from> <to> | items <ids> | completed <ids> | chapters | chapter [<from> <to>] <name>\")", true
+  return "refused: not a question this addon knows (first line: \"lua\", or \"q state | bags | quests | skills | recipes [<profession>] | guide <from> <to> | items <ids> | completed <ids> | chapters | chapter [<from> <to>] <name>\")", true
 end
 
 -- Answers go back through the relay addon, in parts when long. They wait in an outbox until the relay takes them: the
