@@ -340,6 +340,18 @@ asked for the texts of earlier quests of a chain. *Written, not yet seen in game
   `C_QuestLine` (documented in the shared API dump, unverified on Forever), RestedXP's quest data (its Forever `DB/forever/quest.lua`
   has no prerequisite fields as of 608f4c3), or simply the same giver / the order done.
 
+### The story so far (v0.37.0; 4BI-38)
+
+Cesar, 2026-11-23: the texts of earlier quests of a chain, started "from the reader bar while running ... to fill empty running or
+questing time", from a quest database ("yes build it" after a spike on a Forever database). *Written, not yet seen in game.*
+The reader bar has a **Story** link (`/qb guide story [questID]`). It sends `WoWAI.SendTts("story", "", "q<id>", "", who)`: the quest
+the active guide step works (a `complete` line first, then `turnin`, then `accept`; else the game's active quest) and who is playing
+(name, race, class, sex). Everything else is the bridge's (wow-relay `bridge/story.js`): it walks the chain back and queues the
+earlier quests' accept and hand-in words, from what it has read before and from quest data downloaded on the rig. The game is not
+told what will be read (the strip is one way): when there is nothing, the narrator says so. An older relay addon answers
+"bad action" and the chat line says to update it. The `story` module's own record (v0.36.0) is not used by this yet: the bridge keeps
+its own copy of what it reads.
+
 ### The relay voice (v0.17.0; 4BI-38 steps 2 and 4, the QuestBook side)
 
 - **Direction** (Cesar, 2026-10-18): a much better voice than the game's text-to-speech. The audio plays OUTSIDE the game: with

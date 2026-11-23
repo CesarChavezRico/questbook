@@ -100,4 +100,31 @@ assert(S:Count() <= 3, "capped")
 SlashCmdList.QUESTBOOK("story 5")
 local said = table.concat(__take(), "\n")
 assert(said:find("quests kept", 1, true) and said:find("at hand-in", 1, true), "/qb story says what is kept: " .. said)
+-- v0.37.0: the Story link asks the bridge for the earlier chapters of the quest the guide's step works
+for i = 1, 8 do if RXP.currentGuide.steps[i] then RXP.currentGuide.steps[i].active = nil end end
+RXP.currentGuide.steps[9] = { index = 9, active = true, elements = { { tag = "accept", questId = 500, text = "Accept" }, { tag = "complete", questId = 928, text = "Fill the phial" } } }
+UnitRace = function() return "Night Elf", "NightElf" end
+UnitClass = function() return "Druid", "DRUID" end
+UnitName = function(u) if u == "player" then return "Thara" end end
+UnitSex = function(u) if u == "player" then return 3 end end
+assert(G:StoryQuest() == 928, "the quest the step works comes before one it accepts: " .. tostring(G:StoryQuest()))
+assert(QuestBookReaderBar.story and QuestBookReaderBar.story:GetText() == "Story", "a Story link on the reader bar")
+n = #tts; __take()
+QuestBookReaderBar.story:Click()
+local s = tts[#tts]
+assert(#tts == n + 1 and s.action == "story" and s.ref == "q928" and s.text == "", "the request: story, the quest, no words: " .. tostring(s.action) .. " " .. tostring(s.ref))
+assert(s.meta.player == "Thara" and s.meta.prace == "Night Elf" and s.meta.pclass == "Druid" and s.meta.psex == 3, "with who is playing")
+assert(table.concat(__take(), "\n"):find("earlier chapters", 1, true), "and says it asked")
+SlashCmdList.QUESTBOOK("guide story 933"); __take()
+assert(tts[#tts].ref == "q933", "a quest number can be given")
+-- no guide quest: the game's active quest; none at all: says so
+RXP.currentGuide.steps[9].active = nil
+C_SuperTrack.SetSuperTrackedQuestID(101); assert(G:StoryQuest() == 101, "falls back to the active quest")
+C_SuperTrack.SetSuperTrackedQuestID(0); n = #tts
+SlashCmdList.QUESTBOOK("guide story"); assert(#tts == n and table.concat(__take(), "\n"):find("no quest to tell", 1, true), "nothing to ask about")
+-- an older relay addon refuses the action: say what to do
+local old = WoWAI.SendTts
+WoWAI.SendTts = function(action, ...) if action == "story" then return false, "bad action" end return old(action, ...) end
+SlashCmdList.QUESTBOOK("guide story 928"); assert(table.concat(__take(), "\n"):find("older than the story", 1, true), "an old relay addon is named")
+WoWAI.SendTts = old
 print("story ok")
