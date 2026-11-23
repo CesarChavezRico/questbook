@@ -656,7 +656,7 @@ green by itself there.
   information needed for offline prep of a game session"; "a 'prep state' ... where errors are harmless and we move to 'play
   state' when I am sitting at the rig"; "an away counter will help me keep it alive". Questions arrive through the relay
   addon (`WoWAI.RegisterInbound`, kind `qbask`; wow-relay 4BI-45) and are answered with `WoWAI.SendData("answer", ...)`, in
-  parts when long. A fixed question (`q state | bags | quests | guide a b | items ids | completed ids`) is answered in
+  parts when long. A fixed question (`q state | bags | quests | skills | guide a b | items ids | completed ids`) is answered in
   either state. Free Lua (`lua` on the first line) is answered only in prep state, which only `/qb prep on` typed at the
   client switches on (memory only; `/qb prep off` reloads the UI, because such code taints what it touched). Free Lua runs
   in pcall inside a fence: its own environment, the game's reading functions by name (Get / Is / Has / Can / Unit / Num /
@@ -701,3 +701,13 @@ green by itself there.
   client refuses past 2,147,483,647, and RestedXP's guide ids are that large. Such numbers are now written with `%.0f`.
   The offline harness runs a newer Lua whose `%d` takes them, so the test checks the digits, not the client's refusal.
   Not verified in the client.
+- **v0.40.0, sync and prep: profession skills (4BI-48).** Cesar, 2026-11-23: "do you have info on Thara's professions? can we
+  map a plan for leveling each one while working on the guide?" The state had none. `QuestBookState.skills` is now a list of
+  `{ name, id, rank, max, kind }` (`kind` = "primary" or "secondary"), and the fixed question `q skills` answers the same list
+  (`known = false` when the client has none of the skill functions). Three ways to ask the game, in this order: `C_SkillInfo`
+  (one table per line; the relay addon already reads Forever this way), the classic `GetNumSkillLines` / `GetSkillLineInfo`
+  (professions under the "Professions" and "Secondary Skills" headers), the retail `GetProfessions`. A profession is known by
+  its vanilla skill id, else by its header. The state is marked for a new read on `SKILL_LINES_CHANGED` and `CHAT_MSG_SKILL`;
+  a read that lists no skills keeps the last list (a collapsed header hides its lines in the classic API). The recipes known
+  are not read: that needs the profession window open, and the module never opens a window. Not verified in the client: which
+  of the three answers there, and whether "Riding" and similar lines under "Secondary Skills" should be listed (they are).

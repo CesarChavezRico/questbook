@@ -270,6 +270,77 @@ local function Realm()
   return r
 end
 
+-- ---------------------------------------------------------------- profession skills (4BI-48, v0.40.0)
+--
+-- Cesar, 2026-11-23: "do you have info on Thara's professions? can we map a plan for leveling each one while working on the
+-- guide?" The state had no profession skill. Now: for each profession its name, skill id, current skill, current cap and
+-- whether it is primary or secondary. Three ways to ask, tried in this order (each guarded, any may be missing):
+--   1. C_SkillInfo.GetNumSkillLines / GetSkillLineInfo(i): one table per line (name, isHeader, rank, maxRank, skillID,
+--      parentSkillLineID). The relay addon reads the Forever client this way (its WoWAI.SkillLines: "Forever only has
+--      C_SkillInfo"), so this is the one expected to answer.
+--   2. the classic globals GetNumSkillLines / GetSkillLineInfo(i): name, header flag, ..., rank, ..., max rank; professions
+--      sit under the "Professions" and "Secondary Skills" headers (a collapsed header hides its lines).
+--   3. the retail GetProfessions / GetProfessionInfo(index).
+-- A profession is known by its skill id (the vanilla ids), else by the header it sits under. nil when the client has none
+-- of the three, so the field is simply left out. The recipes known are NOT read: that needs the profession window open,
+-- and this module never opens a window. UNVERIFIED (client only): which of the three answers, and the header names.
+local PRIMARY = { [164] = true, [165] = true, [171] = true, [182] = true, [186] = true, [197] = true, [202] = true, [333] = true, [393] = true }
+local SECONDARY = { [129] = true, [185] = true, [356] = true }
+local HEADER_KIND = { professions = "primary", ["secondary skills"] = "secondary" }
+
+local function Skills()
+  local out, seen = {}, {}
+  local function Add(name, id, rank, max, kind)
+    if type(name) ~= "string" or name == "" or not kind then return end
+    local key = id or name
+    if seen[key] then return end
+    seen[key] = true
+    out[#out + 1] = { name = name, id = id, rank = tonumber(rank) or 0, max = tonumber(max) or 0, kind = kind }
+  end
+  local function Kind(id, header)
+    if id and PRIMARY[id] then return "primary" end
+    if id and SECONDARY[id] then return "secondary" end
+    return header and HEADER_KIND[header] or nil
+  end
+  local S = _G.C_SkillInfo
+  if type(S) == "table" and type(S.GetNumSkillLines) == "function" and type(S.GetSkillLineInfo) == "function" then
+    local okN, n = pcall(S.GetNumSkillLines)
+    local header
+    for i = 1, (okN and type(n) == "number") and n or 0 do
+      local ok, sk = pcall(S.GetSkillLineInfo, i)
+      if ok and type(sk) == "table" and type(sk.name) == "string" then
+        if sk.isHeader then header = sk.name:lower()
+        elseif (sk.parentSkillLineID or 0) == 0 then Add(sk.name, tonumber(sk.skillID), sk.rank, sk.maxRank, Kind(tonumber(sk.skillID), header)) end
+      end
+    end
+    return out
+  end
+  if Fn("GetNumSkillLines") and Fn("GetSkillLineInfo") then
+    local n = Call("GetNumSkillLines")
+    local header
+    for i = 1, type(n) == "number" and n or 0 do
+      local name, isHeader, _, rank, _, _, max = Call("GetSkillLineInfo", i)
+      if type(name) == "string" then
+        if isHeader then header = name:lower() else Add(name, nil, rank, max, Kind(nil, header)) end
+      end
+    end
+    return out
+  end
+  if Fn("GetProfessions") and Fn("GetProfessionInfo") then
+    local idx = { Call("GetProfessions") }
+    for slot = 1, 6 do
+      local index = idx[slot]
+      if index then
+        local name, _, rank, max, _, _, id = Call("GetProfessionInfo", index)
+        Add(name, tonumber(id), rank, max, (slot <= 2) and "primary" or "secondary")
+      end
+    end
+    return out
+  end
+  return nil
+end
+mod.Skills = function() return Skills() end
+
 -- Read the character from the game, now.
 local function Read(how)
   local s = { v = VERSION, at = Call("time"), addon = QB.version, how = how }
@@ -284,6 +355,7 @@ local function Read(how)
   s.completed = Completed()
   s.bags = Bags(0, 4)
   s.gear = Gear()
+  s.skills = Skills()
   return s
 end
 
@@ -319,6 +391,11 @@ local function Take(how)
   local s = Read(how or "world")
   lastTake = (GetTime and GetTime()) or 0
   dirty = false
+  -- the skills of a whole read replace the kept ones only when the game listed some (a collapsed header, or a client that
+  -- answers late, gives an empty list: the last list seen is then the better record)
+  if not Hollow(s) and (type(s.skills) ~= "table" or #s.skills == 0) and snap and type(snap.skills) == "table" and #snap.skills > 0 then
+    s.skills = snap.skills
+  end
   if not Hollow(s) then snap = WithBank(s) end
   return snap, s
 end
@@ -355,6 +432,8 @@ mod.events.PLAYER_XP_UPDATE = Dirty
 mod.events.PLAYER_LEVEL_UP = Dirty
 mod.events.PLAYER_EQUIPMENT_CHANGED = Dirty
 mod.events.ZONE_CHANGED_NEW_AREA = Dirty
+mod.events.SKILL_LINES_CHANGED = Dirty
+mod.events.CHAT_MSG_SKILL = Dirty
 
 local ticker
 function mod:OnEnable()
