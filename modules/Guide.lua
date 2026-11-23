@@ -17,7 +17,9 @@ local Style = QB.Style
 
 local mod = QB:NewModule("guide", {
   read = true,          -- read each new step of the guide aloud (the relay's ElevenLabs voice, slot "guide")
-  quests = true,        -- with the reader on, a quest's own text is read when the quest is accepted (queued behind the guide's lines)
+  quests = true,        -- with the reader on, a quest's own text is read when the guide puts you to work on it (v0.36.0; at accept when the guide never mentions it)
+  turnins = true,       -- and what the NPC says when you hand a quest in (modules/Story.lua)
+  told = {},            -- questID -> true: quests whose text was already read by itself (so a reload does not read them again)
   bar = true,           -- show the reader's control (Pause / Skip / Voice on)
   barPos = false,       -- { point, x, y } once it has been dragged; false = its default place
 })
@@ -279,6 +281,51 @@ end
 
 local RefreshUsage                 -- (defined with the bar: repaints it when the numbers changed)
 
+-- ---------------------------------------------------------------- the quest read when the guide works it (v0.36.0)
+--
+-- Cesar, 2026-11-23: "a better way to read the quest that I am working on (based on the guide step). I feel like I am losing a
+-- lot of content just by running around following the guide and I have time to listen while actually doing the quest."
+-- Until now the text was queued at ACCEPT: five quests picked up at a hub queued minutes of story while still running
+-- around. Now a quest is read, once, when a guide step that WORKS it becomes active: a line RestedXP tags "complete" (do an
+-- objective of quest N), or, for a quest with no such line (a delivery), the line tagged "turnin". The step's own
+-- instruction goes first, the quest's text behind it. The tags and .questId are RestedXP's (functions.lua: accept,
+-- complete, turnin; GuideLoader sets element.tag), read 2026-11-23 at its commit 608f4c3. UNVERIFIED in the client.
+local WORK = { complete = true, turnin = true }
+
+local function Told(qid) return mod.db and type(mod.db.told) == "table" and mod.db.told[qid] and true or false end
+function mod:MarkTold(qid) if qid and mod.db then mod.db.told = type(mod.db.told) == "table" and mod.db.told or {}; mod.db.told[qid] = true end end
+
+-- Does a step of the loaded guide, from the active ones on, work this quest? (asked at accept: read it now, or later)
+function mod:WorksLater(qid)
+  local rxp = _G.RXP
+  local guide = type(rxp) == "table" and rxp.currentGuide
+  if type(guide) ~= "table" or type(guide.steps) ~= "table" or not qid then return false end
+  local from
+  for i, step in ipairs(guide.steps) do
+    if type(step) == "table" then
+      if step.active and not from then from = i end
+      if from and type(step.elements) == "table" then
+        for _, e in ipairs(step.elements) do
+          if type(e) == "table" and WORK[e.tag] and e.questId == qid then return true end
+        end
+      end
+    end
+  end
+  return false
+end
+
+-- The quests an active step works, each read once (while it is in the log; a quest not accepted yet waits for a later look).
+local function TellQuests(step)
+  if not (mod.db and mod.db.quests) or type(step.elements) ~= "table" then return end
+  for _, e in ipairs(step.elements) do
+    local qid = type(e) == "table" and WORK[e.tag] and type(e.questId) == "number" and e.questId or nil
+    if qid and not Told(qid) and not (e.tag == "complete" and (e.completed or e.skip)) then
+      local ok, sent = QB:Call("questlog", "QueueRead", qid)
+      if ok and sent then mod:MarkTold(qid) end
+    end
+  end
+end
+
 local function Look()
   if RefreshUsage then RefreshUsage() end
   if not (mod.db and mod.db.read) or mod.paused then return end
@@ -297,6 +344,8 @@ local function Look()
         if not ok then spoken[key .. i] = true end          -- refused for another reason (too long ...): do not retry forever
       end
     end
+    -- behind the step's own line: the story of the quests it works (looked at each time: a quest may be accepted later)
+    if type(step) == "table" and step.active and spoken[key .. i] then TellQuests(step) end
   end
 end
 
@@ -376,6 +425,7 @@ end
 function mod:Skip() Control("skip") end
 
 -- Should a quest's own text be read when it is accepted? (asked by the quest reader's QUEST_ACCEPTED handler)
+function mod:ReadsTurnIns() return mod.active and mod.db and mod.db.read and mod.db.turnins and not mod.paused and true or false end
 function mod:ReadsQuests() return mod.active and mod.db and mod.db.read and mod.db.quests and not mod.paused and true or false end
 
 function mod:SetRead(on)
@@ -426,9 +476,12 @@ local function ReaderSlash(sub, tail)
   if sub == "read" then
     if tail == "on" or tail == "off" then mod:SetRead(tail == "on") elseif tail ~= "" then QB:Usage("/qb guide read on | off") end
     QB:Say("guide: the steps are " .. (mod.db.read and "read aloud (the relay's voice slot \"guide\")" or "not read aloud"))
+  elseif sub == "turnins" then
+    if tail == "on" or tail == "off" then mod.db.turnins = tail == "on" elseif tail ~= "" then QB:Usage("/qb guide turnins on | off") end
+    QB:Say("guide: what the NPC says when you hand a quest in is " .. (mod.db.turnins and "read (while the reader is on)" or "not read"))
   elseif sub == "quests" then
     if tail == "on" or tail == "off" then mod.db.quests = tail == "on" elseif tail ~= "" then QB:Usage("/qb guide quests on | off") end
-    QB:Say("guide: a quest's text is " .. (mod.db.quests and "read when you accept it (while the reader is on)" or "not read by itself (the quest reader's Talk still reads it)"))
+    QB:Say("guide: a quest's text is " .. (mod.db.quests and "read when the guide puts you to work on it, or at accept when the guide never mentions it (while the reader is on)" or "not read by itself (the quest reader's Talk still reads it)"))
   elseif sub == "pause" then mod:SetPaused(true); QB:Say("guide: reading paused (/qb guide play)")
   elseif sub == "play" then mod:SetPaused(false); QB:Say("guide: reading goes on")
   elseif sub == "skip" then mod:Skip(); QB:Say("guide: skipped")
@@ -447,8 +500,8 @@ QB:RegisterSlash(mod, "guide", function(rest)
   sub = (sub or ""):lower()
   if sub == "step" then return ShowStep(tail) end
   if sub == "ask" then return Ask(tail) end
-  if sub == "read" or sub == "quests" or sub == "pause" or sub == "play" or sub == "skip" or sub == "bar" then return ReaderSlash(sub, tail) end
-  if sub ~= "" and sub ~= "status" then QB:Usage("/qb guide | step [steps ahead] | ask <your question> | read on|off | quests on|off | pause | play | skip | bar on|off|reset") end
+  if sub == "read" or sub == "quests" or sub == "turnins" or sub == "pause" or sub == "play" or sub == "skip" or sub == "bar" then return ReaderSlash(sub, tail) end
+  if sub ~= "" and sub ~= "status" then QB:Usage("/qb guide | step [steps ahead] | ask <your question> | read on|off | quests on|off | turnins on|off | pause | play | skip | bar on|off|reset") end
   local active
   local s = _G.RXP and _G.RXP.settings and _G.RXP.settings.profile
   if type(s) == "table" then active = s.activeTheme end

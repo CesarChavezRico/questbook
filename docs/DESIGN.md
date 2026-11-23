@@ -317,6 +317,29 @@ The level box's own "4" and the icon art itself were fine.
   `SetRoundLayoutToNearestPixel` and the pixel arithmetic give 1 px lines, and that tiling the 256 px grain with
   `SetTexture(file, "REPEAT", "REPEAT")` shows no visible repeat.
 
+### The story while questing (v0.36.0; 4BI-38)
+
+Cesar, 2026-11-23: "a better way to read the quest that I am working on (based on the guide step). I feel like I am losing a lot of
+content just by running around following the guide and I have time to listen while actually doing the quest"; chose "1 with 3"; and
+asked for the texts of earlier quests of a chain. *Written, not yet seen in game.*
+
+- **When a quest is read.** Before: at accept (five quests at a hub queued minutes of story while still picking up). Now: once, when
+  an active guide step WORKS the quest, behind the step's own line. A work line is a RestedXP element tagged `complete` with that
+  `questId` (not yet completed); a quest with no such line (a delivery) is read on its `turnin` line. At accept the audio is only made
+  ready (`prefetch`), so it starts at once later. A quest the loaded guide never works (`guide:WorksLater`) is read at accept as before.
+  What was read is kept in `guide.told` so a reload does not repeat it. Tags and `questId` are from RestedXP's source
+  (`functions.lua` accept / complete / turnin, `GuideLoader.lua` sets `element.tag`; commit 608f4c3, read 2026-11-23). UNVERIFIED in the client.
+- **The hand-in is read.** `modules/Story.lua` takes `GetRewardText()` and who is speaking (the `npc` unit) while the reward dialog is
+  up (`QUEST_COMPLETE`) and, when the quest is really handed in (`QUEST_TURNED_IN` with the same quest number), queues the words in
+  that NPC's voice slot (`questlog:QueueWords`, ref `t<questID>`). `/qb guide turnins on|off`. UNVERIFIED in the client: that these
+  calls answer on Forever and that the event carries the quest number.
+- **The words are kept.** The game gives a quest's text only while it is in the log or its dialog is open, so an earlier quest of a
+  chain can only be replayed if its words were kept when they passed. `story` keeps title, accept text, hand-in text, giver, receiver,
+  zone and times per quest, in order, newest 600 (about 1 to 2 KB each). Quests done before v0.36.0 have nothing. No UI yet: the page
+  that reads from it ("the story so far" for a quest's chain) is not designed. Open: how a chain is known. Candidates: the client's
+  `C_QuestLine` (documented in the shared API dump, unverified on Forever), RestedXP's quest data (its Forever `DB/forever/quest.lua`
+  has no prerequisite fields as of 608f4c3), or simply the same giver / the order done.
+
 ### The relay voice (v0.17.0; 4BI-38 steps 2 and 4, the QuestBook side)
 
 - **Direction** (Cesar, 2026-10-18): a much better voice than the game's text-to-speech. The audio plays OUTSIDE the game: with

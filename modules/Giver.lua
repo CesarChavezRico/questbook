@@ -69,6 +69,9 @@ local function Remember(qid, snap)
     zone = snap.zone, t = (GetServerTime and Call(GetServerTime)) or nil }
 end
 
+-- What the game says about whoever you are talking to right now (the story module: who takes a quest in), or nil.
+function mod:Snap() return Snap() end
+
 -- The record for a quest, or nil.
 function mod:Get(questID) return self.db.quests[questID] end
 function mod:Count() return #self.db.order end
