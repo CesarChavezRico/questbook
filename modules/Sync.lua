@@ -341,6 +341,137 @@ local function Skills()
 end
 mod.Skills = function() return Skills() end
 
+-- ---------------------------------------------------------------- recipes (4BI-49, v0.41.0)
+--
+-- Cesar, 2026-11-23: "can you also access the recipes I have, that way we can make more specific plans"; of two ways, the
+-- capture at the profession window. The game only lists a profession's recipes while its window is open, and this module
+-- never opens a window and never crafts. So: when Cesar opens a profession window, that profession's recipes are saved,
+-- and stay until the same window is opened again. Per profession: { name, id, at, skill, max, how, partial, list }, and
+-- per recipe { name, id, diff, can, mats }: diff = "orange" | "yellow" | "green" | "grey" (will it still give skill),
+-- can = how many can be made from the bags now, mats = { { id, count }, ... }.
+-- Two ways to ask, each guarded:
+--   1. C_TradeSkillUI (the Forever client's profession window is the modern one: Blizzard_Professions, read 2026-11-23 in
+--      the Forever UI source): GetAllRecipeIDs (else GetFilteredRecipeIDs: the list is then marked partial), GetRecipeInfo
+--      (name, learned, relativeDifficulty), GetCraftableCount, GetRecipeSchematic for the materials, GetBaseProfessionInfo
+--      for the profession. Someone else's linked window, a guild's, or an NPC's crafting is not ours: not captured.
+--   2. the classic globals: GetTradeSkillLine, GetNumTradeSkills, GetTradeSkillInfo (type optimal / medium / easy /
+--      trivial / header), reagents, links for the ids. A collapsed header hides its recipes: marked partial, never expanded.
+-- The first read after the window shows can be empty, so the capture runs a moment after TRADE_SKILL_SHOW and again on
+-- TRADE_SKILL_LIST_UPDATE; a read with no recipes never replaces a saved list.
+-- UNVERIFIED (client only): which way answers, the field names of the modern one, and the event names.
+local recipes                   -- [profession name] = the capture; nil until one is made or found in the stored state
+local DIFF_NUM = { [0] = "orange", [1] = "yellow", [2] = "green", [3] = "grey" }      -- Enum.TradeskillRelativeDifficulty
+local DIFF_WORD = { optimal = "orange", medium = "yellow", easy = "green", trivial = "grey" }
+local RECIPES_MAX = 400         -- recipes kept for one profession
+
+local function ReadRecipesModern()
+  local T = _G.C_TradeSkillUI
+  if type(T) ~= "table" or type(T.GetRecipeInfo) ~= "function" then return nil end
+  local function Tc(name, ...)
+    if type(T[name]) ~= "function" then return nil end
+    local ok, a = pcall(T[name], ...)
+    if ok then return a end
+    return nil
+  end
+  if Tc("IsTradeSkillLinked") or Tc("IsTradeSkillGuild") or Tc("IsNPCCrafting") then return false end       -- not the character's own
+  if type(T.IsTradeSkillReady) == "function" and not Tc("IsTradeSkillReady") then return false end
+  local how, ids = "all", Tc("GetAllRecipeIDs")
+  if type(ids) ~= "table" then how, ids = "filtered", Tc("GetFilteredRecipeIDs") end
+  if type(ids) ~= "table" then return nil end
+  local prof = Tc("GetBaseProfessionInfo") or Tc("GetChildProfessionInfo")
+  local cap = { how = "C_TradeSkillUI", list = {} }
+  if type(prof) == "table" then
+    cap.name, cap.id = prof.professionName or prof.parentProfessionName, tonumber(prof.professionID or prof.parentProfessionID)
+    cap.skill, cap.max = tonumber(prof.skillLevel), tonumber(prof.maxSkillLevel)
+  end
+  if how == "filtered" then cap.partial = "the window's filtered list (the client has no full list)" end
+  for _, id in ipairs(ids) do
+    local info = Tc("GetRecipeInfo", id)
+    if type(info) == "table" and info.learned and type(info.name) == "string" and #cap.list < RECIPES_MAX then
+      local d = info.relativeDifficulty
+      local r = { name = info.name, id = tonumber(info.recipeID) or tonumber(id),
+        diff = (type(d) == "number" and DIFF_NUM[d]) or (type(d) == "string" and DIFF_WORD[d:lower()]) or nil,
+        can = tonumber(Tc("GetCraftableCount", id)) }
+      local sch = Tc("GetRecipeSchematic", id, false)
+      if type(sch) == "table" and type(sch.reagentSlotSchematics) == "table" then
+        local mats = {}
+        for _, slot in ipairs(sch.reagentSlotSchematics) do
+          local first = type(slot) == "table" and type(slot.reagents) == "table" and slot.reagents[1]
+          if type(first) == "table" and first.itemID and (tonumber(slot.quantityRequired) or 0) > 0 and (slot.required == nil or slot.required) then
+            mats[#mats + 1] = { id = tonumber(first.itemID), count = tonumber(slot.quantityRequired) }
+          end
+        end
+        if #mats > 0 then r.mats = mats end
+      end
+      cap.list[#cap.list + 1] = r
+    end
+  end
+  return cap
+end
+
+local function ReadRecipesClassic()
+  if not (Fn("GetNumTradeSkills") and Fn("GetTradeSkillInfo")) then return nil end
+  local name, skill, max = Call("GetTradeSkillLine")
+  if type(name) ~= "string" or name == "" or name == "UNKNOWN" then return false end
+  local cap = { how = "classic", name = name, skill = tonumber(skill), max = tonumber(max), list = {} }
+  local n = Call("GetNumTradeSkills")
+  for i = 1, type(n) == "number" and n or 0 do
+    local rname, kind, can, expanded = Call("GetTradeSkillInfo", i)
+    if kind == "header" then
+      if expanded == false or expanded == 0 then cap.partial = "a collapsed header hides some recipes" end
+    elseif type(rname) == "string" and #cap.list < RECIPES_MAX then
+      local link = Call("GetTradeSkillRecipeLink", i) or Call("GetTradeSkillItemLink", i)
+      local r = { name = rname, id = type(link) == "string" and tonumber(link:match("|H%a+:(%d+)")) or nil,
+        diff = type(kind) == "string" and DIFF_WORD[kind:lower()] or nil, can = tonumber(can) }
+      local nr = Call("GetTradeSkillNumReagents", i)
+      local mats = {}
+      for j = 1, type(nr) == "number" and nr or 0 do
+        local _, _, count = Call("GetTradeSkillReagentInfo", i, j)
+        local rl = Call("GetTradeSkillReagentItemLink", i, j)
+        local rid = type(rl) == "string" and tonumber(rl:match("|Hitem:(%d+)")) or nil
+        if rid and tonumber(count) then mats[#mats + 1] = { id = rid, count = tonumber(count) } end
+      end
+      if #mats > 0 then r.mats = mats end
+      cap.list[#cap.list + 1] = r
+    end
+  end
+  return cap
+end
+
+local function Stored()
+  if recipes == nil then
+    local prev = _G.QuestBookState
+    recipes = (type(prev) == "table" and type(prev.recipes) == "table" and prev.recipes) or {}
+  end
+  return recipes
+end
+
+-- Read the open profession window and keep its recipes. Returns the capture, or nil and why nothing was kept.
+function mod:CaptureRecipes()
+  local cap = ReadRecipesModern()
+  if cap == nil then cap = ReadRecipesClassic() end
+  if cap == nil then return nil, "this client has no recipe functions" end
+  if cap == false then return nil, "no profession window of the character's own is open (or it is not ready yet)" end
+  if type(cap.name) ~= "string" or cap.name == "" then return nil, "the game did not say which profession the window is" end
+  if #cap.list == 0 then return nil, "the window listed no recipes (not ready yet?)" end        -- never replaces a saved list
+  cap.at, cap.count = Call("time"), #cap.list
+  Stored()[cap.name] = cap
+  mod.recipesChanged = true                -- the next tick takes a new snapshot, so the state in memory carries it
+  return cap
+end
+
+-- The saved captures: [profession name] = { name, id, at, skill, max, how, partial, count, list }.
+function mod:Recipes() return Stored() end
+
+local captureAt
+local function CaptureSoon()
+  local now = (GetTime and GetTime()) or 0
+  if captureAt and now - captureAt < 1 then return end                 -- one capture for a burst of list updates
+  captureAt = now
+  if C_Timer and C_Timer.After then C_Timer.After(0.6, function() QB:Safe(mod, mod.CaptureRecipes, mod) end)
+  else mod:CaptureRecipes() end
+end
+
 -- Read the character from the game, now.
 local function Read(how)
   local s = { v = VERSION, at = Call("time"), addon = QB.version, how = how }
@@ -383,6 +514,9 @@ local SETTLE = 6                -- seconds after the UI loads before the first r
 local function WithBank(s)
   local prev = _G.QuestBookState
   s.bank = bankSeen or (snap and snap.bank) or (type(prev) == "table" and prev.bank) or nil
+  -- the recipes seen at the profession windows travel with every state (4BI-49): nothing reads them again here
+  local rec = recipes or (snap and snap.recipes) or (type(prev) == "table" and type(prev.recipes) == "table" and prev.recipes) or nil
+  if type(rec) == "table" and next(rec) ~= nil then s.recipes = rec end
   return s
 end
 
@@ -409,6 +543,7 @@ end
 local function Tick()
   local now = (GetTime and GetTime()) or 0
   if not enabledAt or now - enabledAt < SETTLE then return end
+  if mod.recipesChanged then mod.recipesChanged = nil; dirty = true end
   if not lastTake or (dirty and now - lastTake >= TAKE_GAP) or now - lastTake >= TAKE_EVERY then Take("world") end
 end
 
@@ -432,6 +567,8 @@ mod.events.PLAYER_XP_UPDATE = Dirty
 mod.events.PLAYER_LEVEL_UP = Dirty
 mod.events.PLAYER_EQUIPMENT_CHANGED = Dirty
 mod.events.ZONE_CHANGED_NEW_AREA = Dirty
+mod.events.TRADE_SKILL_SHOW = CaptureSoon
+mod.events.TRADE_SKILL_LIST_UPDATE = CaptureSoon
 mod.events.SKILL_LINES_CHANGED = Dirty
 mod.events.CHAT_MSG_SKILL = Dirty
 
