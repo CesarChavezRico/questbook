@@ -8,7 +8,7 @@
 -- Questions arrive through the relay addon (WoWAI.RegisterInbound, kind "qbask": wow-relay 4BI-45), answers go back with
 -- WoWAI.SendData("answer", ...). A question is a few lines of text; its first line says what it is:
 --
---   q <name> [arguments]     a FIXED question, answered in either state: state | bags | quests | guide <from> <to> |
+--   q <name> [arguments]     a FIXED question, answered in either state: state | bags | quests | skills | guide <from> <to> |
 --                            items <id,id,...> | completed <id,id,...> | chapters [all | <from> <to> | <text>] |
 --                            chapter [<from> <to>] <name>   (a chapter RestedXP has not read yet: prep state only)
 --   lua                      FREE Lua on the lines that follow, answered ONLY in prep state
@@ -313,6 +313,14 @@ FIXED.quests = function()
   if not ok or type(s) ~= "table" then return nil, "the sync module is off" end
   return s.quests
 end
+-- The profession skills (4BI-48): one entry per profession, { name, id, rank, max, kind }. Read now, not from the state:
+-- it is short and the game answers it at once. `known = false` when this client has none of the skill functions.
+FIXED.skills = function()
+  local ok, list = QB:Call("sync", "Skills")
+  if not ok then return nil, "the sync module is off" end
+  if type(list) ~= "table" then return { known = false, skills = {} } end
+  return { known = true, skills = list }
+end
 FIXED.completed = function(args)
   local Q = _G.C_QuestLog
   local out = {}
@@ -490,7 +498,7 @@ function mod:Answer(body)
     if not ok2 then return "error encode: " .. tostring(text) end
     return "ok " .. text
   end
-  return "refused: not a question this addon knows (first line: \"lua\", or \"q state | bags | quests | guide <from> <to> | items <ids> | completed <ids> | chapters | chapter [<from> <to>] <name>\")", true
+  return "refused: not a question this addon knows (first line: \"lua\", or \"q state | bags | quests | skills | guide <from> <to> | items <ids> | completed <ids> | chapters | chapter [<from> <to>] <name>\")", true
 end
 
 -- Answers go back through the relay addon, in parts when long. They wait in an outbox until the relay takes them: the
