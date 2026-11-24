@@ -1,4 +1,5 @@
-// Thara's button plan (4BI-41). Source of truth for data/Plan.lua:  node dev/elle-config/emit-plan.js thara
+// Thara's button plan (4BI-41), level 24. NOT SHIPPED since 2026-11-24 (4BI-50): data/Plan.lua comes from plans/none.js.
+// Kept as the record of that layout and as the emitter's test input. To ship it again:  node dev/elle-config/emit-plan.js thara
 // Seats follow the circles layout of dev/elle-config (which bar is which seat) and the pages in
 // interests/wow/thara-forever-keybinds.md (4bits-cesar), level 24, decided by Cesar 2026-11-10.
 // A page is 12 action slots; slot = (page - 1) * 12 + button.

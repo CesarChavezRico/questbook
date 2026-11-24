@@ -737,3 +737,21 @@ green by itself there.
   cut). Read only: nothing places, moves or clears a button, and a backup is a record, not a restore (`/qb bars apply` from a
   generated plan is the only way back, never confirmed in the client: 4BI-41). Not measured: how much `bars` adds to the
   state file. Not verified in the client.
+- **v0.42.1, data only: Thara's cooldown display as an EllesmereUI layout (4BI-51).** Cesar, 2026-11-24: "let's work on the
+  cooldowns and procs display rework. What I have now is adding 0 value". His cooldown manager showed 27 icons at level 37:
+  spells with no button, spells with no cooldown, old ranks next to new ones. `data/Layout.lua` now holds: a "press now" row
+  whose contents follow the form (Elune's Light and Nature's Grasp always; Enrage and Bash in bear), a second row that shows a
+  spell only while it is on cooldown (Feral Charge, Dash, Shadowmeld, Growl), a new bar with the options of a cat fight (Ravage
+  in stealth; Rake, Claw; Ferocious Bite and Rip while the game calls them usable), Elune's Light, Rake and Rip first on the
+  buffs bar, and every other entry of Blizzard's cooldown list parked on EllesmereUI's hidden bar. It is written by
+  `dev/elle-config/emit-cooldowns.js` from `plans/thara-cooldowns.js`, as whole values (a bar's list, one spell's rule), and a
+  guard refuses any path that is not cooldown manager data: Cesar asked "how can we make sure that we will not change
+  anything?" about his action buttons, which the game keeps and no settings file holds. No addon code changed. EllesmereUI's
+  settings were read in its source (3f3d015, version 9.9.3; no licence, nothing copied): spell lists and per-spell rules under
+  `spellAssignments.profiles.<profile>.specProfiles.<spec>`, bars and custom spells' rules under the module's profile. The
+  spell ids are the ranks Thara had on 2026-11-24, from the game's own cooldown list. Not verified in the client: all of it;
+  that EllesmereUI keeps lists written this way through the reload; custom spells (Ravage, Claw, Ferocious Bite), which its own
+  dialog says may not work fully; that the game reports a finisher as unusable at 0 combo points; that the installed version
+  (the settings say 9.8) has these rules.
+  The same release empties the button plan (4BI-50; Cesar, 2026-11-24: "yes empty it"): `data/Plan.lua` comes from
+  `plans/none.js`, so `/qb bars apply` places nothing. The level 24 plan would have overwritten the buttons of level 37.

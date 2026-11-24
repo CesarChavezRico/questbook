@@ -289,6 +289,14 @@ test('emit: the layout and plan files are valid Lua and say what they hold', asy
   assert.throws(() => require('../emit-plan.js').emit({ name: 'x', macros: [], seats: [[1, 1, { kind: 'macro', name: 'Missing' }]] }), /does not define/);
 });
 
+test('the shipped button plan is empty: no button, no macro (4BI-50)', () => {
+  const none = require('../emit-plan.js').emit(require('../plans/none.js'));
+  assert.strictEqual(none.slots, 0); assert.strictEqual(none.macros, 0);
+  const shipped = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'data', 'Plan.lua'), 'utf8');
+  assert.strictEqual(shipped, none.text, 'data/Plan.lua is not what plans/none.js gives: run emit-plan.js none');
+  assert.ok(!/kind = /.test(shipped), 'the shipped plan names a button');
+});
+
 test('the built page is up to date with src/', () => {
   const b = require('../build.js');
   assert.strictEqual(fs.readFileSync(b.out, 'utf8'), b.build(), 'run: node dev/elle-config/build.js');
@@ -307,6 +315,106 @@ if (real) {
       assert.ok(l >= 0 && tp >= 0 && l + e.w * s.pxPerUnit <= 3440 && tp + e.h * s.pxPerUnit <= 1440, e.id + ' is off screen');
       assert.ok(Math.abs(l - Math.round(l)) < 0.01 && Math.abs(tp - Math.round(tp)) < 0.01, e.id + ' is not on whole pixels: ' + l + ',' + tp);
     }
+  });
+}
+
+// ---- the cooldown layout (4BI-51): emit-cooldowns.js writes cooldown manager data and nothing else
+{
+  const C = require('../emit-cooldowns.js');
+  const plan = require('../plans/thara-cooldowns.js');
+  // a settings file in the shape of Cesar's of 2026-11-24: three default bars without keys, a kick bar, the hidden bar
+  const settings = () => `EllesmereUIDB = {
+    ["activeProfile"] = "Mine",
+    ["profiles"] = { ["Mine"] = { ["addons"] = {
+      ["EllesmereUIActionBars"] = { ["bars"] = { ["MainBar"] = { ["buttonWidth"] = 45 } } },
+      ["EllesmereUICooldownManager"] = {
+        ["customActiveStates"] = {},
+        ["cdmBarPositions"] = { ["cooldowns"] = { ["point"] = "LEFT", ["relPoint"] = "CENTER", ["x"] = 32, ["y"] = -193 } },
+        ["cdmBars"] = { ["bars"] = {
+          { ["iconSize"] = 47, ["iconShape"] = "circle", ["borderThickness"] = "strong", ["borderSize"] = 4, ["spacing"] = 1.5, ["iconZoom"] = 0.06 },
+          { ["iconSize"] = 30 }, { ["iconSize"] = 30 },
+          { ["key"] = "focuskick", ["barType"] = "cooldowns" },
+          { ["key"] = "__ghost_cd", ["isGhostBar"] = true, ["barType"] = "cooldowns" },
+        } },
+      },
+    } } },
+    ["spellAssignments"] = { ["profiles"] = { ["Mine"] = { ["specProfiles"] = { ["102"] = {
+      ["barSpells"] = {
+        ["__ghost_cd"] = { ["assignedSpells"] = { 8926, 1822, 5570 } },
+        ["cooldowns"] = { ["assignedSpells"] = { 9493, 8972, 1079 } },
+        ["utility"] = { ["assignedSpells"] = { 1238122, 1850 } },
+        ["buffs"] = { ["buffDisplayOrder"] = { "c199480", "c199495" } },
+      },
+      ["spellSettingsCD"] = {},
+    } } } } },
+  }`;
+  const at = (r, ...p) => (r.sets.find((s) => JSON.stringify(s.path) === JSON.stringify(p)) || {}).value;
+  const SPEC = ['spellAssignments', 'profiles', '$profile', 'specProfiles', '102'];
+  const CDM = ['profiles', '$profile', 'addons', 'EllesmereUICooldownManager'];
+
+  test('cooldown layout: the guard lets cooldown manager data through and nothing else', () => {
+    assert.ok(C.allowed(SPEC.concat('barSpells', 'utility', 'assignedSpells'), '102'));
+    assert.ok(C.allowed(SPEC.concat('spellSettingsCD', 1850), '102'));
+    assert.ok(C.allowed(CDM.concat('cdmBars', 'bars', 6), '102'));
+    assert.ok(C.allowed(CDM.concat('cdmBarPositions', 'custom_6_4bi51'), '102'));
+    assert.ok(C.allowed(CDM.concat('customActiveStates', 3029), '102'));
+    for (const p of [
+      ['profiles', '$profile', 'addons', 'EllesmereUIActionBars', 'bars', 'MainBar', 'buttonWidth'], // action bars
+      ['profiles', '$profile', 'addons', 'EllesmereUICooldownManager'],                                // the whole module
+      CDM.concat('cdmBars'), CDM.concat('cdmBars', 'bars'),                                            // every bar at once
+      ['clickCast', 'specs'], ['spellAssignments'], SPEC, SPEC.concat('barSpells'),                   // too wide
+      SPEC.concat('barSpells', 'utility'), SPEC.concat('barSpells', 'utility', 'barSettings'),
+      ['spellAssignments', 'profiles', '$profile', 'specProfiles', '105', 'barSpells', 'utility', 'assignedSpells'], // another spec
+      ['spellAssignments', 'profiles', 'Default', 'specProfiles', '102', 'barSpells', 'utility', 'assignedSpells'], // a named profile
+    ]) assert.strictEqual(C.allowed(p, '102'), false, p.join('.'));
+  });
+  test('cooldown layout: every value written passes the guard, and no path names another module', () => {
+    const r = C.build(settings(), plan);
+    assert.ok(r.sets.length > 0);
+    for (const s of r.sets) {
+      assert.ok(C.allowed(s.path, plan.spec), s.path.join('.'));
+      assert.ok(!/ActionBars|clickCast|UnitFrames|Bindings|Macro/i.test(s.path.join('.')), s.path.join('.'));
+    }
+    assert.strictEqual(r.profile, 'Mine');
+  });
+  test('cooldown layout: the rows, the new bar after the last one, the hidden list', () => {
+    const r = C.build(settings(), plan);
+    assert.deepStrictEqual([...at(r, ...SPEC, 'barSpells', 'cooldowns', 'assignedSpells').values()], plan.rows.cooldowns.map((s) => s.id));
+    assert.deepStrictEqual([...at(r, ...SPEC, 'barSpells', 'utility', 'assignedSpells').values()], plan.rows.utility.map((s) => s.id));
+    assert.strictEqual(r.barIndex, 6);
+    const bar = at(r, ...CDM, 'cdmBars', 'bars', 6);
+    assert.strictEqual(bar.get('key'), plan.rotation.key);
+    assert.strictEqual(bar.get('iconShape'), 'circle'); assert.strictEqual(bar.get('borderThickness'), 'strong'); // the look of the first bar
+    assert.deepStrictEqual([...at(r, ...SPEC, 'barSpells', plan.rotation.key, 'assignedSpells').values()], plan.rotation.spells.map((s) => s.id));
+    assert.deepStrictEqual([...at(r, ...SPEC, 'barSpells', plan.rotation.key, 'customSpellIDs').keys()], plan.rotation.spells.filter((s) => s.custom).map((s) => s.id));
+    assert.deepStrictEqual([...at(r, ...SPEC, 'barSpells', '__ghost_cd', 'assignedSpells').values()], plan.hidden.map((s) => s.id));
+    assert.deepStrictEqual(r.dropped, [8926, 1822], 'what the hidden bar loses is reported');
+    assert.deepStrictEqual([...at(r, ...SPEC, 'barSpells', 'buffs', 'buffDisplayOrder').values()], ['c200190', 'c199495', 'c199499', 'c199480'], 'the plan first, the rest kept, none twice');
+  });
+  test('cooldown layout: a native spell rule goes with the spec, a custom spell rule with the profile', () => {
+    const r = C.build(settings(), plan);
+    assert.deepStrictEqual(L.toPlain(at(r, ...SPEC, 'spellSettingsCD', 1850)), { cdStateEffect: 'hiddenReadyShift' });
+    assert.deepStrictEqual(L.toPlain(at(r, ...SPEC, 'spellSettingsCD', 5229)), { stanceBarHide: 'outShift:bear' });
+    assert.deepStrictEqual(L.toPlain(at(r, ...SPEC, 'spellSettingsCD', 9493)), { cdStateEffect: 'hiddenUnusableShift', stanceBarHide: 'outShift:cat' });
+    assert.deepStrictEqual(L.toPlain(at(r, ...CDM, 'customActiveStates', 6785)), { stanceBarHide: 'outShift:prowl' });
+    assert.strictEqual(at(r, ...SPEC, 'spellSettingsCD', 6785), undefined);
+    assert.strictEqual(at(r, ...SPEC, 'spellSettingsCD', 1259799), undefined, 'a spell with no rule gets no entry');
+  });
+  test('cooldown layout: a spell on two bars, an unknown rule and a missing bar are refused', () => {
+    const twice = Object.assign({}, plan, { hidden: plan.hidden.concat([{ id: 1850, name: 'Dash' }]) });
+    assert.throws(() => C.build(settings(), twice), /Dash \(1850\) is listed twice/);
+    assert.throws(() => C.rule({ name: 'x', when: 'sometimes' }), /unknown when/);
+    assert.throws(() => C.rule({ name: 'x', form: 'tree' }), /unknown form/);
+    assert.throws(() => C.build(settings().replace('["__ghost_cd"] = { ["assignedSpells"]', '["x"] = { ["assignedSpells"]').replace('["isGhostBar"] = true, ', ''), plan), /no hidden bar/);
+    assert.throws(() => C.build('EllesmereUIDB = { ["activeProfile"] = "Mine" }', plan), /no cooldown manager data/);
+  });
+  test('cooldown layout: the shipped data/Layout.lua holds guarded paths only, and is what the plan gives', () => {
+    const shipped = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'data', 'Layout.lua'), 'utf8');
+    const paths = [...shipped.matchAll(/path = \{ ([^}]*) \}/g)].map((m) => m[1].split(', ').map((x) => (x[0] === '"' ? JSON.parse(x) : Number(x))));
+    assert.ok(paths.length > 0);
+    for (const p of paths) assert.ok(C.allowed(p, plan.spec), p.join('.'));
+    assert.ok(shipped.includes('name = ' + L.lua(plan.name) + ','), 'the shipped layout was generated from another plan: run emit-cooldowns.js');
+    for (const s of [].concat(plan.rows.cooldowns, plan.rows.utility, plan.rotation.spells, plan.hidden)) assert.ok(shipped.includes(String(s.id)), s.name + ' is in the plan and not in the shipped layout');
   });
 }
 
