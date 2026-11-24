@@ -57,6 +57,11 @@ Swapping the settings file costs a logout. The addon can instead apply both whil
   In game: `/qb layout check | apply | undo`. Apply reloads the UI.
 - `node dev/elle-config/emit-plan.js thara` writes `data/Plan.lua` from `plans/thara.js`. In game: `/qb bars check | apply | undo`.
 
+- `node dev/elle-config/emit-cooldowns.js <EllesmereUI.lua>` writes `data/Layout.lua` from `plans/thara-cooldowns.js` (4BI-51):
+  which spell sits on which cooldown bar, each spell's show/hide rule, and one new bar. It writes whole values and refuses any
+  path that is not cooldown manager data. The settings file is only read. It replaces whatever `emit-layout.js` wrote before:
+  the addon carries one EllesmereUI layout at a time. Spell ids are ranks; update the plan when a spell is trained up.
+
 - `node dev/elle-config/emit-guide.js` writes `data/Guide.lua` from `plans/guide-rxp.js`: settings for RestedXP Guides (4BI-42),
   applied by the same `/qb layout apply`.
 - `node dev/elle-config/emit-plates.js` writes `data/Plates.lua` from `plans/plates-mf.js`: settings for MF Nameplates (4BI-43),
