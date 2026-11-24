@@ -472,6 +472,31 @@ local function CaptureSoon()
   else mod:CaptureRecipes() end
 end
 
+-- ---------------------------------------------------------------- action buttons, macros, key bindings (4BI-50, v0.42.0)
+--
+-- Cesar, 2026-11-24: "one thing that worries me is losing any of my 'on the fly' assignments of abilities to buttons" ...
+-- "automate the dump or backup using the qb state save at the end of a session and maybe also add a command to read it
+-- live". The game keeps the button assignments on its servers; no settings file holds them, and until now the only copy
+-- was the one `/qb bars dump` made when typed. Now every state carries `bars`:
+--   buttons   a list, one entry per action slot in use: { slot, kind, id, name, sub }
+--   macros    a list: { index, name, icon, body }
+--   binds     [binding name] = { key, second key }
+--   at        when it was read
+-- The reading is the loadout module's (`ReadBars`, the same one /qb bars dump uses); this only calls it. Read only: nothing
+-- here places, moves or clears a button. A read with no button in use never replaces a kept one (the 4BI-47 / 4BI-48
+-- rule: at a real logout the client answers nothing). A backup is a record, not a restore.
+local function Bars()
+  local ok, b = QB:Call("loadout", "ReadBars")
+  if not ok or type(b) ~= "table" or type(b.slots) ~= "table" then return nil end
+  local buttons = {}
+  for slot = 1, 180 do
+    local r = b.slots[slot]
+    if type(r) == "table" then buttons[#buttons + 1] = { slot = slot, kind = r.kind, id = r.id, name = r.name, sub = r.sub } end
+  end
+  return { at = Call("time"), buttons = buttons, macros = type(b.macros) == "table" and b.macros or {}, binds = type(b.binds) == "table" and b.binds or {} }
+end
+mod.Bars = function() return Bars() end
+
 -- Read the character from the game, now.
 local function Read(how)
   local s = { v = VERSION, at = Call("time"), addon = QB.version, how = how }
@@ -487,6 +512,7 @@ local function Read(how)
   s.bags = Bags(0, 4)
   s.gear = Gear()
   s.skills = Skills()
+  s.bars = Bars()
   return s
 end
 
@@ -530,6 +556,10 @@ local function Take(how)
   if not Hollow(s) and (type(s.skills) ~= "table" or #s.skills == 0) and snap and type(snap.skills) == "table" and #snap.skills > 0 then
     s.skills = snap.skills
   end
+  -- the same for the buttons: a read with no button in use keeps the last one that had some
+  if not Hollow(s) and (type(s.bars) ~= "table" or #(s.bars.buttons or {}) == 0) and snap and type(snap.bars) == "table" and #(snap.bars.buttons or {}) > 0 then
+    s.bars = snap.bars
+  end
   if not Hollow(s) then snap = WithBank(s) end
   return snap, s
 end
@@ -569,6 +599,9 @@ mod.events.PLAYER_EQUIPMENT_CHANGED = Dirty
 mod.events.ZONE_CHANGED_NEW_AREA = Dirty
 mod.events.TRADE_SKILL_SHOW = CaptureSoon
 mod.events.TRADE_SKILL_LIST_UPDATE = CaptureSoon
+mod.events.ACTIONBAR_SLOT_CHANGED = Dirty
+mod.events.UPDATE_MACROS = Dirty
+mod.events.UPDATE_BINDINGS = Dirty
 mod.events.SKILL_LINES_CHANGED = Dirty
 mod.events.CHAT_MSG_SKILL = Dirty
 

@@ -656,7 +656,7 @@ green by itself there.
   information needed for offline prep of a game session"; "a 'prep state' ... where errors are harmless and we move to 'play
   state' when I am sitting at the rig"; "an away counter will help me keep it alive". Questions arrive through the relay
   addon (`WoWAI.RegisterInbound`, kind `qbask`; wow-relay 4BI-45) and are answered with `WoWAI.SendData("answer", ...)`, in
-  parts when long. A fixed question (`q state | bags | quests | skills | recipes [profession] | guide a b | items ids | completed ids`) is answered in
+  parts when long. A fixed question (`q state | bags | quests | skills | recipes [profession] | bars [macros] | guide a b | items ids | completed ids`) is answered in
   either state. Free Lua (`lua` on the first line) is answered only in prep state, which only `/qb prep on` typed at the
   client switches on (memory only; `/qb prep off` reloads the UI, because such code taints what it touched). Free Lua runs
   in pcall inside a fence: its own environment, the game's reading functions by name (Get / Is / Has / Can / Unit / Num /
@@ -725,3 +725,15 @@ green by itself there.
   fixed question `q recipes` answers a summary and the crafting professions never captured; `q recipes <profession>` answers
   that list (without materials past 100 recipes, to stay under the answer's 20,000 characters). The classic "craft" window
   (enchanting) is not read. Not verified in the client: which way answers, the modern field names, the event names.
+- **v0.42.0, sync and prep: the action buttons, macros and key bindings (4BI-50).** Cesar, 2026-11-24: "one thing that worries
+  me is losing any of my 'on the fly' assignments of abilities to buttons", then "automate the dump or backup using the qb state
+  save at the end of a session and maybe also add a command to read it live". The game keeps the buttons on its servers; the
+  only copy was the one `/qb bars dump` made when typed. Now `QuestBookState.bars` = `{ at, buttons, macros, binds }`:
+  `buttons` a list of `{ slot, kind, id, name, sub }` for the slots in use (1 to 180), `macros` with their text, `binds` by
+  binding name. The reading is the loadout module's (`ReadBars`, split out of `Dump`, which still writes its own copy in the
+  same shape as before); sync only calls it. The state is marked for a new read on `ACTIONBAR_SLOT_CHANGED`, `UPDATE_MACROS`
+  and `UPDATE_BINDINGS`; a read with no button in use keeps the last copy (the 4BI-47 rule). The fixed question `q bars`
+  answers the buttons and bindings with the macros' names; `q bars macros` answers the macros' text (apart, so neither is
+  cut). Read only: nothing places, moves or clears a button, and a backup is a record, not a restore (`/qb bars apply` from a
+  generated plan is the only way back, never confirmed in the client: 4BI-41). Not measured: how much `bars` adds to the
+  state file. Not verified in the client.

@@ -8,7 +8,7 @@
 -- Questions arrive through the relay addon (WoWAI.RegisterInbound, kind "qbask": wow-relay 4BI-45), answers go back with
 -- WoWAI.SendData("answer", ...). A question is a few lines of text; its first line says what it is:
 --
---   q <name> [arguments]     a FIXED question, answered in either state: state | bags | quests | skills | recipes [<profession>] |
+--   q <name> [arguments]     a FIXED question, answered in either state: state | bags | quests | skills | recipes [<profession>] | bars [macros] |
 --                            guide <from> <to> | items <id,id,...> | completed <id,id,...> | chapters [all | <from> <to> | <text>] |
 --                            chapter [<from> <to>] <name>   (a chapter RestedXP has not read yet: prep state only)
 --   lua                      FREE Lua on the lines that follow, answered ONLY in prep state
@@ -360,6 +360,20 @@ FIXED.recipes = function(args)
   out.note = "a list is as old as the last time its window was opened"
   return out
 end
+-- The action buttons, macros and key bindings, read now (4BI-50). `q bars`: the buttons in use and the bindings, with
+-- the macros' names only. `q bars macros`: the macros with their text (kept apart so neither answer is cut).
+FIXED.bars = function(args)
+  local ok, b = QB:Call("sync", "Bars")
+  if not ok then return nil, "the sync module is off" end
+  if type(b) ~= "table" then return { known = false, note = "the loadout module is off, so the buttons cannot be read" } end
+  local want = (args or ""):gsub("^%s+", ""):gsub("%s+$", ""):lower()
+  local nb = 0
+  for _ in pairs(b.binds) do nb = nb + 1 end
+  if want == "macros" then return { known = true, at = b.at, count = #b.macros, macros = b.macros } end
+  local names = {}
+  for i, m in ipairs(b.macros) do names[i] = m.name end
+  return { known = true, at = b.at, used = #b.buttons, bound = nb, buttons = b.buttons, binds = b.binds, macroNames = names }
+end
 FIXED.completed = function(args)
   local Q = _G.C_QuestLog
   local out = {}
@@ -537,7 +551,7 @@ function mod:Answer(body)
     if not ok2 then return "error encode: " .. tostring(text) end
     return "ok " .. text
   end
-  return "refused: not a question this addon knows (first line: \"lua\", or \"q state | bags | quests | skills | recipes [<profession>] | guide <from> <to> | items <ids> | completed <ids> | chapters | chapter [<from> <to>] <name>\")", true
+  return "refused: not a question this addon knows (first line: \"lua\", or \"q state | bags | quests | skills | recipes [<profession>] | bars [macros] | guide <from> <to> | items <ids> | completed <ids> | chapters | chapter [<from> <to>] <name>\")", true
 end
 
 -- Answers go back through the relay addon, in parts when long. They wait in an outbox until the relay takes them: the
