@@ -393,8 +393,11 @@ end
 local BIND_PREFIXES = { "ACTIONBUTTON", "MULTIACTIONBAR1BUTTON", "MULTIACTIONBAR2BUTTON", "MULTIACTIONBAR3BUTTON", "MULTIACTIONBAR4BUTTON",
   "MULTIACTIONBAR5BUTTON", "MULTIACTIONBAR6BUTTON", "MULTIACTIONBAR7BUTTON", "EUI_BAR9_BUTTON", "EUI_BAR10_BUTTON" }
 
-function mod:Dump()
-  local _, spells, noBook = ReadSpells()
+-- What is on the buttons now, read and nothing else (4BI-50): { slots, used, macros, binds }. `slots` is keyed by slot
+-- number (1 to 180), `macros` is a list with each macro's text, `binds` maps a button's binding name to its one or two keys.
+-- Used by /qb bars dump (below) and by the sync module, which keeps a copy in the state file at every session's end.
+-- It only asks the game: nothing here places, moves or clears a button.
+function mod:ReadBars()
   local slots, used = {}, 0
   for slot = 1, MAX_SLOT do
     local rec = ReadSlot(slot)
@@ -421,12 +424,18 @@ function mod:Dump()
       end
     end
   end
+  return { slots = slots, used = used, macros = macros, binds = binds }
+end
+
+function mod:Dump()
+  local _, spells, noBook = ReadSpells()
+  local bars = self:ReadBars()
   local okU, who = Try(_G.UnitName, "player")
-  self.db.dump = { v = 1, char = okU and Plain(who, "string") or nil, version = QB.version, slots = slots, spells = spells, macros = macros, binds = binds }
+  self.db.dump = { v = 1, char = okU and Plain(who, "string") or nil, version = QB.version, slots = bars.slots, spells = spells, macros = bars.macros, binds = bars.binds }
   local nb = 0
-  for _ in pairs(binds) do nb = nb + 1 end
+  for _ in pairs(bars.binds) do nb = nb + 1 end
   QB:Say(string.format("bars dump: %d button(s) in use, %d spell(s), %d macro(s), %d bound button(s) saved%s. Log out or /reload to write the file.",
-    used, #spells, #macros, nb, noBook and (" | " .. noBook) or ""))
+    bars.used, #spells, #bars.macros, nb, noBook and (" | " .. noBook) or ""))
   return true
 end
 
