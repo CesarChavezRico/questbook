@@ -289,6 +289,14 @@ test('emit: the layout and plan files are valid Lua and say what they hold', asy
   assert.throws(() => require('../emit-plan.js').emit({ name: 'x', macros: [], seats: [[1, 1, { kind: 'macro', name: 'Missing' }]] }), /does not define/);
 });
 
+test('the shipped button plan is empty: no button, no macro (4BI-50)', () => {
+  const none = require('../emit-plan.js').emit(require('../plans/none.js'));
+  assert.strictEqual(none.slots, 0); assert.strictEqual(none.macros, 0);
+  const shipped = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'data', 'Plan.lua'), 'utf8');
+  assert.strictEqual(shipped, none.text, 'data/Plan.lua is not what plans/none.js gives: run emit-plan.js none');
+  assert.ok(!/kind = /.test(shipped), 'the shipped plan names a button');
+});
+
 test('the built page is up to date with src/', () => {
   const b = require('../build.js');
   assert.strictEqual(fs.readFileSync(b.out, 'utf8'), b.build(), 'run: node dev/elle-config/build.js');

@@ -55,7 +55,9 @@ Swapping the settings file costs a logout. The addon can instead apply both whil
 - `node dev/elle-config/emit-layout.js <before.lua> <after.lua> "<name>"` writes `data/Layout.lua`: the values that turn
   the first settings file into the second. Use the file the player has now as "before", so only real changes are written.
   In game: `/qb layout check | apply | undo`. Apply reloads the UI.
-- `node dev/elle-config/emit-plan.js thara` writes `data/Plan.lua` from `plans/thara.js`. In game: `/qb bars check | apply | undo`.
+- `node dev/elle-config/emit-plan.js <plan>` writes `data/Plan.lua` from `plans/<plan>.js`. In game: `/qb bars check | apply | undo`.
+  The shipped plan is `none` (empty, since 2026-11-24, 4BI-50): `/qb bars apply` places nothing. `thara` is the level 24 plan, kept
+  as a record. A plan goes stale the first time a button is moved in the game, so ship one only for a change about to be applied.
 
 - `node dev/elle-config/emit-cooldowns.js <EllesmereUI.lua>` writes `data/Layout.lua` from `plans/thara-cooldowns.js` (4BI-51):
   which spell sits on which cooldown bar, each spell's show/hide rule, and one new bar. It writes whole values and refuses any

@@ -753,3 +753,5 @@ green by itself there.
   that EllesmereUI keeps lists written this way through the reload; custom spells (Ravage, Claw, Ferocious Bite), which its own
   dialog says may not work fully; that the game reports a finisher as unusable at 0 combo points; that the installed version
   (the settings say 9.8) has these rules.
+  The same release empties the button plan (4BI-50; Cesar, 2026-11-24: "yes empty it"): `data/Plan.lua` comes from
+  `plans/none.js`, so `/qb bars apply` places nothing. The level 24 plan would have overwritten the buttons of level 37.

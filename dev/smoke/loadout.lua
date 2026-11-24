@@ -38,7 +38,18 @@ local function said(pat) for _, l in ipairs(__take()) do if l:find(pat) then ret
 local M = QB.modules.loadout
 assert(M and M.active, "the module is on")
 -- the addon ships a plan and a layout (data/): they loaded, and are set aside so the scenarios below use their own
-assert(type(QB.planData) == "table" and QB.planData.v == 2 and next(QB.planData.slots), "data/Plan.lua loaded")
+assert(type(QB.planData) == "table" and QB.planData.v == 2, "data/Plan.lua loaded")
+-- 0. the shipped plan is empty (4BI-50): it places nothing, and it stands in front of a plan left in the saved settings
+assert(next(QB.planData.slots) == nil and #QB.planData.macros == 0, "the shipped plan has no button and no macro")
+M.db.plan = { v = 2, slots = { [1] = { kind = "spell", name = "Claw" } } }
+SlashCmdList.QUESTBOOK("bars apply")
+do
+  local heard
+  for _, l in ipairs(__take()) do if l:find("no plan yet") then heard = true end end
+  assert(heard, "the empty shipped plan: apply says there is nothing to apply")
+end
+assert(slots[1][2] == 100 and slots[2][2] == 1 and slots[13][2] == 300, "the empty shipped plan: no button changed, the saved plan was not used")
+M.db.plan = nil
 assert(type(QB.layoutData) == "table" and #QB.layoutData.sets > 0, "data/Layout.lua loaded")
 assert(type(QB.guideData) == "table" and #QB.guideData.sets > 0, "data/Guide.lua loaded")
 assert(type(QB.platesData) == "table" and #QB.platesData.sets > 0, "data/Plates.lua loaded")
