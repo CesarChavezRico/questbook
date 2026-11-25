@@ -656,7 +656,7 @@ green by itself there.
   information needed for offline prep of a game session"; "a 'prep state' ... where errors are harmless and we move to 'play
   state' when I am sitting at the rig"; "an away counter will help me keep it alive". Questions arrive through the relay
   addon (`WoWAI.RegisterInbound`, kind `qbask`; wow-relay 4BI-45) and are answered with `WoWAI.SendData("answer", ...)`, in
-  parts when long. A fixed question (`q state | bags | quests | skills | recipes [profession] | bars [macros] | guide a b | items ids | completed ids`) is answered in
+  parts when long. A fixed question (`q state | bags | quests | skills | recipes [profession [unlearned [from to]]] | bars [macros] | guide a b | items ids | completed ids`) is answered in
   either state. Free Lua (`lua` on the first line) is answered only in prep state, which only `/qb prep on` typed at the
   client switches on (memory only; `/qb prep off` reloads the UI, because such code taints what it touched). Free Lua runs
   in pcall inside a fence: its own environment, the game's reading functions by name (Get / Is / Has / Can / Unit / Num /
@@ -755,3 +755,17 @@ green by itself there.
   (the settings say 9.8) has these rules.
   The same release empties the button plan (4BI-50; Cesar, 2026-11-24: "yes empty it"): `data/Plan.lua` comes from
   `plans/none.js`, so `/qb bars apply` places nothing. The level 24 plan would have overwritten the buttons of level 37.
+- **v0.43.0, sync and prep: the recipes not learned yet (4BI-52).** Cesar, 2026-11-25: "I need to prepare for higher level LW
+  recipies, I think I maxed up the trainer in darnasuss". (v0.41.0's capture was seen in the client: it answers through
+  `C_TradeSkillUI`.) The walk of `GetAllRecipeIDs` also passes over recipes not learned; they are now kept apart from the known
+  ones, as `recipes[<profession>].unlearned` = a list of `{ name, id, skill, grey, source, sourceType }`, lowest skill first (800
+  at most; what is left out is counted in `unlearnedCut`). `source` is `GetRecipeSourceText` without colour codes, on one line,
+  cut at 120 characters. `skill` (the skill the recipe needs) has no documented field in the modern recipe info, so it is the
+  first of a few likely field names that holds a number, else a number in brackets in the source text; `unlearnedSkillFrom`
+  says which. `grey` is `maxTrivialLevel`, the skill at which the recipe stops giving points. One sample (`unlearnedSample`:
+  the field names of an unlearned recipe's info and its raw source text) is kept so the first capture in the game shows what
+  the client really gives. `q recipes <profession> unlearned [<from> <to>]` answers them: at most 90 in one answer, the range
+  on the skill (on `grey` when no skill is known, on the position when neither), `missing` naming what the game did not give.
+  The summary and the plain list count them. The classic globals have no unlearned recipes: the field is left out. Still
+  never opens a window, crafts or trains. Not verified in the client: that Forever's list holds unlearned recipes at all, and
+  every field. A number in brackets in a source text may be something other than the skill; `unlearnedSkillFrom` marks it.
