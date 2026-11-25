@@ -8,7 +8,7 @@
 -- Questions arrive through the relay addon (WoWAI.RegisterInbound, kind "qbask": wow-relay 4BI-45), answers go back with
 -- WoWAI.SendData("answer", ...). A question is a few lines of text; its first line says what it is:
 --
---   q <name> [arguments]     a FIXED question, answered in either state: state | bags | quests | skills | recipes [<profession>] | bars [macros] |
+--   q <name> [arguments]     a FIXED question, answered in either state: state | bags | quests | skills | recipes [<profession> [unlearned [<from> <to>]]] | bars [macros] |
 --                            guide <from> <to> | items <id,id,...> | completed <id,id,...> | chapters [all | <from> <to> | <text>] |
 --                            chapter [<from> <to>] <name>   (a chapter RestedXP has not read yet: prep state only)
 --   lua                      FREE Lua on the lines that follow, answered ONLY in prep state
@@ -330,6 +330,16 @@ FIXED.recipes = function(args)
   if not ok then return nil, "the sync module is off" end
   saved = type(saved) == "table" and saved or {}
   local want = (args or ""):gsub("^%s+", ""):gsub("%s+$", ""):lower()
+  -- `<profession> unlearned [<from> <to>]` (4BI-52): the recipes not learned yet, lowest skill first
+  local unlearned, from, to
+  do
+    local head, tail = want:match("^(.-)%s*unlearned%s*(.*)$")
+    if head then
+      unlearned, want = true, head:gsub("%s+$", "")
+      from, to = tail:match("^(%d+)%s+(%d+)")
+      from, to = tonumber(from), tonumber(to)
+    end
+  end
   if want ~= "" then
     local hit
     for name, cap in pairs(saved) do
@@ -337,7 +347,41 @@ FIXED.recipes = function(args)
       if not hit and name:lower():find(want, 1, true) == 1 then hit = cap end
     end
     if not hit then return { profession = want, captured = false, note = "not captured yet: open that profession's window once in the game" } end
-    local out = { profession = hit.name, captured = true, at = hit.at, skill = hit.skill, max = hit.max, count = hit.count, partial = hit.partial, how = hit.how }
+    if unlearned then
+      local out = { profession = hit.name, captured = true, at = hit.at, skill = hit.skill, max = hit.max, how = hit.how }
+      local all = hit.unlearned
+      if type(all) ~= "table" then
+        out.unlearnedKnown = false
+        out.note = (hit.how == "C_TradeSkillUI") and "this capture holds learned recipes only: it was made before QuestBook v0.43.0, or the game's list has no unlearned recipes. Open the window again."
+          or "this client's recipe list holds learned recipes only"
+        return out
+      end
+      out.unlearnedKnown, out.total, out.leftOutAtCapture = true, #all, hit.unlearnedCut
+      -- what the game did not give, so the reader knows what the list can and cannot say
+      local missing, anySkill, anySource, anyGrey = {}, false, false, false
+      for _, r in ipairs(all) do anySkill = anySkill or r.skill ~= nil; anySource = anySource or r.source ~= nil; anyGrey = anyGrey or r.grey ~= nil end
+      if not anySkill then missing[#missing + 1] = "skill" end
+      if not anySource then missing[#missing + 1] = "source" end
+      if #missing > 0 then out.missing = missing end
+      out.skillFrom = hit.unlearnedSkillFrom
+      if not anySkill or not anySource then out.sample = hit.unlearnedSample end      -- the field names the game gave, to see what else there is
+      -- the range: on the skill needed; without any skill, on the skill at which it turns grey; without that, on the position
+      local on = anySkill and "skill" or (anyGrey and "grey") or "position"
+      local picked = {}
+      for i, r in ipairs(all) do
+        local v = (on == "position") and i or r[on]
+        if not from or (v and v >= from and v <= to) then picked[#picked + 1] = r end
+      end
+      if from then out.range = { from = from, to = to, on = on } end
+      -- an answer is cut at 20,000 characters: at most 90 recipes, and say how many more there are
+      local LIMIT = 90
+      out.recipes = {}
+      for i = 1, math.min(#picked, LIMIT) do out.recipes[i] = picked[i] end
+      out.count = #out.recipes
+      if #picked > LIMIT then out.more = #picked - LIMIT; out.note = "more than " .. LIMIT .. " recipes: ask with a range, `q recipes <profession> unlearned <from> <to>`" end
+      return out
+    end
+    local out = { profession = hit.name, captured = true, at = hit.at, skill = hit.skill, max = hit.max, count = hit.count, partial = hit.partial, how = hit.how, unlearned = hit.unlearnedCount }
     -- a long list goes without its materials, so the answer stays whole (an answer is cut at 20,000 characters)
     if #(hit.list or {}) > 100 then
       out.matsLeftOut = true
@@ -350,7 +394,7 @@ FIXED.recipes = function(args)
   end
   local out = { captured = {}, notCaptured = {} }
   for name, cap in pairs(saved) do
-    out.captured[#out.captured + 1] = { profession = name, count = cap.count, at = cap.at, skill = cap.skill, max = cap.max, partial = cap.partial }
+    out.captured[#out.captured + 1] = { profession = name, count = cap.count, unlearned = cap.unlearnedCount, at = cap.at, skill = cap.skill, max = cap.max, partial = cap.partial }
   end
   table.sort(out.captured, function(a, b) return tostring(a.profession) < tostring(b.profession) end)
   local okS, skills = QB:Call("sync", "Skills")

@@ -364,6 +364,46 @@ local DIFF_NUM = { [0] = "orange", [1] = "yellow", [2] = "green", [3] = "grey" }
 local DIFF_WORD = { optimal = "orange", medium = "yellow", easy = "green", trivial = "grey" }
 local RECIPES_MAX = 400         -- recipes kept for one profession
 
+-- The recipes NOT learned yet (4BI-52, v0.43.0). Cesar, 2026-11-25: "I need to prepare for higher level LW recipies, I think I
+-- maxed up the trainer in darnasuss". The same walk of GetAllRecipeIDs passes over recipes the character has not learned;
+-- until now they were dropped. They are kept APART from the known ones (`cap.unlearned`, so `cap.list` keeps its meaning),
+-- short: { name, id, skill, grey, source, sourceType }.
+--   source      C_TradeSkillUI.GetRecipeSourceText(id), as the game words it, without colour codes, one line, cut at 120
+--   skill       the skill the recipe needs. No field of the modern recipe info is documented to hold it, so: the first of a
+--               few likely field names that is a number, else a number in brackets in the source text ("... (165)").
+--               `cap.unlearnedSkillFrom` says which it was ("field <name>" or "source text"); absent when neither gave it.
+--   grey        info.maxTrivialLevel: the skill at which the recipe stops giving points. Not the skill needed to learn it.
+-- What this client really gives is not known from here, so the capture also keeps, once, the field names of one unlearned
+-- recipe's info table and its raw source text (`cap.unlearnedSample`): the first capture in the game answers the question.
+-- UNVERIFIED (client only): that GetAllRecipeIDs lists unlearned recipes at all on Forever; every field above.
+local UNLEARNED_MAX = 800       -- unlearned recipes kept for one profession
+local SOURCE_MAX = 120          -- characters of a source text kept
+local SKILL_FIELDS = { "requiredSkillRank", "requiredSkill", "skillRequired", "minSkillLevel", "minSkillLineRank", "earliestSkillLineRequired", "trainerSkillRequired" }
+
+local function CleanSource(text)
+  if type(text) ~= "string" then return nil end
+  text = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|cn[%w_]+:", ""):gsub("|r", ""):gsub("|T.-|t", ""):gsub("|A.-|a", "")
+  text = text:gsub("|H.-|h(.-)|h", "%1"):gsub("|n", " "):gsub("[\r\n]+", " "):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+  if text == "" then return nil end
+  if #text > SOURCE_MAX then text = text:sub(1, SOURCE_MAX - 3) .. "..." end
+  return text
+end
+
+-- One unlearned recipe as we keep it, and where its skill came from (nil when the game did not give one).
+local function Unlearned(info, id, sourceText)
+  local r = { name = info.name, id = tonumber(info.recipeID) or tonumber(id), source = CleanSource(sourceText),
+    sourceType = tonumber(info.sourceType), grey = (tonumber(info.maxTrivialLevel) or 0) > 0 and tonumber(info.maxTrivialLevel) or nil }
+  local from
+  for _, k in ipairs(SKILL_FIELDS) do
+    if type(info[k]) == "number" and info[k] > 0 then r.skill, from = info[k], "field " .. k break end
+  end
+  if not r.skill and type(sourceText) == "string" then
+    local n = tonumber(sourceText:match("%((%d+)%)"))
+    if n and n > 0 and n <= 600 then r.skill, from = n, "source text" end
+  end
+  return r, from
+end
+
 local function ReadRecipesModern()
   local T = _G.C_TradeSkillUI
   if type(T) ~= "table" or type(T.GetRecipeInfo) ~= "function" then return nil end
@@ -404,7 +444,32 @@ local function ReadRecipesModern()
         if #mats > 0 then r.mats = mats end
       end
       cap.list[#cap.list + 1] = r
+    elseif type(info) == "table" and info.learned == false and type(info.name) == "string" then
+      cap.unlearned = cap.unlearned or {}
+      if #cap.unlearned < UNLEARNED_MAX then
+        local text = Tc("GetRecipeSourceText", id)
+        local r, from = Unlearned(info, id, text)
+        if from and not cap.unlearnedSkillFrom then cap.unlearnedSkillFrom = from end
+        if not cap.unlearnedSample then
+          local keys = {}
+          for k, v in pairs(info) do if type(k) == "string" and #keys < 60 then keys[#keys + 1] = k .. ":" .. type(v) end end
+          table.sort(keys)
+          cap.unlearnedSample = { id = r.id, keys = table.concat(keys, " "), sourceRaw = type(text) == "string" and text:sub(1, 300):gsub("|", "||") or nil }
+        end
+        cap.unlearned[#cap.unlearned + 1] = r
+      else
+        cap.unlearnedCut = (cap.unlearnedCut or 0) + 1
+      end
     end
+  end
+  if cap.unlearned then
+    -- lowest skill first; without a skill, by the skill at which it turns grey, then by name
+    table.sort(cap.unlearned, function(a, b)
+      local ka, kb = a.skill or a.grey or 1e9, b.skill or b.grey or 1e9
+      if ka ~= kb then return ka < kb end
+      return tostring(a.name) < tostring(b.name)
+    end)
+    cap.unlearnedCount = #cap.unlearned
   end
   return cap
 end
