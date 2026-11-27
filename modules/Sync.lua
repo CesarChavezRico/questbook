@@ -7,7 +7,7 @@
 --
 -- Two saved tables, apart on purpose (they change at different speeds, and only one holds paid content):
 --   QuestBookState  the CHARACTER: where the guide is, level and experience, money, the quest log, finished quests, bags,
---                   gear, the bank as last seen. Rewritten when the UI unloads (logout, /reload) and by /qb sync now. No
+--                   gear, the keyring, the bank as last seen at its window (the bank's own containers: see ReadBank). Rewritten when the UI unloads (logout, /reload) and by /qb sync now. No
 --                   guide text. This is the part meant to travel by itself after every session.
 --   QuestBookGuide  the GUIDE: every step of each RestedXP chapter that has been loaded, as RestedXP holds it in memory
 --                   (the steps are decoded by RestedXP itself; nothing is decrypted here). Paid content: it stays in this
@@ -252,14 +252,111 @@ local function Gear()
   return out
 end
 
--- The bank can only be read while its window is open: keep what was seen then, with when.
-local bankSeen
+-- ---------------------------------------------------------------- the bank, and the keyring (4BI-54, v0.44.0)
+--
+-- THE DEFECT. Until v0.43.0 this read container -1 and called it the bank. On every state file since 2026-11-22 the "bank"
+-- was one container of 32 slots holding one Workshop Key: the keyring. Nibble told Cesar three times that his bank held
+-- only that key, and the leather and hides he banked on 2026-11-25 were invisible to every plan. The numbers were the
+-- classic client's (bank -1, bank bags 5 and up, keyring -2). The Forever client's are the modern ones
+-- (Enum.BagIndex in the Forever UI source, build 70450, read 2026-11-27): Keyring = -1, ReagentBag = 5, and the bank is
+-- TABS: CharacterBankTab_1..9 = 6..14, AccountBankTab_1..9 = 15..23, with C_Bank.FetchPurchasedBankTabIDs / TabData saying
+-- which tabs exist and what they are called. So the containers are now taken from the client, never assumed:
+--   "tabs"     Enum.BagIndex has CharacterBankTab_1 (Forever): the purchased character tabs -> `bank`; the purchased
+--              account tabs -> `accountBank` (the shared bank is not the character's: its own field).
+--   "enum"     Enum.BagIndex has Bank (the modern client before the tab rework): Bank + BankBag_1..7 -> `bank`,
+--              Reagentbank -> `reagentBank`.
+--   "classic"  no Enum.BagIndex: -1 and 5 .. 4 + GetNumBankSlots() -> `bank`.
+-- The keyring (Enum.BagIndex.Keyring, else -2) is read with the bags, in the world, into `keyring`; it is never the bank.
+-- The bank is read ONLY while its window is open (between BANKFRAME_OPENED and BANKFRAME_CLOSED), and is "as last seen":
+-- `at` says when, `how` says which of the three ways. A bank never opened has no field. A stored `bank` from before
+-- v0.44.0 (no `how`) that is only the keyring's container is dropped, not carried on.
+-- UNVERIFIED (client only): that the tab containers answer through C_Container while the bank is open, and the events.
+local bankSeen, accountBankSeen, reagentBankSeen
+local bankOpen = false
+
+local function BagIndex() local E = _G.Enum; return type(E) == "table" and type(E.BagIndex) == "table" and E.BagIndex or nil end
+
+local function KeyringIndex()
+  local B = BagIndex()
+  if B and type(B.Keyring) == "number" then return B.Keyring end
+  if B then return nil end                 -- a modern client with no keyring
+  return -2
+end
+
+-- The tabs of one bank type that exist, as container numbers with their names: from C_Bank, else every container of the
+-- enum's range that has slots.
+local function Tabs(bankType, firstName, count)
+  local B = BagIndex()
+  local out = {}
+  local C = _G.C_Bank
+  local E = _G.Enum
+  local t = type(E) == "table" and type(E.BankType) == "table" and E.BankType[bankType] or nil
+  if type(C) == "table" and t ~= nil then
+    local names = {}
+    if type(C.FetchPurchasedBankTabData) == "function" then
+      local ok, data = pcall(C.FetchPurchasedBankTabData, t)
+      if ok and type(data) == "table" then for _, d in ipairs(data) do if type(d) == "table" and d.ID then names[d.ID] = d.name; out[#out + 1] = d.ID end end end
+    end
+    if #out == 0 and type(C.FetchPurchasedBankTabIDs) == "function" then
+      local ok, ids = pcall(C.FetchPurchasedBankTabIDs, t)
+      if ok and type(ids) == "table" then for _, id in ipairs(ids) do out[#out + 1] = id end end
+    end
+    if #out > 0 then return out, names end
+  end
+  for i = 1, count do
+    local id = B and B[firstName .. i]
+    if type(id) == "number" then out[#out + 1] = id end
+  end
+  return out, {}
+end
+
+local function ReadList(ids, names)
+  local list = {}
+  for _, id in ipairs(ids) do
+    local b = ReadBag(id)
+    if b then b.name = names and names[id] or nil; list[#list + 1] = b end
+  end
+  return list
+end
+
 local function ReadBank()
-  local list = Bags(-1, -1)
-  local n = Call("GetNumBankSlots") or 0
-  local more = Bags(5, 4 + math.min(type(n) == "number" and n or 0, 7))
-  for _, b in ipairs(more) do list[#list + 1] = b end
-  if #list > 0 then bankSeen = { at = Call("time"), bags = list } end
+  if not bankOpen then return end
+  local B = BagIndex()
+  local at = Call("time")
+  if B and type(B.CharacterBankTab_1) == "number" then
+    local list = ReadList(Tabs("Character", "CharacterBankTab_", 9))
+    if #list > 0 then bankSeen = { at = at, how = "tabs", bags = list } end
+    local shared = ReadList(Tabs("Account", "AccountBankTab_", 9))
+    if #shared > 0 then accountBankSeen = { at = at, how = "tabs", bags = shared } end
+  elseif B and type(B.Bank) == "number" then
+    local ids = { B.Bank }
+    for i = 1, 7 do if type(B["BankBag_" .. i]) == "number" then ids[#ids + 1] = B["BankBag_" .. i] end end
+    local list = ReadList(ids)
+    if #list > 0 then bankSeen = { at = at, how = "enum", bags = list } end
+    if type(B.Reagentbank) == "number" then
+      local r = ReadList({ B.Reagentbank })
+      if #r > 0 then reagentBankSeen = { at = at, how = "enum", bags = r } end
+    end
+  elseif not B then
+    local list = Bags(-1, -1)
+    local n = Call("GetNumBankSlots") or 0
+    local more = Bags(5, 4 + math.min(type(n) == "number" and n or 0, 7))
+    for _, b in ipairs(more) do list[#list + 1] = b end
+    if #list > 0 then bankSeen = { at = at, how = "classic", bags = list } end
+  end
+  mod.bankChanged = true                   -- the next tick takes a new snapshot, so the state in memory carries it
+end
+
+-- A `bank` kept from before v0.44.0 that is the keyring under the wrong name: only container -1, on a client whose keyring
+-- is container -1. Such a record is not carried into a new state.
+local function RealBank(b)
+  if type(b) ~= "table" or type(b.bags) ~= "table" then return nil end
+  if b.how == nil and KeyringIndex() == -1 then
+    local only = true
+    for _, bag in ipairs(b.bags) do if bag.bag ~= -1 then only = false end end
+    if only then return nil end
+  end
+  return b
 end
 
 -- The realm's name: GetRealmName came back empty on Cesar's client in every file since v0.33.0.
@@ -575,6 +672,10 @@ local function Read(how)
   s.quests = QuestLog()
   s.completed = Completed()
   s.bags = Bags(0, 4)
+  -- the keyring is its own container, read here with the bags (4BI-54: it used to be mistaken for the bank)
+  local kr = KeyringIndex()
+  local keys = kr and ReadBag(kr) or nil
+  if keys and #keys.items > 0 then s.keyring = keys end
   s.gear = Gear()
   s.skills = Skills()
   s.bars = Bars()
@@ -604,7 +705,9 @@ local SETTLE = 6                -- seconds after the UI loads before the first r
 
 local function WithBank(s)
   local prev = _G.QuestBookState
-  s.bank = bankSeen or (snap and snap.bank) or (type(prev) == "table" and prev.bank) or nil
+  s.bank = bankSeen or RealBank(snap and snap.bank) or RealBank(type(prev) == "table" and prev.bank) or nil
+  s.accountBank = accountBankSeen or (snap and snap.accountBank) or (type(prev) == "table" and prev.accountBank) or nil
+  s.reagentBank = reagentBankSeen or (snap and snap.reagentBank) or (type(prev) == "table" and prev.reagentBank) or nil
   -- the recipes seen at the profession windows travel with every state (4BI-49): nothing reads them again here
   local rec = recipes or (snap and snap.recipes) or (type(prev) == "table" and type(prev.recipes) == "table" and prev.recipes) or nil
   if type(rec) == "table" and next(rec) ~= nil then s.recipes = rec end
@@ -639,6 +742,7 @@ local function Tick()
   local now = (GetTime and GetTime()) or 0
   if not enabledAt or now - enabledAt < SETTLE then return end
   if mod.recipesChanged then mod.recipesChanged = nil; dirty = true end
+  if mod.bankChanged then mod.bankChanged = nil; dirty = true end
   if not lastTake or (dirty and now - lastTake >= TAKE_GAP) or now - lastTake >= TAKE_EVERY then Take("world") end
 end
 
@@ -679,8 +783,23 @@ function mod:OnDisable()
   if ticker then ticker:Cancel(); ticker = nil end
 end
 
-mod.events.BANKFRAME_OPENED = function() ReadBank() end
-mod.events.PLAYERBANKSLOTS_CHANGED = function() if bankSeen then ReadBank() end end
+-- The bank is read while its window is open, and again when something in it changes; never after it closed (the client
+-- then answers with empty containers, which would look like an emptied bank).
+local bankPending = false
+local function BankSoon()
+  if not bankOpen or bankPending then return end                 -- one read for a burst of bag updates
+  if C_Timer and C_Timer.After then
+    bankPending = true
+    C_Timer.After(0.3, function() bankPending = false; QB:Safe(mod, ReadBank) end)
+  else
+    ReadBank()
+  end
+end
+mod.events.BANKFRAME_OPENED = function() bankOpen = true; ReadBank(); BankSoon() end
+mod.events.BANKFRAME_CLOSED = function() bankOpen = false end
+mod.events.PLAYERBANKSLOTS_CHANGED = BankSoon
+mod.events.BANK_TABS_CHANGED = BankSoon
+mod.events.BAG_UPDATE = BankSoon
 mod.events.PLAYER_LOGOUT = function(self)
   if not self.db.auto then return end
   -- The snapshot from memory. Only when there is none (the UI unloaded within seconds of loading) is the game read here,

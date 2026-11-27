@@ -306,7 +306,9 @@ end
 FIXED.bags = function()
   local ok, s = QB:Call("sync", "WriteState")
   if not ok or type(s) ~= "table" then return nil, "the sync module is off" end
-  return { bags = s.bags, bank = s.bank, gear = s.gear, money = s.money }
+  -- the bank is as last seen at its window (`bank.at`); a bank never opened has no record, and that is said (4BI-54)
+  return { bags = s.bags, bank = s.bank, accountBank = s.accountBank, reagentBank = s.reagentBank, keyring = s.keyring, gear = s.gear, money = s.money,
+    bankNote = (not s.bank) and "the bank has not been seen: it is only read while its window is open; open it once" or nil }
 end
 FIXED.quests = function()
   local ok, s = QB:Call("sync", "WriteState")

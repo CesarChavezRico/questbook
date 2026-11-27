@@ -769,3 +769,20 @@ green by itself there.
   The summary and the plain list count them. The classic globals have no unlearned recipes: the field is left out. Still
   never opens a window, crafts or trains. Not verified in the client: that Forever's list holds unlearned recipes at all, and
   every field. A number in brackets in a source text may be something other than the skill; `unlearnedSkillFrom` marks it.
+- **v0.44.0, sync: the "bank" was the keyring (4BI-54).** Cesar, 2026-11-27, asking where his Heavy Hides were: "do I have
+  some in the bank?" Every state since 2026-11-22 showed a bank of one 32-slot container holding one Workshop Key. The code
+  read container -1 and bags 5 and up: the classic client's numbers. Forever's are the modern ones (`Enum.BagIndex` in the
+  Forever UI source, build 70450): `Keyring = -1`, `ReagentBag = 5`, and the bank is tabs, `CharacterBankTab_1..9 = 6..14`
+  and `AccountBankTab_1..9 = 15..23`, listed by `C_Bank.FetchPurchasedBankTabData`. So the real bank was never read, and
+  Nibble reported three times that it held only a key. Now the containers come from the client: with `CharacterBankTab_1` in
+  the enum, the purchased character tabs are `bank` and the account tabs `accountBank` (`how = "tabs"`, each tab with its
+  name); with `Bank` in the enum (the modern client before tabs), `Bank` and `BankBag_1..7` are `bank` and `Reagentbank` is
+  `reagentBank` (`how = "enum"`); with no enum, -1 and 5 .. 4 + `GetNumBankSlots()` as before (`how = "classic"`). The
+  keyring (`Enum.BagIndex.Keyring`, else -2) is read with the bags into `keyring` and is never the bank. The bank is read
+  only between `BANKFRAME_OPENED` and `BANKFRAME_CLOSED` (and again on `PLAYERBANKSLOTS_CHANGED`, `BANK_TABS_CHANGED`,
+  `BAG_UPDATE` while open, debounced): after it closes the client answers with empty containers, which would look like an
+  emptied bank. It stays "as last seen" with `at`; a bank never opened has no field, and `q bags` then says so. A `bank`
+  stored before v0.44.0 (no `how`) that holds only container -1, on a client whose keyring is -1, is dropped instead of
+  carried on. Not verified in the client: that the tab containers answer through `C_Container` while the bank is open, and
+  the event names. Not fixed here: the state is one table per account, so another character's login still carries Thara's
+  bank and recipes along (seen 2026-11-25; no ticket yet).

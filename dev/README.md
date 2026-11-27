@@ -19,6 +19,8 @@ Offline checks for when there is no game client at hand.
     node run.js ../.. skills.lua                        # profession skills in the state and `q skills`, on each kind of client and on one with none
     node run.js ../.. recipes.lua                       # recipes saved when a profession window opens, and `q recipes`
     node run.js ../.. unlearned.lua                     # the recipes not learned yet beside the known ones, the range, the limits
+    node run.js ../.. bank.lua                          # the bank's containers on each kind of client; the keyring apart; a bank never opened
+    node run.js ../.. bank_old.lua                      # an older state's "bank" that is the keyring is dropped (bank_old_classic.lua: kept where -1 is the bank)
     node run.js ../.. bars.lua                          # the action buttons, macros and bindings in the state, and `q bars`
     node run.js ../.. xp.lua                            # the experience bar: fill, rested, tooltip, max level, Blizzard's bar, no strip
     node run.js ../.. elle.lua                          # the Play / Stop button on EllesmereUI's tracker rows (a stand-in for its plugin API)
